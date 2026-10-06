@@ -1,0 +1,36 @@
+[project]
+name = "rfworkbench-bridge"
+version = "0.1.0"
+description = "Supervised Python scripting bridge for RF Workbench"
+requires-python = ">=3.10"
+dependencies = []
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-cov>=6", "ruff>=0.11", "ty", "basedpyright"]
+
+[tool.ruff]
+line-length = 100
+exclude = ["examples"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ty.src]
+include = ["rfworkbench", "tests"]
+
+[tool.basedpyright]
+include = ["rfworkbench", "tests"]
+typeCheckingMode = "standard"
+pythonVersion = "3.10"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.coverage.run]
+branch = true
+source = ["rfworkbench"]
+
+[tool.coverage.report]
+fail_under = 95
+show_missing = true

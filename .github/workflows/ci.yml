@@ -1,0 +1,48 @@
+name: Build and test
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.90.0
+        with:
+          components: rustfmt, clippy
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Linux windowing dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxi-dev libxcursor-dev libxrandr-dev libxkbcommon-dev libwayland-dev libgl1-mesa-dev
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked
+      - run: cargo test -p rf-runtime --test python_integration --locked -- --ignored
+      - run: cargo build --release -p rf-workbench --locked
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rf-workbench-${{ runner.os }}
+          path: |
+            target/release/rf-workbench.exe
+            target/release/rf-workbench
+          if-no-files-found: error
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - working-directory: python
+        run: uv sync --locked
+      - working-directory: python
+        run: uv run ruff check . && uv run ruff format --check .
+      - working-directory: python
+        run: uv run ty check && uv run basedpyright
+      - working-directory: python
+        run: uv run pytest --cov --cov-branch

@@ -1,0 +1,10 @@
+[package]
+name = "rf-instruments"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+rf-core.workspace = true
+thiserror.workspace = true
+libloading = "0.8"

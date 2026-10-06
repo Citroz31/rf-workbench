@@ -1,0 +1,11 @@
+/target/
+/dist/
+*.rfw.json
+*.csv
+__pycache__/
+.venv/
+/python/.coverage
+/python/htmlcov/
+.ruff_cache/
+.pytest_cache/
+

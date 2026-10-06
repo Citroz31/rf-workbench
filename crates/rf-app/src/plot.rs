@@ -1,0 +1,125 @@
+use crate::theme::*;
+use eframe::egui::{self, Align2, FontId, Pos2, Rect, Sense, Stroke};
+use rf_core::Trace;
+
+pub fn plot(ui: &mut egui::Ui, trace: &Trace, height: f32, marker: bool) {
+    let (rect, response) =
+        ui.allocate_exact_size(egui::vec2(ui.available_width(), height), Sense::hover());
+    let painter = ui.painter_at(rect);
+    painter.rect_filled(rect, 8., BG);
+    let area = Rect::from_min_max(
+        rect.min + egui::vec2(56., 22.),
+        rect.max - egui::vec2(22., 35.),
+    );
+    if trace.validate().is_err() || area.width() < 1. || area.height() < 1. {
+        return;
+    }
+    let start = trace.frequency_hz[0];
+    let stop = *trace.frequency_hz.last().unwrap();
+    let min = -110.;
+    let max = 10.;
+    let point = |f: f64, a: f64| {
+        Pos2::new(
+            area.left() + ((f - start) / (stop - start)) as f32 * area.width(),
+            area.bottom() - ((a - min) / (max - min)) as f32 * area.height(),
+        )
+    };
+    for i in 0..=6 {
+        let x = area.left() + area.width() * i as f32 / 6.;
+        let y = area.top() + area.height() * i as f32 / 6.;
+        painter.line_segment(
+            [Pos2::new(x, area.top()), Pos2::new(x, area.bottom())],
+            Stroke::new(1., BORDER.gamma_multiply(0.5)),
+        );
+        painter.line_segment(
+            [Pos2::new(area.left(), y), Pos2::new(area.right(), y)],
+            Stroke::new(1., BORDER.gamma_multiply(0.5)),
+        );
+        painter.text(
+            Pos2::new(x, area.bottom() + 14.),
+            Align2::CENTER_CENTER,
+            format!("{:.3}", (start + (stop - start) * i as f64 / 6.) / 1e9),
+            FontId::proportional(10.),
+            MUTED,
+        );
+        painter.text(
+            Pos2::new(area.left() - 10., y),
+            Align2::RIGHT_CENTER,
+            format!("{:.0}", max - (max - min) * i as f64 / 6.),
+            FontId::proportional(10.),
+            MUTED,
+        );
+    }
+    // Envelope decimation retains narrow peaks; rendering work is bounded by pixels.
+    let budget = (area.width().max(1.) as usize * 2).max(200);
+    let stride = trace.amplitude_dbm.len().div_ceil(budget).max(1);
+    let mut pts = Vec::with_capacity(budget * 2);
+    for begin in (0..trace.amplitude_dbm.len()).step_by(stride) {
+        let end = (begin + stride).min(trace.amplitude_dbm.len());
+        let slice = &trace.amplitude_dbm[begin..end];
+        let low = slice
+            .iter()
+            .enumerate()
+            .min_by(|a, b| a.1.total_cmp(b.1))
+            .unwrap()
+            .0
+            + begin;
+        let high = slice
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.total_cmp(b.1))
+            .unwrap()
+            .0
+            + begin;
+        for index in [low.min(high), low.max(high)] {
+            pts.push(point(
+                trace.frequency_hz[index],
+                trace.amplitude_dbm[index].clamp(min, max),
+            ));
+        }
+    }
+    painter.add(egui::Shape::line(pts, Stroke::new(1.7, TEAL)));
+    painter.text(
+        area.left_top() + egui::vec2(8., 8.),
+        Align2::LEFT_TOP,
+        "dBm",
+        FontId::proportional(11.),
+        MUTED,
+    );
+    painter.text(
+        rect.right_bottom() - egui::vec2(7., 5.),
+        Align2::RIGHT_BOTTOM,
+        "GHz",
+        FontId::proportional(11.),
+        MUTED,
+    );
+    if marker && let Ok((f, a)) = trace.peak() {
+        let p = point(f, a.clamp(min, max));
+        painter.circle_filled(p, 4., GOLD);
+        painter.text(
+            p + egui::vec2(9., -7.),
+            Align2::LEFT_BOTTOM,
+            format!("M1  {a:.2} dBm"),
+            FontId::proportional(11.),
+            GOLD,
+        );
+    }
+    if let Some(cursor) = response.hover_pos()
+        && area.contains(cursor)
+    {
+        let fraction = ((cursor.x - area.left()) / area.width()).clamp(0., 1.);
+        let i = (fraction * (trace.frequency_hz.len() - 1) as f32).round() as usize;
+        painter.line_segment(
+            [
+                Pos2::new(cursor.x, area.top()),
+                Pos2::new(cursor.x, area.bottom()),
+            ],
+            Stroke::new(1., MUTED),
+        );
+        response.on_hover_text(format!(
+            "{:.6} GHz\n{:.3} dBm",
+            trace.frequency_hz[i] / 1e9,
+            trace.amplitude_dbm[i]
+        ));
+    }
+}

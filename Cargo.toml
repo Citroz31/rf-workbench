@@ -1,0 +1,22 @@
+[workspace]
+members = ["crates/rf-core", "crates/rf-instruments", "crates/rf-runtime", "crates/rf-app"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90"
+license = "MIT"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+rf-core = { path = "crates/rf-core" }
+rf-instruments = { path = "crates/rf-instruments" }
+rf-runtime = { path = "crates/rf-runtime" }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+
