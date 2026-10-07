@@ -1,4 +1,26 @@
-# Validation de la première livraison
+# Validation 0.2.0
+
+Vérifications locales sur Windows x64, Rust 1.90.0 et Python 3.12.14, le 7 octobre 2026. Le paquet Windows est compilé depuis ces sources.
+
+| Vérification | Résultat |
+| --- | --- |
+| Tests Rust du workspace | 40 réussis : graphe multiport, unités, modèles I/Q/PNA, catalogue DUT, câblage, historique, raccourcis et transports |
+| Tests Rust/Python avec un vrai processus Python | 5 réussis : SCPI délégué, compensation, erreurs, annulation et délai |
+| Tests Python | 9 réussis ; couverture lignes/branches 100 % de la passerelle |
+| Formatage, Clippy tous les targets avec `-D warnings` | Réussis |
+| Ruff, ty et basedpyright | Réussis |
+| Compilation Windows release | Réussie |
+| `--self-test` | 14 contrôles intégrés réussis |
+| `--python-smoke` | Passerelle IPC, SCPI et compensation réussis |
+| Rendu natif 1600 × 1000 | Schéma, galerie des 18 blocs, paramètres S, formes d'onde et préférences inspectés |
+
+Le test de câblage injecte des événements pointeur dans les régions de clic réelles d'egui : sortie → fond du canevas pour un coude → entrée. Il vérifie la connexion, son parcours et l'historique. Les tests vérifient également les connexions incompatibles et la suspension des raccourcis dans les champs de texte. Cette vérification automatisée ne remplace pas une campagne utilisateur sur différents DPI ou périphériques tactiles.
+
+Les nouvelles simulations conservent leurs unités et leur provenance. Les profils matériels non implémentés sont refusés avant toute commande physique. Aucun PNA, AWG, capteur ou appareil thermique réel n'a été connecté. Le catalogue DUT initial ne contient aucune caractéristique de puce ; le scraping constructeur reste à développer.
+
+Les captures mesurent un rendu natif, sans promettre de latence pointeur→écran ou de temps réel. Les résultats CI de 0.2 sont consultables dans GitHub Actions après publication. La CI de la livraison précédente a réussi sur Windows, Linux et macOS.
+
+# Historique : validation de la première livraison
 
 Vérifications locales sur Windows x64, Rust 1.90.0, compilation GNU optimisée, Python 3.12.14. Livraison préparée le 7 octobre 2026 (heure Europe/Paris).
 

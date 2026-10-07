@@ -1,13 +1,17 @@
 use crate::{
-    canvas::{Canvas, History},
+    canvas::{Canvas, History, Tool},
     plot,
+    shortcuts::{Action, Preferences},
     theme::*,
+    visuals::{self, Icon, icon_button},
 };
 use eframe::egui::{self, RichText};
-use rf_core::{Kind, Project, TestResult, Trace};
+use rf_core::{Kind, Measurement, NetworkTrace, Project, TestResult, Trace, Waveform};
+use rf_dut_library::{Catalog, Component};
 use rf_runtime::{Command, Event, RunResult, Worker};
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
+mod workspace;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum View {
@@ -16,14 +20,33 @@ enum View {
     Tests,
     Python,
     Instruments,
+    Network,
+    Measurements,
+    Library,
+    DutCatalog,
+    Settings,
+    Project,
 }
 pub struct Workbench {
+    capture_path: Option<String>,
+    capture_frames: u32,
+    capture_requested: bool,
     project: Project,
     canvas: Canvas,
     history: History,
     worker: Worker,
     view: View,
     trace: Trace,
+    network: Option<NetworkTrace>,
+    waveform: Option<Waveform>,
+    measurements: Vec<Measurement>,
+    preferences: Preferences,
+    preferences_draft: Preferences,
+    preferences_path: String,
+    catalog: Catalog,
+    catalog_path: String,
+    catalog_search: String,
+    component_draft: Component,
     preview: bool,
     tests: Vec<TestResult>,
     logs: VecDeque<(String, bool)>,
@@ -72,12 +95,94 @@ impl Workbench {
             .join("measurement.csv")
             .to_string_lossy()
             .into_owned();
-        Self {
-            project: Project::default(),
-            canvas: Canvas::default(),
+        let preferences_path = std::env::current_dir()
+            .unwrap_or_default()
+            .join("preferences.rfw.json")
+            .to_string_lossy()
+            .into_owned();
+        let preferences = read_limited(&preferences_path, 64_000)
+            .ok()
+            .filter(|s| s.len() <= 64_000)
+            .and_then(|s| serde_json::from_str::<Preferences>(&s).ok())
+            .filter(|p| p.validate().is_ok())
+            .unwrap_or_default();
+        let catalog_path = std::env::current_dir()
+            .unwrap_or_default()
+            .join("dut-catalog.json")
+            .to_string_lossy()
+            .into_owned();
+        let catalog = read_limited(&catalog_path, 4_000_000)
+            .ok()
+            .and_then(|s| Catalog::from_json(&s).ok())
+            .unwrap_or_default();
+        let args: Vec<_> = std::env::args().collect();
+        let mut project = Project::default();
+        for n in &mut project.graph.nodes {
+            n.position[0] = 36. + (n.position[0] - 36.) / 258. * 294.;
+            n.position[1] = if n.id <= 3 { 40. } else { 320. };
+        }
+        let pna = project.graph.add(Kind::PnaX, [920., 40.]);
+        project
+            .graph
+            .connect_ports(2, 1, pna, 0)
+            .expect("model link");
+        for e in &mut project.graph.edges {
+            e.waypoints = match (e.from, e.to) {
+                (2, id) if id == pna => vec![[588., 16.], [896., 16.]],
+                (3, 4) => vec![[894., 276.], [600., 276.], [600., 437.5]],
+                (4, 5) => vec![[894., 552.], [306., 552.], [306., 437.5]],
+                (5, 6) => vec![[600., 576.], [12., 576.], [12., 437.5]],
+                _ => Vec::new(),
+            };
+        }
+        if args.iter().any(|a| a == "--demo-pna") {
+            project.graph = rf_core::Graph::network_demo();
+            project.name = "Caractérisation réseau · PNA-X & DUT".into();
+        }
+        if args.iter().any(|a| a == "--demo-iq") {
+            project.graph = rf_core::Graph::iq_demo();
+            project.name = "Chaîne I/Q · AWG, DAC & conversion RF".into();
+        }
+        let view = if args.iter().any(|a| a == "--gallery") {
+            View::Library
+        } else if args.iter().any(|a| a == "--settings") {
+            View::Settings
+        } else {
+            View::Schematic
+        };
+        let mut bench = Self {
+            capture_path: args
+                .iter()
+                .position(|a| a == "--capture")
+                .and_then(|i| args.get(i + 1))
+                .cloned(),
+            capture_frames: 0,
+            capture_requested: false,
+            project,
+            network: None,
+            waveform: None,
+            measurements: Vec::new(),
+            preferences_draft: preferences.clone(),
+            preferences: preferences.clone(),
+            preferences_path,
+            catalog,
+            catalog_path,
+            catalog_search: String::new(),
+            component_draft: Component {
+                id: String::new(),
+                manufacturer: "Local".into(),
+                part_number: String::new(),
+                category: "Composant RF".into(),
+                description: String::new(),
+                insertion_loss_db: Some(3.),
+                noise_figure_db: Some(2.5),
+                sources: Vec::new(),
+                attributes: Default::default(),
+            },
+            canvas: Canvas::configured(preferences.snap, preferences.orthogonal),
             history: History::default(),
             worker,
-            view: View::Schematic,
+            view,
             trace,
             preview: true,
             tests: Vec::new(),
@@ -107,7 +212,18 @@ impl Workbench {
             last_frame: Instant::now(),
             clock: Instant::now(),
             last_status: "Prêt · simulation".into(),
+        };
+        if args.iter().any(|a| a == "--run-demo") {
+            bench.run();
+            if args.iter().any(|a| a == "--results") {
+                bench.view = if args.iter().any(|a| a == "--demo-pna") {
+                    View::Network
+                } else {
+                    View::Measurements
+                };
+            }
         }
+        bench
     }
     fn log(&mut self, message: String, error: bool) {
         self.last_status = message.clone();
@@ -140,6 +256,9 @@ impl Workbench {
             self.trace = t;
             self.preview = false;
         }
+        self.network = r.network;
+        self.waveform = r.waveform;
+        self.measurements = r.measurements;
         self.tests = r.tests;
         self.canvas.completed = r.completed;
         self.elapsed = r.elapsed_ms;
@@ -153,7 +272,7 @@ impl Workbench {
         for event in events {
             match event {
                 Event::Done(r) => {
-                    self.result(r);
+                    self.result(*r);
                     self.log("Traitement terminé".into(), false);
                 }
                 Event::Suite(t) => {
@@ -203,7 +322,12 @@ impl Workbench {
             Ok(p) => {
                 self.project = p;
                 self.history.clear();
-                self.canvas = Canvas::default();
+                self.canvas =
+                    Canvas::configured(self.preferences.snap, self.preferences.orthogonal);
+                self.network = None;
+                self.waveform = None;
+                self.measurements.clear();
+                self.tests.clear();
                 self.preview = true;
                 self.canvas.completed.clear();
                 self.log(
@@ -225,97 +349,343 @@ impl Workbench {
             Err(e) => self.log(e, true),
         }
     }
+    fn add_block(&mut self, kind: Kind) {
+        if self.project.graph.nodes.len() >= 1000 {
+            self.log("Limite de 1000 blocs atteinte".into(), true);
+            return;
+        }
+        self.history.record(self.project.graph.clone());
+        let n = self.project.graph.nodes.len() as f32;
+        let id = self
+            .project
+            .graph
+            .add(kind, [36. + (n % 4.) * 294., 40. + (n / 4.).floor() * 280.]);
+        self.canvas.selected = Some(id);
+        self.canvas.completed.clear();
+        self.canvas.fit();
+        self.view = View::Schematic;
+    }
+    fn action(&mut self, action: Action) {
+        match action {
+            Action::Select => self.canvas.set_tool(Tool::Select),
+            Action::Wire => {
+                self.view = View::Schematic;
+                self.canvas.set_tool(if self.canvas.tool == Tool::Wire {
+                    Tool::Select
+                } else {
+                    Tool::Wire
+                });
+            }
+            Action::Pan => self.canvas.set_tool(Tool::Pan),
+            Action::Fit => self.canvas.fit(),
+            Action::Run => {
+                if !self.worker.is_busy() {
+                    self.run();
+                }
+            }
+            Action::Stop => self.worker.stop(),
+            Action::Save => {
+                if !self.worker.is_busy() {
+                    self.save();
+                }
+            }
+            Action::Open => {
+                if !self.worker.is_busy() {
+                    self.load();
+                }
+            }
+            Action::Undo => {
+                self.canvas.cancel_wire();
+                self.history.undo(&mut self.project.graph);
+                self.canvas.completed.clear();
+            }
+            Action::Redo => {
+                self.canvas.cancel_wire();
+                self.history.redo(&mut self.project.graph);
+                self.canvas.completed.clear();
+            }
+            Action::Delete => {
+                if self.view == View::Schematic
+                    && let Some(id) = self.canvas.selected
+                {
+                    self.history.record(self.project.graph.clone());
+                    self.project.graph.remove(id);
+                    self.canvas.selected = None;
+                    self.canvas.cancel_wire();
+                }
+            }
+            Action::Duplicate => {
+                if let Some(old) = self
+                    .canvas
+                    .selected
+                    .and_then(|id| self.project.graph.node(id))
+                    .cloned()
+                    && self.project.graph.nodes.len() < 1000
+                {
+                    self.history.record(self.project.graph.clone());
+                    let id = self
+                        .project
+                        .graph
+                        .add(old.kind, [old.position[0] + 36., old.position[1] + 36.]);
+                    let n = self.project.graph.nodes.last_mut().unwrap();
+                    n.config = old.config;
+                    n.title = format!("{} · copie", old.title);
+                    self.canvas.selected = Some(id);
+                }
+            }
+            Action::Library => self.view = View::Library,
+            Action::Settings => self.view = View::Settings,
+            Action::Network => self.view = View::Network,
+            Action::Measurements => self.view = View::Measurements,
+            Action::Export => self.export(),
+        }
+    }
     fn top(&mut self, ctx: &egui::Context) {
-        egui::TopBottomPanel::top("header").exact_height(105.).show(ctx,|ui|{
-            ui.add_space(8.);ui.horizontal(|ui|{
+        egui::TopBottomPanel::top("header").show(ctx, |ui| {
+            ui.add_space(5.);
+            ui.horizontal(|ui| {
                 ui.label(RichText::new("RF").size(24.).strong().color(TEAL));
                 ui.label(RichText::new("WORKBENCH").size(19.).strong());
-                ui.label(RichText::new("/  Instrumentation & métrologie").size(13.).color(MUTED));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui|{badge(ui,"v0.1 · WINDOWS",MUTED);badge(ui,if self.hardware{"MATÉRIEL ACTIVÉ"}else{"SIMULATION"},if self.hardware{GOLD}else{TEAL});});
-            });
-            ui.add_space(8.);ui.separator();
-            ui.horizontal(|ui|{
-                let busy=self.worker.is_busy();
-                ui.add_enabled_ui(!busy,|ui|{if button(ui,"▶  Exécuter",true).clicked(){self.run();}ui.checkbox(&mut self.continuous,"En continu");});
-                if ui.add_enabled(busy,egui::Button::new(RichText::new("■  Arrêter").color(RED))).clicked(){self.worker.stop();self.log("Arrêt demandé ; attente de la fin de l'opération en cours".into(),false);}
-                ui.separator();
-                if ui.button("Annuler").on_hover_text("Ctrl+Z").clicked(){self.history.undo(&mut self.project.graph);}
-                if ui.button("Rétablir").on_hover_text("Ctrl+Y").clicked(){self.history.redo(&mut self.project.graph);}
-                ui.add_enabled_ui(!busy,|ui|{
-                    if ui.button("Enregistrer").clicked(){self.save();}
-                    if ui.button("Ouvrir").clicked(){self.load();}
+                ui.label(
+                    RichText::new("/ Instrumentation & métrologie")
+                        .size(12.)
+                        .color(MUTED),
+                );
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    badge(ui, "v0.2 · WINDOWS", MUTED);
+                    badge(
+                        ui,
+                        if self.hardware {
+                            "MATÉRIEL ACTIVÉ"
+                        } else {
+                            "SIMULATION"
+                        },
+                        if self.hardware { GOLD } else { TEAL },
+                    );
                 });
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui|{ui.add_enabled_ui(!busy,|ui|{ui.checkbox(&mut self.hardware,"Matériel réel").on_hover_text("Autorise les sessions SCPI TCP configurées. Le banc de démonstration reste simulé.");});});
             });
+            ui.separator();
+            ui.horizontal_wrapped(|ui| {
+                for (view, icon, name) in [
+                    (View::Schematic, Icon::Wire, "Schéma"),
+                    (View::Library, Icon::Grid, "Blocs"),
+                    (View::Acquisition, Icon::Wave, "Spectre"),
+                    (View::Network, Icon::Network, "Paramètres S"),
+                    (View::Measurements, Icon::Wave, "Mesures"),
+                    (View::Tests, Icon::Test, "Tests"),
+                    (View::Python, Icon::Python, "Python"),
+                    (View::Instruments, Icon::Instrument, "SCPI"),
+                    (View::DutCatalog, Icon::Chip, "DUT"),
+                    (View::Project, Icon::Open, "Projet"),
+                    (View::Settings, Icon::Settings, "Raccourcis"),
+                ] {
+                    ui.spacing_mut().item_spacing.x = 4.;
+                    if icon_button(ui, icon, name, self.view == view).clicked() {
+                        self.view = view;
+                    }
+                    if ui
+                        .selectable_label(self.view == view, RichText::new(name).size(12.))
+                        .clicked()
+                    {
+                        self.view = view;
+                    }
+                    ui.add_space(6.);
+                }
+            });
+            ui.separator();
+            ui.horizontal_wrapped(|ui| {
+                for (action, icon, selected) in [
+                    (
+                        Action::Select,
+                        Icon::Select,
+                        self.canvas.tool == Tool::Select,
+                    ),
+                    (Action::Wire, Icon::Wire, self.canvas.tool == Tool::Wire),
+                    (Action::Pan, Icon::Pan, self.canvas.tool == Tool::Pan),
+                    (Action::Fit, Icon::Fit, false),
+                ] {
+                    if icon_button(ui, icon, &self.preferences.hint(action), selected).clicked() {
+                        self.action(action);
+                    }
+                }
+                ui.separator();
+                for (action, icon) in [
+                    (Action::Undo, Icon::Undo),
+                    (Action::Redo, Icon::Redo),
+                    (Action::Duplicate, Icon::Clone),
+                    (Action::Save, Icon::Save),
+                    (Action::Open, Icon::Open),
+                    (Action::Export, Icon::Export),
+                ] {
+                    if icon_button(ui, icon, &self.preferences.hint(action), false).clicked() {
+                        self.action(action);
+                    }
+                }
+                ui.separator();
+                let busy = self.worker.is_busy();
+                ui.add_enabled_ui(!busy, |ui| {
+                    if icon_button(ui, Icon::Play, &self.preferences.hint(Action::Run), false)
+                        .clicked()
+                    {
+                        self.run();
+                    }
+                    if button(ui, "Exécuter", true)
+                        .on_hover_text(self.preferences.hint(Action::Run))
+                        .clicked()
+                    {
+                        self.run();
+                    }
+                    ui.checkbox(&mut self.continuous, "Continu");
+                });
+                ui.add_enabled_ui(busy, |ui| {
+                    if icon_button(ui, Icon::Stop, &self.preferences.hint(Action::Stop), false)
+                        .clicked()
+                    {
+                        self.worker.stop();
+                    }
+                });
+                ui.separator();
+                if icon_button(ui, Icon::Grid, "Aimantation à la grille", self.canvas.snap)
+                    .clicked()
+                {
+                    self.canvas.snap = !self.canvas.snap;
+                    self.preferences_draft.snap = self.canvas.snap;
+                }
+                if ui
+                    .checkbox(&mut self.canvas.orthogonal, "Câbles orthogonaux")
+                    .changed()
+                {
+                    self.preferences_draft.orthogonal = self.canvas.orthogonal;
+                }
+                ui.add_enabled_ui(!busy, |ui| {
+                    ui.checkbox(&mut self.hardware, "Matériel réel");
+                });
+            });
+            ui.add_space(3.);
         });
     }
     fn sidebar(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::left("library").resizable(true).default_width(218.).width_range(180. ..=300.).show(ctx,|ui|{
-            ui.add_space(14.);caption(ui,"ESPACE DE TRAVAIL");
-            for(view,name)in [(View::Schematic,"Schéma du banc"),(View::Acquisition,"Acquisitions"),(View::Tests,"Tests & limites"),(View::Python,"{ }  Python"),(View::Instruments,"Instruments")]{
-                let selected=self.view==view;
-                if ui.add_sized([ui.available_width(),34.],egui::Button::new(RichText::new(name).color(if selected{TEAL}else{TEXT})).selected(selected)).clicked(){self.view=view;}
-            }
-            ui.add_space(16.);ui.separator();ui.add_space(12.);caption(ui,"BIBLIOTHÈQUE DE BLOCS");
-            ui.add(egui::TextEdit::singleline(&mut self.search).hint_text("Rechercher un bloc…").desired_width(f32::INFINITY));ui.add_space(5.);
-            for kind in Kind::ALL {
-                if !kind.label().to_lowercase().contains(&self.search.to_lowercase()){continue;}
-                let response=ui.add_sized([ui.available_width(),40.],egui::Button::new(RichText::new(format!("+  {}",kind.label())).color(crate::theme::kind(kind))));
-                if response.clicked(){self.history.record(self.project.graph.clone());let n=self.project.graph.nodes.len()as f32;let id=self.project.graph.add(kind,[80.+(n%3.)*258.,80.+(n/3.).floor()*210.]);self.canvas.selected=Some(id);self.canvas.fit();self.view=View::Schematic;self.log("Bloc ajouté : relier ses ports avant l'exécution".into(),false);}
-            }
-            ui.add_space(20.);caption(ui,"RESSOURCES DU BANC");
-            badge(ui,"●  SIM::RF::INSTR",TEAL);ui.label(RichText::new("Instrument virtuel disponible").size(11.).color(MUTED));
-            ui.add_space(15.);ui.label(RichText::new("RF  Signal   ·   Trace   ·   dBm").size(11.).color(MUTED));
-            ui.add_space(10.);ui.label(RichText::new("Les blocs sont exécutés selon les câbles. Les changements pendant une acquisition prennent effet au prochain démarrage.").size(12.).color(MUTED));
-        });
+        let query = self.search.to_lowercase();
+        egui::SidePanel::left("library")
+            .resizable(true)
+            .default_width(232.)
+            .width_range(190. ..=310.)
+            .show(ctx, |ui| {
+                ui.add_space(10.);
+                caption(ui, "BIBLIOTHÈQUE DE BLOCS");
+                ui.label(
+                    RichText::new("18 éléments · ports nommés")
+                        .size(11.)
+                        .color(MUTED),
+                );
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.search)
+                        .hint_text("PNA, DAC, thermique…")
+                        .desired_width(f32::INFINITY),
+                );
+                ui.add_space(6.);
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    for category in [
+                        "Instruments RF",
+                        "Électronique & conversion",
+                        "Thermique",
+                        "Composants DUT",
+                        "Analyse & automatisation",
+                    ] {
+                        egui::CollapsingHeader::new(category)
+                            .default_open(true)
+                            .show(ui, |ui| {
+                                for k in Kind::ALL.into_iter().filter(|k| {
+                                    k.category() == category
+                                        && k.label().to_lowercase().contains(&query)
+                                }) {
+                                    let (rect, response) = ui.allocate_exact_size(
+                                        egui::vec2(ui.available_width(), 48.),
+                                        egui::Sense::click(),
+                                    );
+                                    let p = ui.painter();
+                                    p.rect_filled(
+                                        rect,
+                                        5.,
+                                        if response.hovered() { BORDER } else { CARD },
+                                    );
+                                    visuals::symbol(
+                                        p,
+                                        egui::Rect::from_min_size(
+                                            rect.min + egui::vec2(4., 5.),
+                                            egui::vec2(57., 36.),
+                                        ),
+                                        k,
+                                    );
+                                    p.text(
+                                        rect.min + egui::vec2(66., 18.),
+                                        egui::Align2::LEFT_CENTER,
+                                        k.label(),
+                                        egui::FontId::proportional(12.),
+                                        crate::theme::kind(k),
+                                    );
+                                    p.text(
+                                        rect.min + egui::vec2(66., 34.),
+                                        egui::Align2::LEFT_CENTER,
+                                        "Ajouter au banc",
+                                        egui::FontId::proportional(10.),
+                                        MUTED,
+                                    );
+                                    if response
+                                        .on_hover_text(format!(
+                                            "{} · {} entrées / {} sorties",
+                                            k.label(),
+                                            k.inputs().len(),
+                                            k.outputs().len()
+                                        ))
+                                        .clicked()
+                                    {
+                                        self.add_block(k);
+                                    }
+                                }
+                            });
+                    }
+                    ui.add_space(12.);
+                    ui.label(
+                        RichText::new(
+                            "W : câblage · V : sélection
+H : déplacement · F : cadrage
+Les touches sont personnalisables.",
+                        )
+                        .size(11.)
+                        .color(MUTED),
+                    );
+                });
+            });
     }
     fn inspector(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::right("inspector").resizable(true).default_width(285.).width_range(240. ..=400.).show(ctx,|ui|{
-            egui::ScrollArea::vertical().show(ui,|ui|{
-                ui.add_space(14.);caption(ui,"INSPECTEUR");
-                let mut previous_node=None;let mut changed=false;let mut remove=None;let mut open_python=false;
-                if let Some(id)=self.canvas.selected && let Some(n)=self.project.graph.nodes.iter_mut().find(|n|n.id==id){
-                    previous_node=Some(n.clone());
-                    badge(ui,n.kind.tag(),crate::theme::kind(n.kind));
-                    changed|=ui.text_edit_singleline(&mut n.title).changed();ui.add_space(7.);ui.separator();ui.add_space(8.);
-                    let c=&mut n.config;
-                    match n.kind {
-                        Kind::Generator=>{
-                            caption(ui,"FRÉQUENCE PORTEUSE");changed|=ui.add(egui::DragValue::new(&mut c.frequency_hz).speed(1e6).range(1. ..=1e12).suffix(" Hz")).changed();
-                            caption(ui,"PUISSANCE");changed|=ui.add(egui::DragValue::new(&mut c.power_dbm).speed(0.1).range(-160. ..=30.).suffix(" dBm")).changed();
-                        }
-                        Kind::Dut=>{caption(ui,"PERTE D'INSERTION");changed|=ui.add(egui::DragValue::new(&mut c.loss_db).speed(0.1).range(0. ..=160.).suffix(" dB")).changed();ui.label(RichText::new("En simulation, cette perte modifie la trace. Sur matériel, le DUT appartient au câblage physique.").size(12.).color(MUTED));}
-                        Kind::Analyzer=>{
-                            caption(ui,"DÉBUT DU BALAYAGE");changed|=ui.add(egui::DragValue::new(&mut c.start_hz).speed(1e6).suffix(" Hz")).changed();
-                            caption(ui,"FIN DU BALAYAGE");changed|=ui.add(egui::DragValue::new(&mut c.stop_hz).speed(1e6).suffix(" Hz")).changed();
-                            caption(ui,"POINTS");changed|=ui.add(egui::DragValue::new(&mut c.points).range(2..=rf_core::MAX_POINTS)).changed();
-                            caption(ui,"REQUÊTE TRACE ASCII");changed|=ui.text_edit_singleline(&mut c.trace_query).changed();
-                        }
-                        Kind::Python=>{ui.label("Entrée : trace\nSortie : variable output");if ui.button("Éditer le script Python").clicked(){self.script=c.script.clone();open_python=true;}ui.label(RichText::new("Le script s'exécute dans un processus Python supervisé, via le moteur Rust.").size(12.).color(MUTED));}
-                        Kind::Peak=>{ui.label("Renvoie le maximum de la trace en dBm.");}
-                        Kind::Limit=>{caption(ui,"LIMITE BASSE");changed|=ui.add(egui::DragValue::new(&mut c.lower_dbm).speed(0.1).suffix(" dBm")).changed();caption(ui,"LIMITE HAUTE");changed|=ui.add(egui::DragValue::new(&mut c.upper_dbm).speed(0.1).suffix(" dBm")).changed();}
-                    }
-                    if matches!(n.kind,Kind::Generator|Kind::Analyzer){
-                        ui.add_space(8.);caption(ui,"RESSOURCE VISA / SCPI");changed|=ui.text_edit_singleline(&mut c.resource).changed();
-                        ui.label(RichText::new("SIM::RF::INSTR\nTCPIP::192.168.1.20::5025::SOCKET").monospace().size(10.).color(MUTED));
-                    }
-                    ui.add_space(12.);ui.separator();caption(ui,"CONNECTIQUE");
-                    if let Some(p)=n.kind.input(){ui.label(format!("Entrée : {}",p.label()));}ui.label(format!("Sortie : {}",n.kind.output().label()));
-                    ui.add_space(10.);if ui.button(RichText::new("Supprimer le bloc").color(RED)).clicked(){remove=Some(id);}
-                }else{ui.label("Sélectionner un bloc dans le schéma.");}
-                if changed && let Some(old)=previous_node {
-                    let mut before=self.project.graph.clone();
-                    if let Some(n)=before.nodes.iter_mut().find(|n|n.id==old.id){*n=old;}
-                    self.history.record(before);self.canvas.completed.clear();
+        egui::SidePanel::right("inspector").resizable(true).default_width(270.).width_range(240. ..=400.).show(ctx,|ui|{egui::ScrollArea::vertical().show(ui,|ui|{
+            ui.add_space(10.);caption(ui,"INSPECTEUR");let mut old=None;let mut changed=false;let mut remove=None;let mut open_python=false;
+            if let Some(id)=self.canvas.selected && let Some(n)=self.project.graph.nodes.iter_mut().find(|n|n.id==id){
+                old=Some(n.clone());badge(ui,n.kind.tag(),crate::theme::kind(n.kind));changed|=ui.text_edit_singleline(&mut n.title).changed();
+                let (r,_)=ui.allocate_exact_size(egui::vec2(ui.available_width(),90.),egui::Sense::hover());visuals::symbol(ui.painter(),r.shrink(8.),n.kind);ui.separator();let c=&mut n.config;
+                match n.kind {
+                    Kind::Generator=>{changed|=number(ui,"FRÉQUENCE",&mut c.frequency_hz,1e6," Hz");changed|=number(ui,"PUISSANCE",&mut c.power_dbm,0.1," dBm");},
+                    Kind::Dut=>{changed|=number(ui,"PERTE D'INSERTION",&mut c.loss_db,0.1," dB");changed|=number(ui,"FACTEUR DE BRUIT",&mut c.noise_figure_db,0.1," dB");ui.label(c.dut_id.as_deref().unwrap_or("DUT générique · modèle local"));if ui.button("Ouvrir le catalogue DUT").clicked(){self.view=View::DutCatalog;}ui.label(RichText::new("MODEL fournit un modèle au PNA/NF Meter. RF IN/OUT représente la chaîne de signal.").size(11.).color(MUTED));},
+                    Kind::Analyzer|Kind::Pna|Kind::PnaX=>{changed|=number(ui,"DÉBUT BALAYAGE",&mut c.start_hz,1e6," Hz");changed|=number(ui,"FIN BALAYAGE",&mut c.stop_hz,1e6," Hz");caption(ui,"POINTS");changed|=ui.add(egui::DragValue::new(&mut c.points).range(2..=rf_core::MAX_POINTS)).changed();if n.kind==Kind::Analyzer{caption(ui,"REQUÊTE TRACE ASCII");changed|=ui.text_edit_singleline(&mut c.trace_query).changed();}else{caption(ui,"PARAMÈTRE S");egui::ComboBox::from_id_salt("s-param").selected_text(&c.s_parameter).show_ui(ui,|ui|{for p in ["S11","S21","S12","S22"]{changed|=ui.selectable_value(&mut c.s_parameter,p.into(),p).changed();}});}},
+                    Kind::Awg|Kind::Dac|Kind::Adc=>{changed|=number(ui,"CADENCE AWG",&mut c.sample_rate_hz,1e6," Sa/s");changed|=number(ui,"FRÉQUENCE DE BASE",&mut c.tone_hz,1e4," Hz");caption(ui,"ÉCHANTILLONS AWG");changed|=ui.add(egui::DragValue::new(&mut c.samples).range(2..=65536)).changed();caption(ui,"RÉSOLUTION");changed|=ui.add(egui::DragValue::new(&mut c.resolution_bits).range(2..=24).suffix(" bits")).changed();changed|=number(ui,"PLEINE ÉCHELLE",&mut c.voltage_v,0.05," V");},
+                    Kind::IqModulator=>{changed|=number(ui,"PERTE CONVERSION",&mut c.loss_db,0.1," dB");ui.label("Entrées I / Q analogiques et oscillateur LO. Modèle idéal de transposition.");},
+                    Kind::VariableResistor=>{changed|=number(ui,"RÉSISTANCE",&mut c.resistance_ohm,1.," Ω");},
+                    Kind::Thermometer|Kind::Thermostream=>{changed|=number(ui,"TEMPÉRATURE / CONSIGNE",&mut c.temperature_c,0.1," °C");ui.label("Thermostream : consigne idéale sans dynamique thermique. Thermomètre : entrée TEMP ou valeur locale.");},
+                    Kind::NoiseFigureMeter=>{changed|=number(ui,"FACTEUR DE BRUIT",&mut c.noise_figure_db,0.1," dB");},
+                    Kind::PowerSensor|Kind::PowerMeter=>{ui.label("Mesure scalaire en dBm. Relier RF → Power Sensor → Power Meter.");},
+                    Kind::Python=>{if ui.button("Éditer le script Python").clicked(){self.script=c.script.clone();open_python=true;}ui.label("Entrée trace / sortie output");},Kind::Peak=>{ui.label("Maximum de trace en dBm");},
+                    Kind::Limit=>{changed|=number(ui,"LIMITE BASSE",&mut c.lower_dbm,0.1," dBm");changed|=number(ui,"LIMITE HAUTE",&mut c.upper_dbm,0.1," dBm");},
                 }
-                if let Some(id)=remove{self.history.record(self.project.graph.clone());self.project.graph.remove(id);self.canvas.selected=None;}
-                if open_python{self.view=View::Python;}
-                ui.add_space(22.);ui.separator();ui.add_space(8.);caption(ui,"FICHIERS DU BANC");
-                ui.label("Projet (.rfw.json)");ui.add(egui::TextEdit::singleline(&mut self.project_path).desired_width(f32::INFINITY));
-                ui.label("Export de trace (.csv)");ui.add(egui::TextEdit::singleline(&mut self.csv_path).desired_width(f32::INFINITY));
-                if ui.button("Exporter la trace").clicked(){self.export();}
-            });
-        });
+                if matches!(n.kind,Kind::Generator|Kind::Analyzer)||n.kind.is_extended(){caption(ui,"RESSOURCE VISA / SCPI");changed|=ui.text_edit_singleline(&mut c.resource).changed();}
+                if n.kind.is_extended(){ui.label(RichText::new("Modèle simulé dans v0.2. Les profils matériels spécifiques restent à développer.").size(11.).color(GOLD));}
+                ui.separator();caption(ui,"PORTS DE DONNÉES");for p in n.kind.inputs(){ui.colored_label(port(p.port),format!("IN {} · {}{}",p.name,p.port.label(),if p.required{" · requis"}else{" · optionnel"}));}for p in n.kind.outputs(){ui.colored_label(port(p.port),format!("OUT {} · {}",p.name,p.port.label()));}
+                if ui.button(RichText::new("Supprimer le bloc").color(RED)).clicked(){remove=Some(id);}
+            }else{ui.label("Sélectionner un bloc.");}
+            if changed && let Some(old)=old{let mut before=self.project.graph.clone();if let Some(n)=before.nodes.iter_mut().find(|n|n.id==old.id){*n=old;}self.history.record(before);self.canvas.completed.clear();}
+            if let Some(id)=remove{self.history.record(self.project.graph.clone());self.project.graph.remove(id);self.canvas.selected=None;self.canvas.cancel_wire();}
+if open_python{self.view=View::Python;}
+        });});
     }
     fn bottom(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::bottom("status")
@@ -353,9 +723,12 @@ impl Workbench {
                     });
                 });
             });
+        if !self.preferences.show_journal {
+            return;
+        }
         egui::TopBottomPanel::bottom("journal")
             .resizable(true)
-            .default_height(126.)
+            .default_height(85.)
             .height_range(70. ..=350.)
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
@@ -421,7 +794,7 @@ impl Workbench {
                                 ui.label(RichText::new(e.to_string()).size(11.).color(GOLD));
                             }
                         });
-                        let height = (ui.available_height() - 245.).max(270.);
+                        let height = (ui.available_height() - 195.).max(260.);
                         if let Some(error) =
                             self.canvas
                                 .show(ui, &mut self.project.graph, &mut self.history, height)
@@ -430,7 +803,7 @@ impl Workbench {
                         }
                         ui.add_space(12.);
                         self.trace_header(ui);
-                        plot::plot(ui, &self.trace, 190., self.marker);
+                        plot::plot(ui, &self.trace, 145., self.marker);
                     }
                     View::Acquisition => {
                         self.trace_header(ui);
@@ -462,6 +835,12 @@ impl Workbench {
                     View::Tests => self.test_view(ui),
                     View::Python => self.python_view(ui),
                     View::Instruments => self.instrument_view(ui),
+                    View::Network => self.network_view(ui),
+                    View::Measurements => self.measurement_view(ui),
+                    View::Library => self.library_view(ui),
+                    View::DutCatalog => self.catalog_view(ui),
+                    View::Settings => self.settings_view(ui),
+                    View::Project => self.project_view(ui),
                 }
             });
     }
@@ -637,6 +1016,18 @@ fn metric(ui: &mut egui::Ui, label: &str, value: &str, color: egui::Color32) {
             ui.label(RichText::new(value).size(24.).strong().color(color));
         });
 }
+fn number(ui: &mut egui::Ui, label: &str, value: &mut f64, speed: f64, unit: &str) -> bool {
+    caption(ui, label);
+    ui.add(egui::DragValue::new(value).speed(speed).suffix(unit))
+        .changed()
+}
+fn read_limited(path: &str, max: u64) -> Result<String, String> {
+    let metadata = std::fs::metadata(path).map_err(|e| e.to_string())?;
+    if metadata.len() > max {
+        return Err("Fichier trop volumineux".into());
+    }
+    std::fs::read_to_string(path).map_err(|e| e.to_string())
+}
 
 fn atomic_save(path: &str, text: &str) -> Result<(), String> {
     use std::io::Write;
@@ -655,32 +1046,53 @@ impl eframe::App for Workbench {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let start = Instant::now();
         self.poll();
-        let wants_input = ctx.wants_keyboard_input();
-        if !wants_input {
-            if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Z)) {
-                self.history.undo(&mut self.project.graph);
-            }
-            if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Y)) {
-                self.history.redo(&mut self.project.graph);
-            }
-            if ctx.input(|i| i.key_pressed(egui::Key::Delete))
-                && let Some(id) = self.canvas.selected
+        let events = ctx.input(|i| i.events.clone());
+        for event in &events {
+            if let egui::Event::Screenshot { image, .. } = event
+                && let Some(path) = self.capture_path.take()
             {
-                self.history.record(self.project.graph.clone());
-                self.project.graph.remove(id);
-                self.canvas.selected = None;
+                let pixels: Vec<u8> = image.pixels.iter().flat_map(|p| p.to_array()).collect();
+                let result = image::save_buffer_with_format(
+                    &path,
+                    &pixels,
+                    image.width() as u32,
+                    image.height() as u32,
+                    image::ColorType::Rgba8,
+                    image::ImageFormat::Png,
+                );
+                if let Err(e) = result {
+                    self.log(e.to_string(), true);
+                } else {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                }
             }
-            if ctx.input(|i| i.key_pressed(egui::Key::F5)) && !self.worker.is_busy() {
-                self.run();
+        }
+        let typing = ctx.wants_keyboard_input();
+        for event in &events {
+            if let Some(action) = self.preferences.action(event, typing) {
+                self.action(action);
             }
         }
         self.top(ctx);
         self.bottom(ctx);
         self.sidebar(ctx);
-        self.inspector(ctx);
+        if matches!(
+            self.view,
+            View::Schematic | View::Acquisition | View::Network | View::Measurements
+        ) {
+            self.inspector(ctx);
+        }
         self.center(ctx);
         self.frame_ms = self.frame_ms * 0.9 + start.elapsed().as_secs_f64() * 1000. * 0.1;
         self.last_frame = Instant::now();
+        if self.capture_path.is_some() {
+            self.capture_frames += 1;
+            if self.capture_frames >= 5 && !self.capture_requested {
+                self.capture_requested = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
+            }
+            ctx.request_repaint_after(Duration::from_millis(30));
+        }
         if self.worker.is_busy() {
             ctx.request_repaint_after(Duration::from_millis(16));
         }

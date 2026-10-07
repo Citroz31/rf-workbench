@@ -14,19 +14,23 @@ pub const RED: Color32 = Color32::from_rgb(250, 118, 133);
 pub fn kind(kind: rf_core::Kind) -> Color32 {
     use rf_core::Kind::*;
     match kind {
-        Generator => TEAL,
-        Dut => GOLD,
-        Analyzer => BLUE,
+        Generator | Awg | IqModulator => TEAL,
+        Dut | VariableResistor => GOLD,
+        Analyzer | Pna | PnaX | Adc | Dac => BLUE,
         Python => PURPLE,
-        Peak => TEAL,
-        Limit => GOLD,
+        Peak | PowerSensor | PowerMeter => TEAL,
+        Limit | NoiseFigureMeter => GOLD,
+        Thermometer | Thermostream => RED,
     }
 }
 pub fn port(p: rf_core::Port) -> Color32 {
     match p {
-        rf_core::Port::Signal => GOLD,
-        rf_core::Port::Trace => BLUE,
-        rf_core::Port::Scalar => TEAL,
+        rf_core::Port::Signal | rf_core::Port::DutModel => GOLD,
+        rf_core::Port::Trace | rf_core::Port::SParameters => BLUE,
+        rf_core::Port::Scalar | rf_core::Port::Analog => TEAL,
+        rf_core::Port::Digital => PURPLE,
+        rf_core::Port::Temperature => RED,
+        rf_core::Port::Resistance | rf_core::Port::NoiseFigure => GOLD,
     }
 }
 pub fn setup(ctx: &egui::Context) {

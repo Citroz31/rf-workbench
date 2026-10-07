@@ -8,6 +8,9 @@ license.workspace = true
 rf-core.workspace = true
 rf-instruments.workspace = true
 rf-runtime.workspace = true
+rf-dut-library.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 tempfile = "3"
+image = { version = "0.25", default-features = false, features = ["png"] }
 eframe = { version = "=0.33.0", default-features = false, features = ["default_fonts", "glow", "x11", "wayland", "accesskit", "__screenshot"] }

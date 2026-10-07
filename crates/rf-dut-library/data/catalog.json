@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "manufacturers": ["Analog Devices", "Qorvo", "Skyworks", "NXP", "Texas Instruments", "Infineon", "STMicroelectronics", "Renesas"],
+  "entries": []
+}

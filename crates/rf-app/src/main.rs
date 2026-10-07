@@ -2,13 +2,16 @@
 mod app;
 mod canvas;
 mod plot;
+mod shortcuts;
 mod theme;
+mod visuals;
 
 fn main() -> eframe::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     if args.iter().any(|a| a == "--self-test") {
         let mut tests = rf_core::self_tests();
         tests.extend(rf_instruments::self_tests());
+        tests.extend(rf_runtime::self_tests());
         let passed = tests.iter().all(|t| t.passed);
         println!("{}", serde_json::to_string_pretty(&tests).unwrap());
         std::process::exit(if passed { 0 } else { 1 });

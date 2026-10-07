@@ -2,6 +2,109 @@ use crate::theme::*;
 use eframe::egui::{self, Align2, FontId, Pos2, Rect, Sense, Stroke};
 use rf_core::Trace;
 
+pub fn series(
+    ui: &mut egui::Ui,
+    x: &[f64],
+    y: &[f64],
+    height: f32,
+    x_unit: &str,
+    y_unit: &str,
+    x_scale: f64,
+) {
+    let (rect, response) =
+        ui.allocate_exact_size(egui::vec2(ui.available_width(), height), Sense::hover());
+    let p = ui.painter_at(rect);
+    p.rect_filled(rect, 8., BG);
+    let area = Rect::from_min_max(
+        rect.min + egui::vec2(65., 22.),
+        rect.max - egui::vec2(20., 35.),
+    );
+    if x.len() < 2
+        || x.len() != y.len()
+        || x.iter().chain(y).any(|v| !v.is_finite())
+        || x.windows(2).any(|v| v[1] <= v[0])
+        || area.width() < 1.
+        || area.height() < 1.
+    {
+        return;
+    }
+    let min = y.iter().copied().fold(f64::INFINITY, f64::min);
+    let max = y.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let pad = ((max - min) * 0.15).max(0.1);
+    let low = min - pad;
+    let high = max + pad;
+    let first = x[0];
+    let last = x[x.len() - 1];
+    let point = |x: f64, y: f64| {
+        Pos2::new(
+            area.left() + ((x - first) / (last - first)) as f32 * area.width(),
+            area.bottom() - ((y - low) / (high - low)) as f32 * area.height(),
+        )
+    };
+    for i in 0..=5 {
+        let f = i as f64 / 5.;
+        let px = area.left() + area.width() * f as f32;
+        let py = area.top() + area.height() * f as f32;
+        p.line_segment(
+            [Pos2::new(px, area.top()), Pos2::new(px, area.bottom())],
+            Stroke::new(1., BORDER),
+        );
+        p.line_segment(
+            [Pos2::new(area.left(), py), Pos2::new(area.right(), py)],
+            Stroke::new(1., BORDER),
+        );
+        p.text(
+            Pos2::new(px, area.bottom() + 14.),
+            Align2::CENTER_CENTER,
+            format!("{:.3}", (first + (last - first) * f) / x_scale),
+            FontId::proportional(10.),
+            MUTED,
+        );
+        p.text(
+            Pos2::new(area.left() - 7., py),
+            Align2::RIGHT_CENTER,
+            format!("{:.2}", high - (high - low) * f),
+            FontId::proportional(10.),
+            MUTED,
+        );
+    }
+    let stride = y.len().div_ceil((area.width() as usize * 2).max(200));
+    let mut points = Vec::new();
+    for start in (0..y.len()).step_by(stride) {
+        let end = (start + stride).min(y.len());
+        let lo = (start..end).min_by(|a, b| y[*a].total_cmp(&y[*b])).unwrap();
+        let hi = (start..end).max_by(|a, b| y[*a].total_cmp(&y[*b])).unwrap();
+        for i in [lo.min(hi), lo.max(hi)] {
+            points.push(point(x[i], y[i]));
+        }
+    }
+    p.add(egui::Shape::line(points, Stroke::new(1.7, BLUE)));
+    p.text(
+        area.left_top() + egui::vec2(8., 8.),
+        Align2::LEFT_TOP,
+        y_unit,
+        FontId::proportional(11.),
+        MUTED,
+    );
+    p.text(
+        rect.right_bottom() - egui::vec2(5., 5.),
+        Align2::RIGHT_BOTTOM,
+        x_unit,
+        FontId::proportional(11.),
+        MUTED,
+    );
+    if let Some(cursor) = response.hover_pos()
+        && area.contains(cursor)
+    {
+        let i = (((cursor.x - area.left()) / area.width()) * (x.len() - 1) as f32).round() as usize;
+        response.on_hover_text(format!(
+            "{:.6} {x_unit}\n{:.4} {y_unit}",
+            x[i] / x_scale,
+            y[i]
+        ));
+    }
+}
+
 pub fn plot(ui: &mut egui::Ui, trace: &Trace, height: f32, marker: bool) {
     let (rect, response) =
         ui.allocate_exact_size(egui::vec2(ui.available_width(), height), Sense::hover());

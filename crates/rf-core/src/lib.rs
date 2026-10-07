@@ -70,6 +70,13 @@ pub enum Port {
     Signal,
     Trace,
     Scalar,
+    Analog,
+    Digital,
+    DutModel,
+    SParameters,
+    Temperature,
+    Resistance,
+    NoiseFigure,
 }
 impl Port {
     pub fn label(self) -> &'static str {
@@ -77,8 +84,21 @@ impl Port {
             Self::Signal => "RF",
             Self::Trace => "Trace",
             Self::Scalar => "dBm",
+            Self::Analog => "V",
+            Self::Digital => "Échantillons",
+            Self::DutModel => "Modèle DUT",
+            Self::SParameters => "Paramètres S",
+            Self::Temperature => "°C",
+            Self::Resistance => "Ω",
+            Self::NoiseFigure => "NF dB",
         }
     }
+}
+#[derive(Clone, Copy, Debug)]
+pub struct Terminal {
+    pub name: &'static str,
+    pub port: Port,
+    pub required: bool,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -89,12 +109,36 @@ pub enum Kind {
     Python,
     Peak,
     Limit,
+    IqModulator,
+    Dac,
+    Adc,
+    Pna,
+    PnaX,
+    VariableResistor,
+    Thermometer,
+    Awg,
+    NoiseFigureMeter,
+    PowerMeter,
+    PowerSensor,
+    Thermostream,
 }
 impl Kind {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 18] = [
         Self::Generator,
-        Self::Dut,
         Self::Analyzer,
+        Self::Pna,
+        Self::PnaX,
+        Self::Awg,
+        Self::NoiseFigureMeter,
+        Self::PowerMeter,
+        Self::PowerSensor,
+        Self::IqModulator,
+        Self::Dac,
+        Self::Adc,
+        Self::VariableResistor,
+        Self::Thermometer,
+        Self::Thermostream,
+        Self::Dut,
         Self::Python,
         Self::Peak,
         Self::Limit,
@@ -102,41 +146,238 @@ impl Kind {
     pub fn label(self) -> &'static str {
         match self {
             Self::Generator => "Générateur RF",
-            Self::Dut => "Dispositif sous test",
+            Self::Dut => "DUT",
             Self::Analyzer => "Analyseur de spectre",
             Self::Python => "Script Python",
             Self::Peak => "Détection de pic",
             Self::Limit => "Contrôle de limites",
+            Self::IqModulator => "Modulateur I/Q",
+            Self::Dac => "DAC · N/A",
+            Self::Adc => "CAN · A/N",
+            Self::Pna => "PNA",
+            Self::PnaX => "PNA-X",
+            Self::VariableResistor => "Résistance variable",
+            Self::Thermometer => "Thermomètre",
+            Self::Awg => "AWG",
+            Self::NoiseFigureMeter => "Noise Figure Meter",
+            Self::PowerMeter => "Power Meter",
+            Self::PowerSensor => "Power Sensor",
+            Self::Thermostream => "Thermostream",
+        }
+    }
+    pub fn category(self) -> &'static str {
+        match self {
+            Self::Generator
+            | Self::Analyzer
+            | Self::Pna
+            | Self::PnaX
+            | Self::Awg
+            | Self::NoiseFigureMeter
+            | Self::PowerMeter
+            | Self::PowerSensor => "Instruments RF",
+            Self::IqModulator | Self::Dac | Self::Adc | Self::VariableResistor => {
+                "Électronique & conversion"
+            }
+            Self::Thermometer | Self::Thermostream => "Thermique",
+            Self::Dut => "Composants DUT",
+            Self::Python | Self::Peak | Self::Limit => "Analyse & automatisation",
         }
     }
     pub fn tag(self) -> &'static str {
         match self {
-            Self::Generator => "SOURCE",
+            Self::Generator | Self::Awg => "SOURCE",
             Self::Dut => "DUT",
-            Self::Analyzer => "ACQUISITION",
+            Self::Analyzer => "SPECTRE",
+            Self::Pna | Self::PnaX => "RÉSEAU",
             Self::Python => "PYTHON",
             Self::Peak => "ANALYSE",
             Self::Limit => "TEST",
+            Self::IqModulator => "MODULATION",
+            Self::Dac | Self::Adc => "CONVERSION",
+            Self::VariableResistor => "PASSIF",
+            Self::Thermometer | Self::Thermostream => "THERMIQUE",
+            Self::NoiseFigureMeter => "BRUIT",
+            Self::PowerMeter | Self::PowerSensor => "PUISSANCE",
         }
     }
-    pub fn input(self) -> Option<Port> {
+    pub fn inputs(self) -> &'static [Terminal] {
+        use Port::*;
         match self {
-            Self::Generator => None,
-            Self::Dut | Self::Analyzer => Some(Port::Signal),
-            Self::Python | Self::Peak => Some(Port::Trace),
-            Self::Limit => Some(Port::Scalar),
+            Self::Generator | Self::Awg | Self::VariableResistor | Self::Thermostream => &[],
+            Self::Dut => &[Terminal {
+                name: "RF IN",
+                port: Signal,
+                required: false,
+            }],
+            Self::Analyzer | Self::PowerSensor => &[Terminal {
+                name: "RF IN",
+                port: Signal,
+                required: true,
+            }],
+            Self::Python | Self::Peak => &[Terminal {
+                name: "TRACE",
+                port: Trace,
+                required: true,
+            }],
+            Self::Limit | Self::PowerMeter => &[Terminal {
+                name: "POWER",
+                port: Scalar,
+                required: true,
+            }],
+            Self::IqModulator => &[
+                Terminal {
+                    name: "I",
+                    port: Analog,
+                    required: true,
+                },
+                Terminal {
+                    name: "Q",
+                    port: Analog,
+                    required: true,
+                },
+                Terminal {
+                    name: "LO",
+                    port: Signal,
+                    required: true,
+                },
+            ],
+            Self::Dac => &[Terminal {
+                name: "DATA",
+                port: Digital,
+                required: true,
+            }],
+            Self::Adc => &[Terminal {
+                name: "IN",
+                port: Analog,
+                required: true,
+            }],
+            Self::Pna | Self::PnaX | Self::NoiseFigureMeter => &[Terminal {
+                name: "DUT",
+                port: DutModel,
+                required: false,
+            }],
+            Self::Thermometer => &[Terminal {
+                name: "TEMP",
+                port: Temperature,
+                required: false,
+            }],
         }
+    }
+    pub fn outputs(self) -> &'static [Terminal] {
+        use Port::*;
+        match self {
+            Self::Generator | Self::IqModulator => &[Terminal {
+                name: "RF OUT",
+                port: Signal,
+                required: false,
+            }],
+            Self::Dut => &[
+                Terminal {
+                    name: "RF OUT",
+                    port: Signal,
+                    required: false,
+                },
+                Terminal {
+                    name: "MODEL",
+                    port: DutModel,
+                    required: false,
+                },
+            ],
+            Self::Analyzer | Self::Python => &[Terminal {
+                name: "TRACE",
+                port: Trace,
+                required: false,
+            }],
+            Self::Peak | Self::Limit | Self::PowerSensor | Self::PowerMeter => &[Terminal {
+                name: "POWER",
+                port: Scalar,
+                required: false,
+            }],
+            Self::Awg => &[
+                Terminal {
+                    name: "I",
+                    port: Digital,
+                    required: false,
+                },
+                Terminal {
+                    name: "Q",
+                    port: Digital,
+                    required: false,
+                },
+            ],
+            Self::Dac => &[Terminal {
+                name: "OUT",
+                port: Analog,
+                required: false,
+            }],
+            Self::Adc => &[Terminal {
+                name: "DATA",
+                port: Digital,
+                required: false,
+            }],
+            Self::Pna | Self::PnaX => &[Terminal {
+                name: "S-PARAM",
+                port: SParameters,
+                required: false,
+            }],
+            Self::VariableResistor => &[Terminal {
+                name: "R",
+                port: Resistance,
+                required: false,
+            }],
+            Self::Thermometer | Self::Thermostream => &[Terminal {
+                name: "TEMP",
+                port: Temperature,
+                required: false,
+            }],
+            Self::NoiseFigureMeter => &[Terminal {
+                name: "NF",
+                port: NoiseFigure,
+                required: false,
+            }],
+        }
+    }
+    // First-terminal conveniences retained for existing clients.
+    pub fn input(self) -> Option<Port> {
+        self.inputs().first().map(|p| p.port)
     }
     pub fn output(self) -> Port {
-        match self {
-            Self::Generator | Self::Dut => Port::Signal,
-            Self::Analyzer | Self::Python => Port::Trace,
-            Self::Peak | Self::Limit => Port::Scalar,
-        }
+        self.outputs()[0].port
+    }
+    pub fn is_extended(self) -> bool {
+        !matches!(
+            self,
+            Self::Generator | Self::Dut | Self::Analyzer | Self::Python | Self::Peak | Self::Limit
+        )
     }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct Waveform {
+    pub samples: Vec<f64>,
+    pub sample_rate_hz: f64,
+    pub tone_hz: f64,
+    pub unit: String,
+    pub simulated: bool,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct NetworkTrace {
+    pub frequency_hz: Vec<f64>,
+    pub magnitude_db: Vec<f64>,
+    pub phase_deg: Vec<f64>,
+    pub parameter: String,
+    pub simulated: bool,
+}
+#[derive(Clone, Debug)]
+pub struct Measurement {
+    pub name: String,
+    pub value: f64,
+    pub unit: String,
+    pub simulated: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
 pub struct Config {
     pub resource: String,
     pub frequency_hz: f64,
@@ -149,12 +390,23 @@ pub struct Config {
     pub upper_dbm: f64,
     pub trace_query: String,
     pub script: String,
+    pub sample_rate_hz: f64,
+    pub tone_hz: f64,
+    pub samples: usize,
+    pub resolution_bits: u8,
+    pub voltage_v: f64,
+    pub temperature_c: f64,
+    pub resistance_ohm: f64,
+    pub noise_figure_db: f64,
+    pub s_parameter: String,
+    pub dut_id: Option<String>,
 }
 impl Default for Config {
     fn default() -> Self {
         Self { resource: "SIM::RF::INSTR".into(), frequency_hz: 2.45e9, power_dbm: -10.0,
             loss_db: 3.0, start_hz: 2.40e9, stop_hz: 2.50e9, points: 401,
             lower_dbm: -15.0, upper_dbm: -11.0, trace_query: ":TRAC:DATA? TRACE1".into(),
+            sample_rate_hz: 100e6, tone_hz: 1e6, samples: 1024, resolution_bits: 14, voltage_v: 1.0, temperature_c: 25., resistance_ohm: 50., noise_figure_db: 2.5, s_parameter: "S21".into(), dut_id: None,
             script: "output = trace\n# Exemple : compenser une perte de câble de 0.5 dB\n# output['amplitude_dbm'] = [x + 0.5 for x in trace['amplitude_dbm']]\n".into() }
     }
 }
@@ -167,10 +419,16 @@ pub struct Node {
     pub position: [f32; 2],
     pub config: Config,
 }
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Edge {
     pub from: u64,
     pub to: u64,
+    #[serde(default)]
+    pub from_port: usize,
+    #[serde(default)]
+    pub to_port: usize,
+    #[serde(default)]
+    pub waypoints: Vec<[f32; 2]>,
 }
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct Graph {
@@ -198,21 +456,44 @@ impl Graph {
         self.nodes.iter().find(|n| n.id == id)
     }
     pub fn connect(&mut self, from: u64, to: u64) -> Result<()> {
+        self.connect_ports(from, 0, to, 0)
+    }
+    pub fn connect_ports(
+        &mut self,
+        from: u64,
+        from_port: usize,
+        to: u64,
+        to_port: usize,
+    ) -> Result<()> {
         let a = self
             .node(from)
             .ok_or_else(|| Error::Invalid("Bloc source absent".into()))?;
         let b = self
             .node(to)
             .ok_or_else(|| Error::Invalid("Bloc destination absent".into()))?;
-        if from == to || b.kind.input() != Some(a.kind.output()) {
+        if from == to
+            || a.kind.outputs().get(from_port).is_none()
+            || b.kind.inputs().get(to_port).is_none()
+            || a.kind.outputs()[from_port].port != b.kind.inputs()[to_port].port
+        {
             return Err(Error::Invalid("Ports incompatibles".into()));
         }
-        if self.edges.iter().any(|e| e.to == to) {
+        if self
+            .edges
+            .iter()
+            .any(|e| e.to == to && e.to_port == to_port)
+        {
             return Err(Error::Invalid(
                 "Entrée déjà reliée : retirer le câble d'abord".into(),
             ));
         }
-        self.edges.push(Edge { from, to });
+        self.edges.push(Edge {
+            from,
+            to,
+            from_port,
+            to_port,
+            waypoints: Vec::new(),
+        });
         if let Err(e) = self.order() {
             self.edges.pop();
             return Err(e);
@@ -226,13 +507,25 @@ impl Graph {
         }
         let mut inputs = BTreeSet::new();
         for e in &self.edges {
+            if e.waypoints.len() > 64
+                || e.waypoints
+                    .iter()
+                    .flatten()
+                    .any(|v| !v.is_finite() || v.abs() > 1e6)
+            {
+                return Err(Error::Invalid("Points de câble invalides".into()));
+            }
             let a = self
                 .node(e.from)
                 .ok_or_else(|| Error::Invalid("Câble orphelin".into()))?;
             let b = self
                 .node(e.to)
                 .ok_or_else(|| Error::Invalid("Câble orphelin".into()))?;
-            if b.kind.input() != Some(a.kind.output()) || !inputs.insert(e.to) {
+            if a.kind.outputs().get(e.from_port).is_none()
+                || b.kind.inputs().get(e.to_port).is_none()
+                || a.kind.outputs()[e.from_port].port != b.kind.inputs()[e.to_port].port
+                || !inputs.insert((e.to, e.to_port))
+            {
                 return Err(Error::Invalid(
                     "Câble incompatible ou entrée multiple".into(),
                 ));
@@ -277,7 +570,9 @@ impl Graph {
             {
                 return Err(Error::Invalid("Position non finie".into()));
             }
-            if node.kind.input().is_some() && !self.edges.iter().any(|e| e.to == node.id) {
+            if node.kind.inputs().iter().enumerate().any(|(i, p)| {
+                p.required && !self.edges.iter().any(|e| e.to == node.id && e.to_port == i)
+            }) {
                 return Err(Error::Invalid(format!(
                     "{} : entrée non reliée",
                     node.title
@@ -290,7 +585,16 @@ impl Graph {
                         && c.power_dbm.is_finite()
                         && (-160.0..=30.0).contains(&c.power_dbm)
                 }
-                Kind::Dut => c.loss_db.is_finite() && (0.0..=160.0).contains(&c.loss_db),
+                Kind::Dut => {
+                    c.loss_db.is_finite()
+                        && (0.0..=160.0).contains(&c.loss_db)
+                        && c.noise_figure_db.is_finite()
+                        && (0. ..=60.).contains(&c.noise_figure_db)
+                        && c.frequency_hz.is_finite()
+                        && c.frequency_hz > 0.
+                        && c.power_dbm.is_finite()
+                        && (-160. ..=30.).contains(&c.power_dbm)
+                }
                 Kind::Analyzer => {
                     c.start_hz.is_finite()
                         && c.stop_hz.is_finite()
@@ -303,6 +607,39 @@ impl Graph {
                 }
                 Kind::Python => !c.script.trim().is_empty() && c.script.len() <= 128_000,
                 Kind::Peak => true,
+                Kind::Pna | Kind::PnaX => {
+                    c.loss_db.is_finite()
+                        && (0. ..=160.).contains(&c.loss_db)
+                        && c.start_hz.is_finite()
+                        && c.stop_hz.is_finite()
+                        && c.start_hz > 0.
+                        && c.stop_hz > c.start_hz
+                        && (2..=MAX_POINTS).contains(&c.points)
+                        && ["S11", "S21", "S12", "S22"].contains(&c.s_parameter.as_str())
+                }
+                Kind::Awg | Kind::Dac | Kind::Adc => {
+                    c.sample_rate_hz.is_finite()
+                        && c.sample_rate_hz > 0.
+                        && c.tone_hz.is_finite()
+                        && c.tone_hz > 0.
+                        && c.tone_hz < c.sample_rate_hz / 2.
+                        && (2..=65536).contains(&c.samples)
+                        && (2..=24).contains(&c.resolution_bits)
+                        && c.voltage_v.is_finite()
+                        && c.voltage_v > 0.
+                        && c.voltage_v <= 20.
+                }
+                Kind::IqModulator => c.loss_db.is_finite() && (0. ..=160.).contains(&c.loss_db),
+                Kind::VariableResistor => {
+                    c.resistance_ohm.is_finite() && (0. ..=1e9).contains(&c.resistance_ohm)
+                }
+                Kind::Thermometer | Kind::Thermostream => {
+                    c.temperature_c.is_finite() && (-100. ..=250.).contains(&c.temperature_c)
+                }
+                Kind::NoiseFigureMeter => {
+                    c.noise_figure_db.is_finite() && (0. ..=60.).contains(&c.noise_figure_db)
+                }
+                Kind::PowerMeter | Kind::PowerSensor => true,
             };
             if !valid {
                 return Err(Error::Invalid(format!(
@@ -327,6 +664,33 @@ impl Graph {
         }
         for (a, b) in [(1, 2), (2, 3), (3, 4), (4, 5), (5, 6)] {
             g.connect(a, b).expect("demo graph");
+        }
+        g
+    }
+    pub fn network_demo() -> Self {
+        let mut g = Self::default();
+        let d = g.add(Kind::Dut, [40., 90.]);
+        let p = g.add(Kind::PnaX, [360., 90.]);
+        g.connect_ports(d, 1, p, 0).expect("DUT model link");
+        g
+    }
+    pub fn iq_demo() -> Self {
+        let mut g = Self::default();
+        let a = g.add(Kind::Awg, [20., 20.]);
+        let i = g.add(Kind::Dac, [310., 20.]);
+        let q = g.add(Kind::Dac, [310., 240.]);
+        let lo = g.add(Kind::Generator, [310., 460.]);
+        let m = g.add(Kind::IqModulator, [600., 200.]);
+        let s = g.add(Kind::Analyzer, [900., 200.]);
+        for (f, fp, t, tp) in [
+            (a, 0, i, 0),
+            (a, 1, q, 0),
+            (i, 0, m, 0),
+            (q, 0, m, 1),
+            (lo, 0, m, 2),
+            (m, 0, s, 0),
+        ] {
+            g.connect_ports(f, fp, t, tp).expect("I/Q link");
         }
         g
     }
@@ -446,6 +810,53 @@ pub fn self_tests() -> Vec<TestResult> {
     results
 }
 
+#[cfg(test)]
+mod extension_tests {
+    use super::*;
+    #[test]
+    fn iq_ports_are_distinct_and_typed() {
+        let mut g = Graph::iq_demo();
+        g.validate().unwrap();
+        assert!(g.connect_ports(1, 0, 5, 0).is_err());
+        assert!(g.connect_ports(2, 0, 5, 1).is_err());
+        assert!(g.connect_ports(1, 9, 5, 0).is_err());
+        g.edges.retain(|e| !(e.to == 5 && e.to_port == 1));
+        assert!(g.validate().is_err());
+    }
+    #[test]
+    fn legacy_projects_default_new_fields_and_port_indices() {
+        let mut json = serde_json::to_value(Project::default()).unwrap();
+        for edge in json["graph"]["edges"].as_array_mut().unwrap() {
+            edge.as_object_mut().unwrap().remove("from_port");
+            edge.as_object_mut().unwrap().remove("to_port");
+        }
+        for node in json["graph"]["nodes"].as_array_mut().unwrap() {
+            node["config"]
+                .as_object_mut()
+                .unwrap()
+                .remove("sample_rate_hz");
+        }
+        let p = Project::from_json(&json.to_string()).unwrap();
+        p.graph.validate().unwrap();
+        assert_eq!(p.graph.nodes[0].config.sample_rate_hz, 100e6);
+    }
+    #[test]
+    fn network_analyzer_uses_dut_model_not_rf_power() {
+        let mut g = Graph::network_demo();
+        g.validate().unwrap();
+        g.edges.clear();
+        assert!(g.connect(1, 2).is_err());
+        g.connect_ports(1, 1, 2, 0).unwrap();
+    }
+    #[test]
+    fn multiport_cycles_rejected() {
+        let mut g = Graph::default();
+        let d = g.add(Kind::Dac, [0., 0.]);
+        let a = g.add(Kind::Adc, [1., 0.]);
+        g.connect(d, a).unwrap();
+        assert!(g.connect(a, d).is_err());
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;

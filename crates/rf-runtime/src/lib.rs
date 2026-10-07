@@ -1,6 +1,7 @@
 //! Worker-owned sessions, ordered graph execution and supervised Python IPC.
 pub mod python;
-use rf_core::{Graph, Kind, TestResult, Trace};
+mod simulation;
+use rf_core::{Graph, Kind, Measurement, NetworkTrace, TestResult, Trace, Waveform};
 use rf_instruments::{Resource, ResourceManager, Session};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{
@@ -14,13 +15,16 @@ pub type Result<T> = std::result::Result<T, String>;
 #[derive(Clone, Debug)]
 pub struct RunResult {
     pub trace: Option<Trace>,
+    pub network: Option<NetworkTrace>,
+    pub waveform: Option<Waveform>,
+    pub measurements: Vec<Measurement>,
     pub tests: Vec<TestResult>,
     pub completed: Vec<u64>,
     pub elapsed_ms: f64,
     pub sequence: u64,
 }
 #[derive(Clone)]
-enum Value {
+pub(crate) enum Value {
     Signal {
         frequency: f64,
         level: f64,
@@ -28,6 +32,13 @@ enum Value {
     },
     Trace(Trace),
     Scalar(f64),
+    Analog(Waveform),
+    Digital(Waveform),
+    Dut {
+        loss: f64,
+        noise: f64,
+    },
+    Network,
 }
 #[derive(Default)]
 pub struct Engine {
@@ -89,10 +100,18 @@ impl Engine {
         cancelled: &AtomicBool,
     ) -> Result<RunResult> {
         graph.validate().map_err(|e| e.to_string())?;
+        for n in graph.nodes.iter().filter(|n| n.kind.is_extended()) {
+            if Resource::parse(&n.config.resource).map_err(|e| e.to_string())? != Resource::Sim {
+                return Err(format!("{} : profil matériel non implémenté", n.title));
+            }
+        }
         let start = Instant::now();
         let mut values = BTreeMap::new();
         let mut result = RunResult {
             trace: None,
+            network: None,
+            waveform: None,
+            measurements: Vec::new(),
             tests: Vec::new(),
             completed: Vec::new(),
             elapsed_ms: 0.,
@@ -104,12 +123,35 @@ impl Engine {
             }
             let node = graph.node(id).expect("validated node");
             let c = &node.config;
-            let input = graph
+            let inputs: BTreeMap<usize, Value> = graph
                 .edges
                 .iter()
-                .find(|e| e.to == id)
-                .and_then(|e| values.get(&e.from))
-                .cloned();
+                .filter(|e| e.to == id)
+                .filter_map(|e| {
+                    values
+                        .get(&(e.from, e.from_port))
+                        .cloned()
+                        .map(|v| (e.to_port, v))
+                })
+                .collect();
+            if node.kind.is_extended() {
+                let output = simulation::execute(node, &inputs, &mut result)?;
+                for (port, value) in output.into_iter().enumerate() {
+                    values.insert((id, port), value);
+                }
+                result.completed.push(id);
+                continue;
+            }
+            let input = inputs.get(&0).cloned();
+            if node.kind == Kind::Dut {
+                values.insert(
+                    (id, 1),
+                    Value::Dut {
+                        loss: c.loss_db,
+                        noise: c.noise_figure_db,
+                    },
+                );
+            }
             let value = match (node.kind, input) {
                 (Kind::Generator, _) => {
                     self.write(&c.resource, &format!(":FREQ {}", c.frequency_hz), hardware)?;
@@ -200,6 +242,11 @@ impl Engine {
                     result.trace = Some(t.clone());
                     Value::Trace(t)
                 }
+                (Kind::Dut, None) => Value::Signal {
+                    frequency: c.frequency_hz,
+                    level: c.power_dbm - c.loss_db,
+                    simulated: true,
+                },
                 (Kind::Python, Some(Value::Trace(t))) => {
                     let transformed = python::run(
                         python_path,
@@ -234,12 +281,48 @@ impl Engine {
                 }
                 _ => return Err(format!("{} : donnée d'entrée incompatible", node.title)),
             };
-            values.insert(id, value);
+            values.insert((id, 0), value);
             result.completed.push(id);
         }
         result.elapsed_ms = start.elapsed().as_secs_f64() * 1000.;
         Ok(result)
     }
+}
+
+pub fn measurement_demo() -> Graph {
+    let mut g = Graph::default();
+    let rf = g.add(Kind::Generator, [30., 30.]);
+    let sensor = g.add(Kind::PowerSensor, [320., 30.]);
+    let meter = g.add(Kind::PowerMeter, [610., 30.]);
+    g.connect(rf, sensor).unwrap();
+    g.connect(sensor, meter).unwrap();
+    let stream = g.add(Kind::Thermostream, [30., 320.]);
+    g.nodes.last_mut().unwrap().config.temperature_c = 85.;
+    let thermometer = g.add(Kind::Thermometer, [320., 320.]);
+    g.connect(stream, thermometer).unwrap();
+    g.add(Kind::VariableResistor, [610., 320.]);
+    g.add(Kind::NoiseFigureMeter, [900., 320.]);
+    g
+}
+pub fn self_tests() -> Vec<TestResult> {
+    [
+        ("Chaîne I/Q multiports", Graph::iq_demo()),
+        ("PNA-X / paramètres S", Graph::network_demo()),
+        ("Capteurs et unités", measurement_demo()),
+    ]
+    .into_iter()
+    .map(|(name, g)| {
+        let r = Engine::default().execute(&g, 0, "unused", false, &AtomicBool::new(false));
+        TestResult {
+            name: name.into(),
+            passed: r.is_ok(),
+            detail: match r {
+                Ok(_) => "Modèle idéal simulé exécuté selon les ports".into(),
+                Err(e) => e,
+            },
+        }
+    })
+    .collect()
 }
 
 pub enum Command {
@@ -264,7 +347,7 @@ pub enum Command {
 }
 #[derive(Clone, Debug)]
 pub enum Event {
-    Done(RunResult),
+    Done(Box<RunResult>),
     Suite(Vec<TestResult>),
     Message(String),
     Error(String),
@@ -328,6 +411,7 @@ impl Worker {
                     Command::Suite => {
                         let mut tests = rf_core::self_tests();
                         tests.extend(rf_instruments::self_tests());
+                        tests.extend(self_tests());
                         let _ = etx.try_send(Event::Suite(tests));
                     }
                     Command::Query {
@@ -363,13 +447,16 @@ impl Worker {
                             },
                         ) {
                             Ok(trace) => {
-                                let _ = etx.try_send(Event::Done(RunResult {
+                                let _ = etx.try_send(Event::Done(Box::new(RunResult {
                                     trace: Some(trace),
+                                    network: None,
+                                    waveform: None,
+                                    measurements: Vec::new(),
                                     tests: Vec::new(),
                                     completed: Vec::new(),
                                     elapsed_ms: 0.,
                                     sequence,
-                                }));
+                                })));
                             }
                             Err(e) => {
                                 let _ = etx.try_send(Event::Error(e));

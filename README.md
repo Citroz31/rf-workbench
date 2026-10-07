@@ -4,6 +4,8 @@ Première base de laboratoire graphique RF et hyperfréquence en **Rust**, avec 
 
 ![Interface Windows du banc RF](docs/UI.png)
 
+**Version 0.2 :** 18 blocs illustrés, dont PNA/PNA-X, AWG, modulateur I/Q, DAC/CAN, capteurs et thermique. Barre d'outils, câblage `W` avec parcours personnalisés, raccourcis configurables, catalogue DUT et vues paramètres S / formes d'onde. Voir le [guide 0.2](docs/V0.2.md), ses modèles et ses limites matérielles.
+
 ## Essayer sous Windows
 
 La livraison locale contient `dist/windows/rf-workbench.exe`. Ouvrir `dist/windows/Lancer RF Workbench.cmd` pour lancer le banc dans son dossier de travail. Aucun compilateur Rust ni runtime VISA n'est nécessaire pour la simulation.
@@ -11,7 +13,7 @@ La livraison locale contient `dist/windows/rf-workbench.exe`. Ouvrir `dist/windo
 1. Ouvrir l'onglet **Python**, puis choisir le chemin de `python.exe` (Python 3.10 ou ultérieur). Le lanceur local sélectionne l'interpréteur disponible sur cette machine.
 2. Dans **Schéma du banc**, cliquer **Exécuter**. La chaîne par défaut produit une porteuse à 2,45 GHz, avec -10 dBm à la source et 3 dB de perte DUT. Le pic simulé doit être -13 dBm.
 3. **Acquisitions** affiche la trace, son pic et son nombre de points. Le survol donne fréquence et amplitude. **Exporter CSV** conserve l'indication `simulated`.
-4. **Tests & limites → Lancer les autotests** vérifie le logiciel ; **Tester le banc** exécute les contrôles de limites du schéma.
+4. **Tests → Lancer les autotests** vérifie le logiciel ; **Tester le banc** exécute les contrôles de limites du schéma. **Projet** propose aussi des démonstrations PNA-X, I/Q et thermique/puissance.
 5. Ajouter des blocs dans la bibliothèque. Cliquer une sortie puis une entrée pour les relier. Déplacer un bloc par glisser-déposer, zoomer avec la molette, déplacer le fond, ajuster le cadrage. Clic droit sur un bloc ou au milieu d'un câble pour le retirer. Annuler/rétablir : Ctrl+Z / Ctrl+Y. Supprimer : Suppr. Exécuter : F5.
 6. L'inspecteur permet de modifier les paramètres et les chemins de sauvegarde. Le projet JSON conserve les blocs, leurs paramètres, leurs positions, les câbles et les scripts. Les entrées non reliées peuvent être sauvegardées, mais empêchent l'exécution.
 

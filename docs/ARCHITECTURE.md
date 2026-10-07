@@ -22,11 +22,14 @@ flowchart LR
 | `rf-core` | Unités, trace, graphe DAG, ports typés, format de projet, résultats de test | Serde / thiserror |
 | `rf-instruments` | ResourceManager, sessions, SCPI TCP, simulateur, VISA dynamique, blocs IEEE 488.2 | rf-core / libloading |
 | `rf-runtime` | Worker, exécution, annulation, contrôle des sorties, supervision Python | rf-core / rf-instruments |
+| `rf-dut-library` | Catalogue DUT versionné, validation, recherche et provenance des fiches | Serde / thiserror |
 | `rf-workbench` | Schéma, navigation, inspecteur, historique, courbes, éditeur, fichiers | Tous les composants précédents / eframe |
 
 ## Contrat d'exécution
 
-Chaque bloc dispose au plus d'une entrée et d'une sortie, avec branchement de sortie vers plusieurs consommateurs possible. Les types sont `Signal` (description du signal RF), `Trace` et `Scalar` (dBm). Les connexions déterminent l'ordre topologique ; l'ordre d'affichage et les identifiants n'imposent pas l'exécution. Les cycles, entrées multiples, références absentes et ports incompatibles sont rejetés. Les entrées nécessaires doivent être reliées avant exécution.
+Chaque bloc dispose de terminaux nommés, typés et indexés ; une sortie peut alimenter plusieurs consommateurs. Une seule source est acceptée par entrée. Les types couvrent RF, trace de spectre, puissance en dBm, analogique, numérique, modèle DUT, paramètres S, température, résistance et facteur de bruit. I/Q impose ses trois entrées I, Q et LO. Les connexions déterminent l'ordre topologique ; l'ordre d'affichage et les identifiants n'imposent pas l'exécution. Les cycles, indices invalides, entrées multiples, références absentes et ports incompatibles sont rejetés. Les entrées nécessaires doivent être reliées avant exécution. Les parcours manuels de câbles restent des coordonnées graphiques, sans influence sur le calcul.
+
+Les valeurs du worker sont indexées par `(bloc, port de sortie)`. Les résultats séparent spectre dBm, magnitude/phase des paramètres S, forme d'onde avec unité FS/V et mesures scalaires avec unités. Le module `simulation` contient les modèles idéaux des nouveaux blocs ; il ne remplace pas les futurs profils matériels. Les ressources physiques de ces blocs sont refusées avant le premier envoi de commande.
 
 Le générateur produit fréquence, niveau et provenance ; le DUT transforme le niveau théorique ; l'analyseur produit une trace simulée ou acquise selon sa ressource. Python transforme la trace et le moteur valide sa sortie. Le pic produit un scalaire ; le bloc limite produit un résultat PASS/FAIL. Le prototype affiche la dernière trace produite par l'ordre d'exécution. La gestion simultanée de plusieurs traces étiquetées reste à implémenter.
 
