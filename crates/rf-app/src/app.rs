@@ -97,6 +97,7 @@ enum TraceDisplay {
     Unavailable,
 }
 pub struct Workbench {
+    data_directory: crate::paths::DataDirectory,
     welcome: bool,
     project_dialog: Option<bool>,
     browse_directory: String,
@@ -180,6 +181,7 @@ impl Workbench {
         let worker = Worker::spawn(move || ctx.request_repaint());
         let trace = rf_instruments::simulate_trace(&rf_core::Config::default(), 2.45e9, -13., 0)
             .expect("preview trace");
+        let data_directory = crate::paths::DataDirectory::initialize();
         let python_path = std::env::var("RF_WORKBENCH_PYTHON")
             .ok()
             .or_else(|| {
@@ -191,21 +193,9 @@ impl Workbench {
                     .filter(|s| !s.is_empty())
             })
             .unwrap_or_else(|| "python".into());
-        let project_path = std::env::current_dir()
-            .unwrap_or_default()
-            .join("bench.rfbench")
-            .to_string_lossy()
-            .into_owned();
-        let csv_path = std::env::current_dir()
-            .unwrap_or_default()
-            .join("measurement.csv")
-            .to_string_lossy()
-            .into_owned();
-        let preferences_path = std::env::current_dir()
-            .unwrap_or_default()
-            .join("preferences.rfw.json")
-            .to_string_lossy()
-            .into_owned();
+        let project_path = data_directory.file("bench.rfbench");
+        let csv_path = data_directory.file("measurement.csv");
+        let preferences_path = data_directory.file("preferences.rfw.json");
         let preferences = read_limited(&preferences_path, 64_000)
             .ok()
             .filter(|s| s.len() <= 64_000)
@@ -213,11 +203,7 @@ impl Workbench {
             .map(Preferences::upgrade)
             .filter(|p| p.validate().is_ok())
             .unwrap_or_default();
-        let catalog_path = std::env::current_dir()
-            .unwrap_or_default()
-            .join("dut-catalog.json")
-            .to_string_lossy()
-            .into_owned();
+        let catalog_path = data_directory.file("dut-catalog.json");
         let catalog = read_limited(&catalog_path, 4_000_000)
             .ok()
             .and_then(|s| Catalog::from_json(&s).ok())
@@ -265,11 +251,7 @@ impl Workbench {
         } else {
             View::Schematic
         };
-        let studio_path = std::env::current_dir()
-            .unwrap_or_default()
-            .join("studio.rfw.json")
-            .to_string_lossy()
-            .into_owned();
+        let studio_path = data_directory.file("studio.rfw.json");
         let studio = read_limited(&studio_path, 32_000_000)
             .ok()
             .and_then(|s| Studio::from_json(&s).ok())
@@ -293,10 +275,8 @@ impl Workbench {
             }),
             project_dialog: None,
             file_browser: Default::default(),
-            browse_directory: std::env::current_dir()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .into_owned(),
+            browse_directory: data_directory.path().to_string_lossy().into_owned(),
+            data_directory,
             instrument_dialog: None,
             context: cc.egui_ctx.clone(),
             layout: Layout::default(),
@@ -396,6 +376,9 @@ impl Workbench {
             clock: Instant::now(),
             last_status: "Prêt · simulation".into(),
         };
+        if let Some(warning) = bench.data_directory.warning().map(str::to_owned) {
+            bench.log(warning, true);
+        }
         if bench.studio.workspaces.is_empty() {
             bench
                 .studio

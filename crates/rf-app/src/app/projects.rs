@@ -40,6 +40,9 @@ impl Workbench {
             });
             ui.add_space(20.);ui.label("Simulation au démarrage. Les ressources instrument sont mémorisées ; le mode Matériel doit être activé à chaque ouverture.");
             ui.label("Fichier historique .rfw.json accepté à l'ouverture. Les nouveaux enregistrements utilisent .rfbench.");
+            ui.add_space(12.);ui.label("Dossier local des projets et réglages :");
+            ui.monospace(self.data_directory.path().display().to_string());
+            if let Some(warning)=self.data_directory.warning(){ui.colored_label(red(),warning);}
         });
     }
     pub(super) fn project_window(&mut self, ctx: &egui::Context) {

@@ -35,7 +35,7 @@ pub(super) fn supports(k: Kind) -> bool {
     )
 }
 impl Dialog {
-    pub fn new(n: &rf_core::Node) -> Self {
+    pub fn new(n: &rf_core::Node, data_directory: &std::path::Path) -> Self {
         Self {
             application: None,
             id: n.id,
@@ -47,7 +47,10 @@ impl Dialog {
             devices: Vec::new(),
             command: "*IDN?".into(),
             output: String::new(),
-            binary_path: "instrument-data.bin".into(),
+            binary_path: data_directory
+                .join("instrument-data.bin")
+                .to_string_lossy()
+                .into_owned(),
             message: String::new(),
         }
     }
@@ -78,7 +81,7 @@ impl Dialog {
 impl Workbench {
     pub(super) fn open_instrument(&mut self, id: u64) {
         if let Some(n) = self.project.graph.node(id) {
-            self.instrument_dialog = Some(Dialog::new(n));
+            self.instrument_dialog = Some(Dialog::new(n, self.data_directory.path()));
         }
     }
     pub(super) fn instrument_window(&mut self, ctx: &egui::Context) {

@@ -7,6 +7,7 @@ mod editor;
 mod file_browser;
 mod help;
 mod i18n;
+mod paths;
 mod plot;
 #[cfg(test)]
 mod plot_tests;

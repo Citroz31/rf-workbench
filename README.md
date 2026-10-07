@@ -1,5 +1,11 @@
 # RF Workbench
 
+**Windows : [Télécharger directement rf-workbench.exe](https://github.com/Citroz31/rf-workbench/releases/latest/download/rf-workbench.exe)** · **[ZIP portable complet](https://github.com/Citroz31/rf-workbench/releases/latest/download/RF-Workbench-Windows-x64-portable.zip)** · [Page des téléchargements](https://github.com/Citroz31/rf-workbench/releases/latest)
+
+Application locale Windows x64, sans installation, sans compte et sans serveur. Double-cliquer sur `rf-workbench.exe` ; Python et VISA sont facultatifs pour les exemples simulés. Le manifeste Windows impose `asInvoker` : aucune élévation demandée par le programme. Données enregistrées dans le profil utilisateur (`%LOCALAPPDATA%/RF Workbench`), indépendamment du dossier de lancement. Aucun compte, télémétrie ou téléchargement automatique. L'exécutable est actuellement non signé : une validation IT peut être nécessaire selon la politique de l'entreprise. Voir [la procédure portable](docs/PORTABLE.md).
+
+**Version 0.5.1 :** livraison portable simplifiée, dossier de données utilisateur, manifeste Windows sans élévation et publication automatisée des exécutables dans Releases. Le ZIP place `rf-workbench.exe` directement à la racine, avec le guide PDF et les exemples. Le dépôt Code contient les sources ; les applications compilées sont dans **Releases**.
+
 Première base de laboratoire graphique RF et hyperfréquence en **Rust**, avec scripts **Python**. Application native pour ingénieurs d'instrumentation et de métrologie, inspirée du principe des instruments virtuels et des schémas de flux. Ce prototype est indépendant de LabVIEW.
 
 ![Accueil et projets Windows](docs/START.png)
@@ -22,13 +28,13 @@ Les 18 blocs illustrés de la [version 0.2](docs/V0.2.md), dont PNA/PNA-X, AWG, 
 
 ## Essayer sous Windows
 
-Télécharger **[rf-workbench-windows.zip dans Releases](https://github.com/Citroz31/rf-workbench/releases/download/v0.5.0/rf-workbench-windows.zip)**, puis extraire entièrement l'archive. Dans le dossier `rf-workbench-windows`, ouvrir **`Lancer RF Workbench.cmd`**, à côté de `rf-workbench.exe`. Le PDF et les projets exemples sont inclus. Aucun compilateur Rust ni runtime VISA n'est nécessaire pour la simulation.
+Télécharger le **[ZIP portable complet](https://github.com/Citroz31/rf-workbench/releases/latest/download/RF-Workbench-Windows-x64-portable.zip)** et extraire entièrement son contenu dans un dossier utilisateur, ou télécharger **[l'exécutable seul](https://github.com/Citroz31/rf-workbench/releases/latest/download/rf-workbench.exe)**. Double-cliquer sur `rf-workbench.exe` ; aucun CMD, compilateur Rust ou runtime VISA ne doit être installé pour essayer PNA-X, PA et QAM16 en simulation. Le paquet contient également le PDF et les projets exemples.
 
-Le bouton GitHub **Code → Download ZIP** télécharge les **sources**, sans exécutable. Le dossier local `dist/` est exclu du dépôt. Le [lanceur est aussi versionné dans scripts](scripts/Lancer%20RF%20Workbench.cmd), mais son fichier seul ne suffit pas : il faut l'exécutable du paquet Windows dans le même dossier.
+Le bouton **Code → Download ZIP** contient les sources, sans exécutable. Les anciennes archives 0.5.0 utilisaient un sous-dossier `rf-workbench-windows` et un lanceur CMD facultatif. La livraison 0.5.1 place directement l'application à la racine du ZIP.
 
-Le lanceur utilise `RF_WORKBENCH_PYTHON` s'il est défini, sinon `python` dans le PATH. Choisir le chemin de votre interpréteur dans l'onglet Python si nécessaire. Avec les sources, lancer `cargo run -p rf-workbench` après installation de Rust.
+Le mode simulation fonctionne hors ligne. Les scripts Python et pilotes sont optionnels ; sélectionner un interpréteur Python déjà autorisé si nécessaire. Les instruments GPIB/USB nécessitent un runtime VISA x64 autorisé. Aucun service ou règle de pare-feu ne sont installés par le programme. Avec les sources, lancer `cargo run -p rf-workbench` après installation de Rust et des outils de compilation.
 
-1. Ouvrir l'onglet **Python**, puis choisir le chemin de `python.exe` (Python 3.10 ou ultérieur). Le lanceur utilise l'interpréteur du PATH ou celui indiqué par RF_WORKBENCH_PYTHON.
+1. À l'accueil, choisir **PNA-X / paramètres S**, **PA 36-38 GHz** ou **RF / DSP / QAM16** pour essayer une simulation sans dépendance supplémentaire. Les blocs Python sont facultatifs : pour en utiliser un, choisir un `python.exe` autorisé (Python 3.10 ou ultérieur) dans l'onglet **Python**.
 2. Dans **Accueil / projets**, créer un banc ou ouvrir un exemple. Dans **Schéma du banc**, cliquer **Exécuter**. La chaîne par défaut produit une porteuse à 2,45 GHz, avec -10 dBm à la source et 3 dB de perte DUT. Le pic simulé doit être -13 dBm.
 3. **Spectre** affiche la trace, son pic et son nombre de points. Le survol donne fréquence et amplitude. L'export CSV, accessible dans **Projet** ou avec Ctrl+E, conserve l'indication `simulated`.
 4. **Tests → Lancer les autotests** vérifie le logiciel ; **Tester le banc** exécute les contrôles de limites du schéma. **Projet** propose aussi des démonstrations PNA-X, I/Q et thermique/puissance.
