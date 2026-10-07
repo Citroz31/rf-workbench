@@ -1,6 +1,5 @@
-use crate::{app::View, canvas::History};
-use rf_core::{Kind, Measurement, NetworkTrace, Project, Trace, Waveform};
-use rf_runtime::debug::Buffer;
+use crate::app::View;
+use rf_core::{Kind, Project};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -27,6 +26,9 @@ pub struct Pane {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Layout {
+    pub canvas_pan: [f32; 2],
+    pub canvas_zoom: f32,
+    pub result_windows: Vec<crate::results::Window>,
     pub library_width: f32,
     pub inspector_width: f32,
     pub journal_height: f32,
@@ -40,15 +42,14 @@ pub struct Layout {
 impl Default for Layout {
     fn default() -> Self {
         Self {
+            canvas_pan: [0., 0.],
+            canvas_zoom: 1.,
+            result_windows: Vec::new(),
             library_width: 210.,
             inspector_width: 300.,
             journal_height: 100.,
             primary: View::Schematic,
-            panes: vec![Pane {
-                view: View::Acquisition,
-                location: Location::Bottom,
-                rect: [350., 250., 650., 400.],
-            }],
+            panes: Vec::new(),
             right_width: 360.,
             bottom_height: 250.,
             right_active: None,
@@ -76,6 +77,16 @@ impl Layout {
         }
     }
     pub fn validate(&self) -> Result<(), String> {
+        crate::results::validate(&self.result_windows)?;
+        if !self.canvas_zoom.is_finite()
+            || !(0.2..=2.).contains(&self.canvas_zoom)
+            || self
+                .canvas_pan
+                .iter()
+                .any(|v| !v.is_finite() || v.abs() > 2e6)
+        {
+            return Err("Vue du schéma invalide".into());
+        }
         if !self.library_width.is_finite()
             || !(150. ..=600.).contains(&self.library_width)
             || !self.inspector_width.is_finite()
@@ -116,20 +127,6 @@ pub struct Workspace {
     pub layout: Layout,
     pub pan: [f32; 2],
     pub zoom: f32,
-    #[serde(skip)]
-    pub history: History,
-    #[serde(skip)]
-    pub buffers: Vec<Buffer>,
-    #[serde(skip)]
-    pub trace: Option<Trace>,
-    #[serde(skip)]
-    pub network: Option<NetworkTrace>,
-    #[serde(skip)]
-    pub waveform: Option<Waveform>,
-    #[serde(skip)]
-    pub measurements: Vec<Measurement>,
-    #[serde(skip)]
-    pub waterfall: crate::analysis::Waterfall,
 }
 impl Workspace {
     pub fn rename(&mut self, name: &str) -> Result<(), String> {
@@ -154,13 +151,6 @@ impl Workspace {
             layout: Layout::default(),
             pan: [12., -24.],
             zoom: 1.,
-            history: History::default(),
-            buffers: Vec::new(),
-            trace: None,
-            network: None,
-            waveform: None,
-            measurements: Vec::new(),
-            waterfall: crate::analysis::Waterfall::default(),
         }
     }
 }

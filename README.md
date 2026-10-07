@@ -4,19 +4,23 @@
 
 Application locale Windows x64, sans installation, sans compte et sans serveur. Double-cliquer sur `rf-workbench.exe` ; Python et VISA sont facultatifs pour les exemples simulés. Le manifeste Windows impose `asInvoker` : aucune élévation demandée par le programme. Données enregistrées dans le profil utilisateur (`%LOCALAPPDATA%/RF Workbench`), indépendamment du dossier de lancement. Aucun compte, télémétrie ou téléchargement automatique. L'exécutable est actuellement non signé : une validation IT peut être nécessaire selon la politique de l'entreprise. Voir [la procédure portable](docs/PORTABLE.md).
 
-**Version 0.6 :** onglets renommables par clic droit, canevas compact, mode W avec curseur croix et aimantation légère. PNA/PNA-X à 1-4 ports RF, VNA USB à 1-2 ports, câblage physique distinct du flux de données. Catalogue MACOM MAAL-FR1245 et CGY2170YHV/C1 avec gain, NF, P1dB et états RX/TX/atténuation/phase. Alimentations Keysight E3631A/E36313A avec commandes explicites de lecture, consignes OFF et sortie ON/OFF. [Fonctions et limites 0.6](docs/V0.6.md).
+**Version 0.7 :** vrais projets indépendants `.rfbench` avec accueil et fichiers récents, remise à zéro du moteur, vérification des bandes RF et puissances déclarées. PNA-X **N5245B** : sweep fréquence/puissance, IFBW, matrice S jusqu'à 4 ports, CalSet existant, exports et plusieurs fenêtres dB/phase/Smith. Panneau inférieur masquable. Fixtures `.s2p`, Reverse entrée/sortie, mesure 2×Thru et extraction native IFFT/gating/FFT inspirée de scikit-RF P370 NZC. [Fonctions, méthode et limites 0.7](docs/V0.7.md) · [Guide PDF](docs/Guide-utilisateur.pdf).
 
-![Banc LNA et câblage RF/DC](docs/SCHEMA-V06.png)
+![Résultats PNA dans plusieurs fenêtres](docs/RESULTS-V07.png)
+
+Le 2×Thru nécessite une grille harmonique proche de DC et des hypothèses de fixtures passives/réciproques de longueurs électriques égales. Une bande 36–38 GHz seule est refusée. Le calcul natif est testé contre scikit-RF ; il ne constitue ni l'AFR propriétaire Keysight ni une certification IEEE. Aucun N5245B physique n'a été connecté pour cette livraison.
+
+Les fonctions 0.6 restent présentes : câblage W avec aimantation, ports RF/DC, catalogue MAAL-FR1245 et CGY2170YHV/C1, alimentations E3631A/E36313A. [Historique 0.6](docs/V0.6.md).
 
 **Version 0.5.1 :** livraison portable simplifiée, dossier de données utilisateur, manifeste Windows sans élévation et publication automatisée des exécutables dans Releases. Le ZIP place `rf-workbench.exe` directement à la racine, avec le guide PDF et les exemples. Le dépôt Code contient les sources ; les applications compilées sont dans **Releases**.
 
 Première base de laboratoire graphique RF et hyperfréquence en **Rust**, avec scripts **Python**. Application native pour ingénieurs d'instrumentation et de métrologie, inspirée du principe des instruments virtuels et des schémas de flux. Ce prototype est indépendant de LabVIEW.
 
-![Accueil et projets Windows](docs/START.png)
+![Accueil et projets Windows](docs/START-V07.png)
 
 **Version 0.5 :** démarrage par nouveau banc / ouverture, fichiers **.rfbench**, panneaux et graphiques redimensionnables à la souris, fenêtres de configuration des instruments. Découverte VISA avec identification, liste et adresse manuelle ; PNA/PNA-X avec canal et trace, acquisition binaire REAL32/64, lecture des classes autorisées et FDATA d'applications existantes. Voir les [fonctions et limites 0.5](docs/V0.5.md), le [guide utilisateur PDF à jour](docs/Guide-utilisateur.pdf) et les [exemples de projets](examples/).
 
-![Fenêtre de configuration PNA-X](docs/INSTRUMENT.png)
+![Fenêtre de configuration PNA-X](docs/PNA-V07.png)
 
 L'exemple PA couvre 36–38 GHz et un gain petit signal de 20 dB. Le guide prépare une mesure **OP1dB ≈ 34 dBm** (Pin1dB ≈ 15 dBm) et l'objectif 40 dBm / 10 W. Le projet livré simule seulement le petit signal ; les courbes de compression du guide sont synthétiques. Aucun instrument physique n'a été validé sur cet environnement.
 
@@ -44,10 +48,10 @@ Le mode simulation fonctionne hors ligne. Les scripts Python et pilotes sont opt
 4. **Tests → Lancer les autotests** vérifie le logiciel ; **Tester le banc** exécute les contrôles de limites du schéma. **Projet** propose aussi des démonstrations PNA-X, I/Q et thermique/puissance.
 5. Ajouter des blocs dans **Blocs** ou la palette. W active le câblage avec un curseur croix : cliquer une broche source puis une cible compatible ; la prévisualisation est aimantée à proximité du pin ; cliquer le fond avant la destination pour ajouter des coudes. Échap annule. Déplacer un bloc par glisser-déposer en sélection (V), zoomer avec la molette, déplacer le canevas (H), ajuster le cadrage (F). Clic droit sur un bloc ou un câble pour le retirer. Annuler/rétablir : Ctrl+Z / Ctrl+Y. Supprimer : Suppr. Exécuter : F5. **Raccourcis** (Ctrl+K) permet plusieurs combinaisons par action.
 6. L'inspecteur permet de modifier les paramètres et d'ouvrir **Configurer l'instrument…**. Ctrl+S / Ctrl+O ouvrent les fenêtres de sauvegarde/ouverture. Le fichier **.rfbench** conserve les blocs, leurs paramètres, leurs positions, les câbles, leurs parcours et les scripts. Les entrées requises non reliées peuvent être sauvegardées, mais empêchent l'exécution.
-7. **Disposition** place chaque analyse à droite, en bas ou dans une fenêtre flottante. **Espaces de travail → Enregistrer Studio** conserve les projets, layouts, cadrages et préférences ; les résultats et historiques restent en mémoire pendant la session. Ce panneau propose également thème clair, contraste, taille du texte et langue.
+7. **Disposition** place chaque analyse à droite, en bas ou dans une fenêtre flottante. Le fichier `.rfbench` conserve le banc actif, son layout, cadrage et ses fenêtres. **Espaces de travail → Enregistrer les préférences** conserve thème, favoris et dispositions ; les projets sont indépendants et les résultats/historiques sont remis à zéro au changement de fichier. Ce panneau propose également thème clair, contraste, taille du texte et langue.
 8. **F6** démarre le debug simulé, **F10** exécute un bloc, **F8** continue. Breakpoints, sondes et commentaires sont dans l'inspecteur. **F1** ouvre le guide, **F2** la fiche du bloc. Le debug refuse les ressources physiques et n'effectue pas de pas à pas dans les lignes Python.
 
-À l'ouverture, la courbe est explicitement un **aperçu simulé**. Aucun résultat de test n'est présenté comme acquis avant exécution. En continu, le worker réexécute un instantané du schéma ; les modifications prennent effet au démarrage suivant.
+Le panneau inférieur est masqué par défaut ; le menu **Panneau inférieur** permet de l'ouvrir sur le spectre ou les paramètres S. Une éventuelle courbe initiale est explicitement un **aperçu simulé**. Aucun résultat de test n'est présenté comme acquis avant exécution. En continu, le worker réexécute un instantané du schéma ; les modifications prennent effet au démarrage suivant.
 
 ## Python pour les métrologues
 

@@ -1,0 +1,356 @@
+{
+  "format": "rf-workbench/bench",
+  "version": 2,
+  "project": {
+    "schema_version": 1,
+    "name": "N5245B · matrice S quatre ports",
+    "graph": {
+      "nodes": [
+        {
+          "id": 1,
+          "title": "DUT",
+          "kind": "Dut",
+          "position": [
+            40.0,
+            90.0
+          ],
+          "config": {
+            "instrument": {
+              "expected_idn": "",
+              "timeout_ms": 5000,
+              "channel": 1,
+              "measurement": "",
+              "precision": 32,
+              "configure_sweep": false,
+              "trigger": false,
+              "if_bandwidth_hz": 1000.0,
+              "averaging": false,
+              "averages": 4,
+              "compression_db": 1.0,
+              "read_query": "READ?",
+              "set_command": ""
+            },
+            "dsp": {
+              "rate": 48000.0,
+              "center_hz": 100000000.0,
+              "samples": 1024,
+              "tone_hz": 3000.0,
+              "amplitude": 1.0,
+              "source_unit": "Volt",
+              "factor": 2,
+              "taps": [
+                0.25,
+                0.5,
+                0.25
+              ],
+              "denominator": [
+                1.0,
+                -0.5
+              ],
+              "fft_size": 256,
+              "window": "Hann",
+              "modulation": "QAM",
+              "order": 16,
+              "sps": 4,
+              "noise_db": 30.0,
+              "seed": 42,
+              "bandwidth": 0.01,
+              "phase": 0.0,
+              "frequency_offset": 0.0,
+              "multipath": [
+                {
+                  "re": 1.0,
+                  "im": 0.0
+                }
+              ],
+              "fading": false,
+              "nonlinearity": 0.0,
+              "dc": {
+                "re": 0.0,
+                "im": 0.0
+              },
+              "iq_gain": 1.0,
+              "iq_phase": 0.0,
+              "cable_db": 0.0,
+              "volts_per_fs": null,
+              "delay_s": 0.0,
+              "calibration": [
+                [
+                  1000000.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  6000000000.0,
+                  0.0,
+                  0.0
+                ]
+              ],
+              "uncertainties": [
+                0.01,
+                0.02
+              ],
+              "coverage": 2.0,
+              "impedance": 50.0,
+              "target_unit": "Dbm",
+              "packet_bits": 64,
+              "preamble": [
+                1,
+                0,
+                1,
+                0,
+                1,
+                1,
+                0,
+                1
+              ],
+              "iterations": 8,
+              "rs_parity": 16,
+              "rx_scale": 2048.0,
+              "tx_scale": 16384.0,
+              "io_backend": "RAW",
+              "endpoint": "recording.cf32",
+              "format": "cf32_le",
+              "scpi_query": ":READ:IQ?",
+              "python_executable": "python",
+              "timeout_ms": 2000,
+              "reconnects": 2,
+              "clock": "internal",
+              "trigger": "immediate",
+              "mimo_channels": 1
+            },
+            "resource": "SIM::RF::INSTR",
+            "frequency_hz": 2450000000.0,
+            "power_dbm": -10.0,
+            "loss_db": 3.0,
+            "start_hz": 2400000000.0,
+            "stop_hz": 2500000000.0,
+            "points": 401,
+            "lower_dbm": -15.0,
+            "upper_dbm": -11.0,
+            "trace_query": ":TRAC:DATA? TRACE1",
+            "script": "output = trace\n# Exemple : compenser une perte de câble de 0.5 dB\n# output['amplitude_dbm'] = [x + 0.5 for x in trace['amplitude_dbm']]\n",
+            "sample_rate_hz": 100000000.0,
+            "tone_hz": 1000000.0,
+            "samples": 1024,
+            "resolution_bits": 14,
+            "voltage_v": 1.0,
+            "temperature_c": 25.0,
+            "resistance_ohm": 50.0,
+            "noise_figure_db": 2.5,
+            "s_parameter": "S21",
+            "dut_id": null
+          },
+          "comment": "",
+          "breakpoint": false,
+          "probe": false
+        },
+        {
+          "id": 2,
+          "title": "PNA-X N5245B",
+          "kind": "PnaX",
+          "position": [
+            360.0,
+            90.0
+          ],
+          "config": {
+            "instrument": {
+              "expected_idn": "N5245B",
+              "timeout_ms": 5000,
+              "channel": 1,
+              "measurement": "",
+              "precision": 32,
+              "configure_sweep": false,
+              "trigger": false,
+              "if_bandwidth_hz": 1000.0,
+              "averaging": false,
+              "averages": 4,
+              "compression_db": 1.0,
+              "read_query": "READ?",
+              "set_command": "",
+              "port_count": 4,
+              "pna": {
+                "all_s_parameters": true,
+                "reference_ohm": 50.0
+              }
+            },
+            "dsp": {
+              "rate": 48000.0,
+              "center_hz": 100000000.0,
+              "samples": 1024,
+              "tone_hz": 3000.0,
+              "amplitude": 1.0,
+              "source_unit": "Volt",
+              "factor": 2,
+              "taps": [
+                0.25,
+                0.5,
+                0.25
+              ],
+              "denominator": [
+                1.0,
+                -0.5
+              ],
+              "fft_size": 256,
+              "window": "Hann",
+              "modulation": "QAM",
+              "order": 16,
+              "sps": 4,
+              "noise_db": 30.0,
+              "seed": 42,
+              "bandwidth": 0.01,
+              "phase": 0.0,
+              "frequency_offset": 0.0,
+              "multipath": [
+                {
+                  "re": 1.0,
+                  "im": 0.0
+                }
+              ],
+              "fading": false,
+              "nonlinearity": 0.0,
+              "dc": {
+                "re": 0.0,
+                "im": 0.0
+              },
+              "iq_gain": 1.0,
+              "iq_phase": 0.0,
+              "cable_db": 0.0,
+              "volts_per_fs": null,
+              "delay_s": 0.0,
+              "calibration": [
+                [
+                  1000000.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  6000000000.0,
+                  0.0,
+                  0.0
+                ]
+              ],
+              "uncertainties": [
+                0.01,
+                0.02
+              ],
+              "coverage": 2.0,
+              "impedance": 50.0,
+              "target_unit": "Dbm",
+              "packet_bits": 64,
+              "preamble": [
+                1,
+                0,
+                1,
+                0,
+                1,
+                1,
+                0,
+                1
+              ],
+              "iterations": 8,
+              "rs_parity": 16,
+              "rx_scale": 2048.0,
+              "tx_scale": 16384.0,
+              "io_backend": "RAW",
+              "endpoint": "recording.cf32",
+              "format": "cf32_le",
+              "scpi_query": ":READ:IQ?",
+              "python_executable": "python",
+              "timeout_ms": 2000,
+              "reconnects": 2,
+              "clock": "internal",
+              "trigger": "immediate",
+              "mimo_channels": 1
+            },
+            "resource": "SIM::RF::INSTR",
+            "frequency_hz": 2450000000.0,
+            "power_dbm": -10.0,
+            "loss_db": 3.0,
+            "start_hz": 2400000000.0,
+            "stop_hz": 2500000000.0,
+            "points": 401,
+            "lower_dbm": -15.0,
+            "upper_dbm": -11.0,
+            "trace_query": ":TRAC:DATA? TRACE1",
+            "script": "output = trace\n# Exemple : compenser une perte de câble de 0.5 dB\n# output['amplitude_dbm'] = [x + 0.5 for x in trace['amplitude_dbm']]\n",
+            "sample_rate_hz": 100000000.0,
+            "tone_hz": 1000000.0,
+            "samples": 1024,
+            "resolution_bits": 14,
+            "voltage_v": 1.0,
+            "temperature_c": 25.0,
+            "resistance_ohm": 50.0,
+            "noise_figure_db": 2.5,
+            "s_parameter": "S21",
+            "dut_id": null
+          },
+          "comment": "",
+          "breakpoint": false,
+          "probe": false
+        }
+      ],
+      "edges": [
+        {
+          "from": 1,
+          "to": 2,
+          "from_port": 1,
+          "to_port": 0,
+          "waypoints": [],
+          "auto_routed": false
+        }
+      ],
+      "annotations": []
+    }
+  },
+  "layout": {
+    "library_width": 210.0,
+    "inspector_width": 300.0,
+    "journal_height": 100.0,
+    "primary": "Schematic",
+    "panes": [
+      {
+        "view": "Acquisition",
+        "location": "Bottom",
+        "rect": [
+          350.0,
+          250.0,
+          650.0,
+          400.0
+        ]
+      }
+    ],
+    "right_width": 360.0,
+    "bottom_height": 250.0,
+    "right_active": null,
+    "bottom_active": null,
+    "result_windows": [
+      {
+        "id": 1,
+        "node": 2,
+        "parameter": "S21",
+        "format": "Magnitude",
+        "rect": [
+          250,
+          210,
+          540,
+          290
+        ],
+        "corrected": false
+      },
+      {
+        "id": 2,
+        "node": 2,
+        "parameter": "S33",
+        "format": "Magnitude",
+        "rect": [
+          810,
+          210,
+          540,
+          290
+        ],
+        "corrected": false
+      }
+    ]
+  }
+}

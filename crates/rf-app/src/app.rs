@@ -15,6 +15,7 @@ mod dsp;
 mod instrument;
 #[cfg(test)]
 mod instrument_tests;
+mod pna_workspace;
 mod professional;
 mod projects;
 mod workspace;
@@ -97,6 +98,17 @@ enum TraceDisplay {
     Unavailable,
 }
 pub struct Workbench {
+    registry: crate::project_registry::Registry,
+    registry_path: String,
+    active_project: bool,
+    last_saved: String,
+    dialog_path: String,
+    pending_project: Option<(crate::bench_file::BenchFile, String, bool)>,
+    curves: Vec<rf_core::network::Curve>,
+    flow_report: Option<rf_core::flow::Report>,
+    results_open: bool,
+    result_selection: usize,
+    fixture_job: pna_workspace::FixtureJob,
     data_directory: crate::paths::DataDirectory,
     welcome: bool,
     project_dialog: Option<bool>,
@@ -258,7 +270,20 @@ impl Workbench {
             .ok()
             .and_then(|s| Studio::from_json(&s).ok())
             .unwrap_or_default();
+        let registry_path = data_directory.file("recent-projects.json");
+        let registry = crate::project_registry::Registry::read(&registry_path);
         let mut bench = Self {
+            registry,
+            registry_path,
+            active_project: false,
+            last_saved: String::new(),
+            dialog_path: project_path.clone(),
+            pending_project: None,
+            curves: Vec::new(),
+            flow_report: None,
+            results_open: false,
+            result_selection: 0,
+            fixture_job: Default::default(),
             welcome: !args.iter().any(|a| {
                 a.starts_with("--demo-")
                     || [
@@ -383,19 +408,48 @@ impl Workbench {
         if let Some(warning) = bench.data_directory.warning().map(str::to_owned) {
             bench.log(warning, true);
         }
-        if bench.studio.workspaces.is_empty() {
-            bench
-                .studio
-                .workspaces
-                .push(Workspace::new("Banc RF".into(), bench.project.clone()));
-        } else if !args.iter().any(|a| a.starts_with("--demo-")) {
-            bench.restore_workspace(bench.studio.active);
+        // Legacy Studio files are not reopened as project tabs. Keep a recoverable
+        // copy before preferences are rewritten by the new project lifecycle.
+        if !bench.studio.workspaces.is_empty() {
+            let backup = bench
+                .data_directory
+                .file("studio-before-projects-v070.json");
+            if !std::path::Path::new(&backup).exists()
+                && let Err(error) = serde_json::to_string_pretty(&bench.studio)
+                    .map_err(|e| e.to_string())
+                    .and_then(|text| atomic_save(&backup, &text))
+            {
+                // Preserve the original collection even when its backup fails.
+                bench.studio_path = bench
+                    .data_directory
+                    .file("studio-project-preferences-v070.json");
+                bench.log(
+                    format!(
+                        "Ancien Studio conservé : sauvegarde de migration impossible ({error})."
+                    ),
+                    true,
+                );
+            }
         }
+        bench.studio.workspaces = vec![Workspace::new(
+            bench.project.name.clone(),
+            bench.project.clone(),
+        )];
+        bench.studio.active = 0;
+        bench.active_project = !bench.welcome;
         if let Some(i) = args.iter().position(|a| a == "--open")
             && let Some(path) = args.get(i + 1)
         {
-            bench.project_path = path.clone();
-            bench.load();
+            bench.dialog_path = path.clone();
+            match read_limited(&bench.dialog_path, 4_000_000)
+                .and_then(|s| crate::bench_file::BenchFile::parse(&s))
+            {
+                Ok(file) => bench.install_project(file, bench.dialog_path.clone(), false),
+                Err(e) => {
+                    bench.welcome = true;
+                    bench.log(e, true);
+                }
+            }
         }
         if !args.iter().any(|a| a == "--open")
             && let Some(path) = args
@@ -403,8 +457,16 @@ impl Workbench {
                 .skip(1)
                 .find(|a| a.to_lowercase().ends_with(".rfbench"))
         {
-            bench.project_path = path.clone();
-            bench.load();
+            bench.dialog_path = path.clone();
+            match read_limited(&bench.dialog_path, 4_000_000)
+                .and_then(|s| crate::bench_file::BenchFile::parse(&s))
+            {
+                Ok(file) => bench.install_project(file, bench.dialog_path.clone(), false),
+                Err(e) => {
+                    bench.welcome = true;
+                    bench.log(e, true);
+                }
+            }
         }
         if args.iter().any(|a| a == "--welcome") {
             bench.welcome = true;
@@ -426,6 +488,7 @@ impl Workbench {
                 && let Some(d) = &mut bench.instrument_dialog
             {
                 d.tab = 1;
+                d.config.instrument.configure_sweep = true;
             }
         }
         if args.iter().any(|a| a == "--studio") {
@@ -507,6 +570,28 @@ impl Workbench {
         if args.iter().any(|a| a == "--start-debug") {
             bench.debug_start();
         }
+        if args.iter().any(|a| a == "--results-ui")
+            && let Some(n) = bench
+                .project
+                .graph
+                .nodes
+                .iter_mut()
+                .find(|n| n.kind.max_rf_ports().is_some())
+        {
+            n.config.instrument.pna.all_s_parameters = true;
+            let id = n.id;
+            bench.add_result_window(id, "S11".into(), crate::results::Format::Magnitude, false);
+            bench.add_result_window(id, "S11".into(), crate::results::Format::Smith, false);
+            bench.add_result_window(id, "S21".into(), crate::results::Format::Phase, false);
+        }
+        if args.iter().any(|a| a == "--fixture-ui") {
+            bench.fixture_preview();
+            bench.welcome = false;
+        }
+        if args.iter().any(|a| a == "--flow-ui") {
+            bench.flow_report = Some(rf_runtime::preflight(&bench.project.graph));
+            bench.welcome = false;
+        }
         if args.iter().any(|a| a == "--run-demo") {
             bench.run();
             if args.iter().any(|a| a == "--results")
@@ -552,6 +637,18 @@ impl Workbench {
     fn run(&mut self) {
         self.canvas.completed.clear();
         self.tests.clear();
+        let report = rf_runtime::preflight(&self.project.graph);
+        let blocked = report.blocked();
+        if blocked || self.flow_report.is_some() {
+            self.flow_report = Some(report);
+        }
+        if blocked {
+            self.log(
+                "Exécution bloquée : consulter Vérifier le banc".into(),
+                true,
+            );
+            return;
+        }
         self.submit(Command::Run {
             graph: self.project.graph.clone(),
             continuous: self.continuous,
@@ -581,6 +678,7 @@ impl Workbench {
             self.trace = t;
             self.preview = false;
         }
+        self.curves = r.curves;
         self.network = r.network;
         self.waveform = r.waveform;
         self.measurements = r.measurements;
@@ -606,7 +704,56 @@ impl Workbench {
         let events: Vec<_> = self.worker.events.try_iter().collect();
         for event in events {
             match event {
+                Event::ProjectReset(errors) => {
+                    if errors.is_empty() {
+                        if let Some((file, path, is_new)) = self.pending_project.take() {
+                            self.install_project(file, path, is_new);
+                        }
+                    } else {
+                        self.pending_project = None;
+                        for e in errors {
+                            self.log(e, true);
+                        }
+                        self.log(
+                            "Changement de projet annulé : arrêt des sorties non confirmé".into(),
+                            true,
+                        );
+                    }
+                }
+                Event::PnaCurves(curves) => {
+                    self.curves.extend(curves);
+                    self.results_open = true;
+                }
+                Event::PnaFixtureData { node, data, thru } => {
+                    if self.fixture_job.node == Some(node) {
+                        if thru {
+                            self.fixture_job.thru = Some(data);
+                        } else {
+                            self.fixture_job.raw = Some(data);
+                        }
+                        self.fixture_job.open = true;
+                        self.log(
+                            "Matrice 2 ports acquise en binaire ; aucune extraction automatique"
+                                .into(),
+                            false,
+                        );
+                    }
+                }
                 Event::PnaApplicationData { node, data } => {
+                    let curve = rf_core::network::Curve {
+                        node,
+                        name: format!("{} · {}", data.measurement, data.parameter),
+                        x: data.x.clone(),
+                        x_unit: "instrument".into(),
+                        y: data.y.clone(),
+                        y_unit: format!("format {}", data.display_format),
+                        phase_deg: None,
+                        simulated: false,
+                        corrected: false,
+                    };
+                    self.curves
+                        .retain(|c| c.node != node || c.name != curve.name);
+                    self.curves.push(curve);
                     if let Some(d) = &mut self.instrument_dialog
                         && d.id == node
                     {
@@ -671,60 +818,35 @@ impl Workbench {
         }
     }
     fn save(&mut self) {
-        self.project_path = crate::bench_file::project_path(&self.project_path);
-        let result = crate::bench_file::BenchFile::new(self.project.clone(), self.layout.clone())
+        let path = crate::bench_file::project_path(if self.dialog_path.is_empty() {
+            &self.project_path
+        } else {
+            &self.dialog_path
+        });
+        match crate::bench_file::BenchFile::new(self.project.clone(), self.layout.clone())
             .json()
-            .map_err(|e| e.to_string())
-            .and_then(|s| atomic_save(&self.project_path, &s));
-        match result {
-            Ok(()) => self.log(format!("Projet enregistré : {}", self.project_path), false),
+            .and_then(|s| {
+                atomic_save(&path, &s)?;
+                self.last_saved = s;
+                Ok(())
+            }) {
+            Ok(()) => {
+                self.project_path = path.clone();
+                self.dialog_path = path;
+                self.remember_project();
+                self.log(format!("Projet enregistré : {}", self.project_path), false);
+            }
             Err(e) => self.log(e, true),
         }
     }
     fn load(&mut self) {
-        let result = std::fs::metadata(&self.project_path)
-            .map_err(|e| e.to_string())
-            .and_then(|m| {
-                if m.len() > 4_000_000 {
-                    Err("Projet trop volumineux".into())
-                } else {
-                    std::fs::read_to_string(&self.project_path).map_err(|e| e.to_string())
-                }
-            })
-            .and_then(|s| crate::bench_file::BenchFile::parse(&s));
-        match result {
-            Ok(p) => {
-                self.snapshot_workspace();
-                let mut workspace = Workspace::new(p.project.name.clone(), p.project.clone());
-                workspace.layout = p.layout.clone();
-                self.studio.workspaces.push(workspace);
-                self.studio.active = self.studio.workspaces.len() - 1;
-                self.project = p.project;
-                self.layout = p.layout;
-                self.view = self.layout.primary;
-                self.layout_revision += 1;
-                self.hardware = false;
-                self.welcome = false;
-                self.project_dialog = None;
-                self.instrument_dialog = None;
-                self.history.clear();
-                self.canvas =
-                    Canvas::configured(self.preferences.snap, self.preferences.orthogonal);
-                self.network = None;
-                self.waveform = None;
-                self.buffers.clear();
-                self.waterfall = Waterfall::default();
-                self.debug_snapshot = None;
-                self.measurements.clear();
-                self.tests.clear();
-                self.preview = true;
-                self.trace_display = TraceDisplay::Preview;
-                self.canvas.completed.clear();
-                self.log(
-                    "Projet ouvert ; exécuter pour acquérir une nouvelle trace".into(),
-                    false,
-                );
-            }
+        if self.worker.is_busy() {
+            self.log("Arrêter la tâche avant de changer de projet".into(), true);
+            return;
+        }
+        let path = self.dialog_path.clone();
+        match read_limited(&path, 4_000_000).and_then(|s| crate::bench_file::BenchFile::parse(&s)) {
+            Ok(file) => self.request_project(file, path, false),
             Err(e) => self.log(e, true),
         }
     }
@@ -750,6 +872,11 @@ impl Workbench {
             .project
             .graph
             .add(kind, [36. + (n % 4.) * 294., 40. + (n / 4.).floor() * 280.]);
+        if kind == Kind::PnaX
+            && let Some(n) = self.project.graph.nodes.iter_mut().find(|n| n.id == id)
+        {
+            n.config.instrument.expected_idn = "N5245B".into();
+        }
         self.canvas.select_only(id);
         self.studio.used(kind);
         self.canvas.completed.clear();
@@ -777,6 +904,7 @@ impl Workbench {
             Action::Stop => self.worker.stop(),
             Action::Save => {
                 if !self.worker.is_busy() {
+                    self.dialog_path = self.project_path.clone();
                     self.project_dialog = Some(true);
                 }
             }
@@ -860,7 +988,6 @@ impl Workbench {
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.small_button("Accueil / projets").clicked() && !self.worker.is_busy() {
-                        self.snapshot_workspace();
                         self.welcome = true;
                     }
                     badge(ui, concat!("v", env!("CARGO_PKG_VERSION")), muted());
@@ -992,7 +1119,8 @@ impl Workbench {
                 });
             });
             ui.horizontal_wrapped(|ui| {
-                self.workspace_tabs(ui);
+                self.project_chip(ui);
+                self.project_tools(ui);
                 ui.menu_button(t("Édition"), |ui| {
                     for action in [
                         Action::SelectAll,
@@ -1512,6 +1640,17 @@ fn atomic_save(path: &str, text: &str) -> Result<(), String> {
     Ok(())
 }
 impl eframe::App for Workbench {
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.worker.stop();
+        let _ = self.recover_project();
+        let mut preferences = self.studio.clone();
+        preferences.workspaces.clear();
+        preferences.active = 0;
+        if let Ok(text) = serde_json::to_string_pretty(&preferences) {
+            let _ = atomic_save(&self.studio_path, &text);
+        }
+    }
+
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let start = Instant::now();
         self.poll();
@@ -1588,7 +1727,12 @@ impl eframe::App for Workbench {
             self.docked(ctx);
             self.center(ctx);
             self.floating(ctx);
+            self.pna_result_windows(ctx);
+            self.flow_window(ctx);
+            self.result_manager(ctx);
+            self.poll_fixture();
             self.instrument_window(ctx);
+            self.fixture_window(ctx);
             self.rename_setup_window(ctx);
             self.project_window(ctx);
         }
@@ -1596,6 +1740,8 @@ impl eframe::App for Workbench {
             self.canvas.routes_dirty = false;
             self.start_routing(false, true, false);
         }
+        self.layout.canvas_pan = [self.canvas.pan.x, self.canvas.pan.y];
+        self.layout.canvas_zoom = self.canvas.zoom;
         if self.view.dockable() {
             self.layout.primary = self.view;
         }

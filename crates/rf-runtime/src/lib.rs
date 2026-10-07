@@ -15,6 +15,7 @@ use std::time::{Duration, Instant};
 pub type Result<T> = std::result::Result<T, String>;
 #[derive(Clone, Debug)]
 pub struct RunResult {
+    pub curves: Vec<rf_core::network::Curve>,
     pub buffers: Vec<debug::Buffer>,
     pub trace: Option<Trace>,
     pub network: Option<NetworkTrace>,
@@ -25,6 +26,138 @@ pub struct RunResult {
     pub elapsed_ms: f64,
     pub sequence: u64,
     pub overflows: usize,
+}
+fn dut_p1db(n: &rf_core::Node) -> Option<f64> {
+    n.config.limits.output_p1db_dbm.or_else(|| {
+        rf_dut_library::Catalog::default()
+            .entries
+            .iter()
+            .find(|e| Some(e.id.as_str()) == n.config.dut_id.as_deref())
+            .and_then(|e| e.rf.as_ref())
+            .map(|rf| rf.output_p1db_dbm.typical)
+    })
+}
+pub fn preflight(graph: &Graph) -> rf_core::flow::Report {
+    let catalog = rf_dut_library::Catalog::default();
+    let mut profiles = BTreeMap::new();
+    for n in &graph.nodes {
+        let mut limits = n.config.limits.clone();
+        if let Some(rf) = catalog
+            .entries
+            .iter()
+            .find(|e| Some(e.id.as_str()) == n.config.dut_id.as_deref())
+            .and_then(|e| e.rf.as_ref())
+        {
+            if limits.band_hz.is_none() {
+                limits.band_hz = Some(rf.band_hz);
+            }
+            if limits.output_p1db_dbm.is_none() {
+                limits.output_p1db_dbm = Some(rf.output_p1db_dbm.typical);
+            }
+            if limits.source.is_empty() {
+                limits.source = rf.revision.clone();
+            }
+        }
+        if n.kind.max_rf_ports().is_some()
+            && n.config.instrument.expected_idn.contains("N5245B")
+            && limits.band_hz.is_none()
+        {
+            limits.band_hz = Some([10e6, 50e9]);
+            limits.source = "N5245B nominal 10 MHz–50 GHz (extension LF non supposée)".into();
+        }
+        profiles.insert(n.id, limits);
+    }
+    let mut report = rf_core::flow::Report::inspect(graph, &profiles);
+    for n in &graph.nodes {
+        if let Some(b) = profiles.get(&n.id).and_then(|p| p.band_hz)
+            && n.kind.max_rf_ports().is_some()
+        {
+            let c = &n.config;
+            let axis = if c.instrument.pna.power_sweep {
+                [c.frequency_hz, c.frequency_hz]
+            } else {
+                [c.start_hz, c.stop_hz]
+            };
+            if axis[0] < b[0] || axis[1] > b[1] {
+                report.findings.push(rf_core::flow::Finding {
+                    severity: rf_core::flow::Severity::Error,
+                    node: Some(n.id),
+                    message: format!("{} : balayage hors bande instrument déclarée", n.title),
+                });
+            }
+        }
+    }
+    report
+}
+pub fn two_port(
+    curves: &[rf_core::network::Curve],
+    node: u64,
+    z0: f64,
+) -> Result<rf_core::network::TwoPort> {
+    let data: [&rf_core::network::Curve; 4] = ["S11", "S21", "S12", "S22"]
+        .map(|name| {
+            curves
+                .iter()
+                .find(|c| c.node == node && c.name == name && !c.corrected)
+                .ok_or_else(|| format!("Matrice incomplète : {name} requis"))
+        })
+        .into_iter()
+        .collect::<Result<Vec<_>>>()?
+        .try_into()
+        .map_err(|_| "Matrice incomplète")?;
+    let mut network = rf_core::network::TwoPort {
+        frequency_hz: data[0].x.clone(),
+        s: Vec::new(),
+        z0,
+        simulated: data.iter().all(|t| t.simulated),
+    };
+    for c in data {
+        if c.x_unit != "Hz"
+            || c.x != network.frequency_hz
+            || c.y.len() != network.frequency_hz.len()
+            || c.phase_deg.as_ref().is_none_or(|p| p.len() != c.y.len())
+        {
+            return Err("Matrice : axe/phase invalide".into());
+        }
+    }
+    for i in 0..network.frequency_hz.len() {
+        network.s.push(std::array::from_fn(|k| {
+            rf_core::dsp::Complex::polar(
+                10f64.powf(data[k].y[i] / 20.),
+                data[k].phase_deg.as_ref().unwrap()[i].to_radians(),
+            )
+        }));
+    }
+    network.validate()?;
+    Ok(network)
+}
+fn apply_fixture(
+    c: &rf_core::Config,
+    node: u64,
+    curves: &mut Vec<rf_core::network::Curve>,
+) -> Result<()> {
+    let fix = &c.instrument.pna.fixture;
+    if !fix.enabled {
+        return Ok(());
+    }
+    if c.instrument.port_count != 2 {
+        return Err(
+            "Correction s2p limitée au chemin ports 1–2 ; utiliser un bloc PNA dédié à ce chemin"
+                .into(),
+        );
+    }
+    let raw = two_port(curves, node, c.instrument.pna.reference_ohm)?;
+    let left = rf_dsp::fixture::parse(&fix.input_s2p)?;
+    let right = rf_dsp::fixture::parse(&fix.output_s2p)?;
+    let corrected =
+        rf_dsp::fixture::deembed(&raw, &left, &right, fix.reverse_input, fix.reverse_output)?;
+    for p in ["S11", "S21", "S12", "S22"] {
+        let t = corrected.trace(p)?;
+        let mut curve = rf_core::network::Curve::from_trace(node, &t);
+        curve.corrected = true;
+        curves.push(curve);
+    }
+    Ok(())
 }
 #[derive(Clone)]
 pub(crate) enum Value {
@@ -38,6 +171,7 @@ pub(crate) enum Value {
     Analog(Waveform),
     Digital(Waveform),
     Dut {
+        output_p1db: Option<f64>,
         loss: f64,
         noise: f64,
         phase: f64,
@@ -269,6 +403,16 @@ impl Engine {
         mut observe: impl FnMut(debug::Phase, &rf_core::Node, &RunResult) -> Result<()>,
     ) -> Result<RunResult> {
         graph.validate().map_err(|e| e.to_string())?;
+        let report = preflight(graph);
+        if report.blocked() {
+            return Err(report
+                .findings
+                .iter()
+                .filter(|f| f.severity == rf_core::flow::Severity::Error)
+                .map(|f| f.message.clone())
+                .collect::<Vec<_>>()
+                .join(" ; "));
+        }
         if sequence == 0 {
             self.dsp.reset();
             self.io.clear();
@@ -303,6 +447,7 @@ impl Engine {
         let start = Instant::now();
         let mut values = BTreeMap::new();
         let mut result = RunResult {
+            curves: Vec::new(),
             buffers: Vec::new(),
             trace: None,
             network: None,
@@ -432,10 +577,26 @@ impl Engine {
                         .insert(id, (c.resource.clone(), c.instrument.timeout_ms, session));
                 }
                 let (_, _, s) = self.pna_sessions.get_mut(&id).unwrap();
-                let network = rf_instruments::pna::acquire_vna(s.as_mut(), c, node.kind)
+                let mut curves = rf_instruments::pna::acquire_curves(s.as_mut(), c, node.kind, id)
                     .map_err(|e| e.to_string())?;
-                result.network = Some(network.clone());
-                values.insert((id, 0), Value::Network(network));
+                apply_fixture(c, id, &mut curves)?;
+                let selected = curves
+                    .iter()
+                    .rev()
+                    .find(|t| t.name == c.s_parameter)
+                    .ok_or("Trace sélectionnée absente")?;
+                if selected.x_unit == "Hz" {
+                    let network = NetworkTrace {
+                        frequency_hz: selected.x.clone(),
+                        magnitude_db: selected.y.clone(),
+                        phase_deg: selected.phase_deg.clone().unwrap_or_default(),
+                        parameter: selected.name.clone(),
+                        simulated: false,
+                    };
+                    result.network = Some(network.clone());
+                    values.insert((id, 0), Value::Network(network));
+                }
+                result.curves.extend(curves);
                 result.completed.push(id);
                 capture(&mut result, node, &values);
                 observe(debug::Phase::After, node, &result)?;
@@ -480,6 +641,7 @@ impl Engine {
                 inputs.insert(
                     0,
                     Value::Dut {
+                        output_p1db: dut_p1db(dut),
                         loss: dut.config.loss_db + dut.config.attenuation_db,
                         noise: dut.config.noise_figure_db,
                         phase: dut.config.phase_deg,
@@ -487,7 +649,140 @@ impl Engine {
                 );
             }
             if node.kind.is_extended() {
-                let output = simulation::execute(node, &inputs, &mut result)?;
+                let output = if node.kind.max_rf_ports().is_some() {
+                    let mut curves = Vec::new();
+                    let mut selected = Vec::new();
+                    let parameters = if c.instrument.pna.all_s_parameters {
+                        (1..=c.instrument.port_count)
+                            .flat_map(|i| {
+                                (1..=c.instrument.port_count).map(move |j| format!("S{i}{j}"))
+                            })
+                            .collect::<Vec<_>>()
+                    } else {
+                        vec![c.s_parameter.clone()]
+                    };
+                    for parameter in parameters {
+                        let mut n = node.clone();
+                        n.config.s_parameter = parameter.clone();
+                        let mut model_inputs = inputs.clone();
+                        let ports = rf_core::physical::s_parameter_ports(&parameter).unwrap();
+                        let physical = graph
+                            .physical_connections
+                            .iter()
+                            .any(|e| e.from == id || e.to == id);
+                        let wired = |p: u8| {
+                            graph.physical_connections.iter().any(|e| {
+                                e.from == id && e.from_port == usize::from(p - 1)
+                                    || e.to == id && e.to_port == usize::from(p - 1)
+                            })
+                        };
+                        if physical && (!wired(ports.0) || !wired(ports.1))
+                            || !physical && (ports.0 > 2 || ports.1 > 2)
+                        {
+                            let t = NetworkTrace {
+                                frequency_hz: (0..c.points)
+                                    .map(|i| {
+                                        c.start_hz
+                                            + (c.stop_hz - c.start_hz) * i as f64
+                                                / (c.points - 1) as f64
+                                    })
+                                    .collect(),
+                                magnitude_db: vec![
+                                    if ports.0 == ports.1 { 0. } else { -300. };
+                                    c.points
+                                ],
+                                phase_deg: vec![0.; c.points],
+                                parameter: parameter.clone(),
+                                simulated: true,
+                            };
+                            let mut curve = rf_core::network::Curve::from_trace(id, &t);
+                            if c.instrument.pna.power_sweep {
+                                curve.x = (0..c.points)
+                                    .map(|i| {
+                                        c.instrument.pna.power_start_dbm
+                                            + (c.instrument.pna.power_stop_dbm
+                                                - c.instrument.pna.power_start_dbm)
+                                                * i as f64
+                                                / (c.points - 1) as f64
+                                    })
+                                    .collect();
+                                curve.x_unit = "dBm".into();
+                            }
+                            curves.push(curve);
+                            if parameter == c.s_parameter {
+                                selected = vec![Value::Network(t)];
+                            }
+                            continue;
+                        }
+
+                        if graph
+                            .physical_connections
+                            .iter()
+                            .any(|e| e.from == id || e.to == id)
+                        {
+                            model_inputs.remove(&0);
+                            match graph.vna_dut(id, &parameter) {
+                                Ok(Some(d)) => {
+                                    model_inputs.insert(
+                                        0,
+                                        Value::Dut {
+                                            output_p1db: dut_p1db(d),
+                                            loss: d.config.loss_db + d.config.attenuation_db,
+                                            noise: d.config.noise_figure_db,
+                                            phase: d.config.phase_deg,
+                                        },
+                                    );
+                                }
+                                _ => {
+                                    if parameter != c.s_parameter {
+                                        continue;
+                                    }
+                                }
+                            }
+                        }
+                        let out = simulation::execute(&n, &model_inputs, &mut result)?;
+                        if let Some(Value::Network(t)) = out.first() {
+                            let mut curve = rf_core::network::Curve::from_trace(id, t);
+                            if c.instrument.pna.power_sweep {
+                                curve.x = (0..c.points)
+                                    .map(|i| {
+                                        c.instrument.pna.power_start_dbm
+                                            + (c.instrument.pna.power_stop_dbm
+                                                - c.instrument.pna.power_start_dbm)
+                                                * i as f64
+                                                / (c.points - 1) as f64
+                                    })
+                                    .collect();
+                                curve.x_unit = "dBm".into();
+                            }
+                            curves.push(curve);
+                        }
+                        if parameter == c.s_parameter {
+                            selected = out;
+                        }
+                    }
+                    apply_fixture(c, id, &mut curves)?;
+                    if let Some(curve) = curves.iter().rev().find(|t| t.name == c.s_parameter)
+                        && !c.instrument.pna.power_sweep
+                    {
+                        let t = NetworkTrace {
+                            frequency_hz: curve.x.clone(),
+                            magnitude_db: curve.y.clone(),
+                            phase_deg: curve.phase_deg.clone().unwrap_or_default(),
+                            parameter: c.s_parameter.clone(),
+                            simulated: true,
+                        };
+                        result.network = Some(t.clone());
+                        selected = vec![Value::Network(t)];
+                    }
+                    if c.instrument.pna.power_sweep {
+                        result.network = None;
+                    }
+                    result.curves.extend(curves);
+                    selected
+                } else {
+                    simulation::execute(node, &inputs, &mut result)?
+                };
                 for (port, value) in output.into_iter().enumerate() {
                     values.insert((id, port), value);
                 }
@@ -501,6 +796,7 @@ impl Engine {
                 values.insert(
                     (id, 1),
                     Value::Dut {
+                        output_p1db: dut_p1db(node),
                         loss: c.loss_db + c.attenuation_db,
                         noise: c.noise_figure_db,
                         phase: c.phase_deg,
@@ -737,6 +1033,23 @@ pub fn self_tests() -> Vec<TestResult> {
 }
 
 pub enum Command {
+    ExportResults {
+        curves: Vec<rf_core::network::Curve>,
+        folder: String,
+        project: String,
+    },
+    PreparePna {
+        node: u64,
+        config: rf_core::Config,
+        hardware: bool,
+    },
+    PnaFixture {
+        node: u64,
+        config: rf_core::Config,
+        hardware: bool,
+        thru: bool,
+    },
+    ResetProject,
     StopOutputs,
     DcSupply {
         node: u64,
@@ -796,6 +1109,13 @@ pub enum Command {
 }
 #[derive(Clone, Debug)]
 pub enum Event {
+    PnaFixtureData {
+        node: u64,
+        data: rf_core::network::TwoPort,
+        thru: bool,
+    },
+    ProjectReset(Vec<String>),
+    PnaCurves(Vec<rf_core::network::Curve>),
     PnaApplicationData {
         node: u64,
         data: rf_instruments::pna_application::ApplicationData,
@@ -849,6 +1169,113 @@ impl Worker {
                 // an immediate Stop must also cancel a queued command.
                 let mut shutdown = true;
                 match command {
+                    Command::ExportResults {
+                        curves,
+                        folder,
+                        project,
+                    } => {
+                        shutdown = false;
+                        let response = (|| -> Result<String> {
+                            if curves.is_empty() || folder.trim().is_empty() {
+                                return Err("Dossier et résultats requis".into());
+                            }
+                            let text=serde_json::to_string_pretty(&serde_json::json!({"format":"rf-workbench/results","version":1,"project":project,"captured_curves":curves})).map_err(|e|e.to_string())?;
+                            std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
+                            let stamp = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_nanos();
+                            let path =
+                                std::path::Path::new(&folder).join(format!("results-{stamp}.json"));
+                            use std::io::Write;
+                            let mut file = std::fs::OpenOptions::new()
+                                .write(true)
+                                .create_new(true)
+                                .open(&path)
+                                .map_err(|e| e.to_string())?;
+                            file.write_all(text.as_bytes()).map_err(|e| e.to_string())?;
+                            Ok(format!("Résultats exportés : {}", path.display()))
+                        })();
+                        let _ = etx.send(match response {
+                            Ok(text) => Event::Message(text),
+                            Err(e) => Event::Error(e),
+                        });
+                    }
+                    Command::PreparePna {
+                        node,
+                        config,
+                        hardware,
+                    } => {
+                        let response = (|| -> Result<String> {
+                            if !hardware {
+                                return Err("Activer Matériel pour préparer le canal".into());
+                            }
+                            let mut s = ResourceManager
+                                .open_resource(
+                                    &config.resource,
+                                    Duration::from_millis(config.instrument.timeout_ms),
+                                )
+                                .map_err(|e| e.to_string())?;
+                            rf_instruments::pna::prepare(s.as_mut(), &config)
+                                .map_err(|e| e.to_string())
+                        })();
+                        let _ = etx.send(match response {
+                            Ok(text) => Event::InstrumentResponse { node, text },
+                            Err(e) => Event::Error(e),
+                        });
+                    }
+                    Command::PnaFixture {
+                        node,
+                        mut config,
+                        hardware,
+                        thru,
+                    } => {
+                        config.instrument.pna.all_s_parameters = true;
+                        config.instrument.pna.power_sweep = false;
+                        config.instrument.pna.fixture.enabled = false;
+                        let response = (|| -> Result<rf_core::network::TwoPort> {
+                            if !hardware {
+                                return Err("Mesure 2×Thru : activer Matériel et choisir une adresse réelle".into());
+                            }
+                            if config.resource == "SIM::RF::INSTR" {
+                                return Err(
+                                    "Utiliser la démonstration locale pour une fixture simulée"
+                                        .into(),
+                                );
+                            }
+                            let mut s = ResourceManager
+                                .open_resource(
+                                    &config.resource,
+                                    Duration::from_millis(config.instrument.timeout_ms),
+                                )
+                                .map_err(|e| e.to_string())?;
+                            let curves = rf_instruments::pna::acquire_curves(
+                                s.as_mut(),
+                                &config,
+                                Kind::PnaX,
+                                node,
+                            )
+                            .map_err(|e| e.to_string())?;
+                            two_port(&curves, node, config.instrument.pna.reference_ohm)
+                        })();
+                        let _ = etx.send(match response {
+                            Ok(data) => Event::PnaFixtureData { node, data, thru },
+                            Err(e) => Event::Error(e),
+                        });
+                    }
+                    Command::ResetProject => {
+                        let errors = engine.stop_outputs();
+                        engine = Engine::default();
+                        sequence = 0;
+                        if let Ok(mut slot) = l.lock() {
+                            *slot = None;
+                        }
+                        if let Ok(mut slot) = debug_slot.lock() {
+                            *slot = None;
+                        }
+                        let _ = etx.send(Event::ProjectReset(errors));
+                        shutdown = false;
+                    }
                     Command::StopOutputs => {
                         for error in engine.stop_outputs() {
                             let _ = etx.try_send(Event::Error(error));
@@ -1163,6 +1590,7 @@ impl Worker {
                             Ok(trace) => {
                                 let _ = etx.try_send(Event::Done(Box::new(RunResult {
                                     trace: Some(trace),
+                                    curves: Vec::new(),
                                     buffers: Vec::new(),
                                     network: None,
                                     waveform: None,
@@ -1274,6 +1702,8 @@ mod tests {
                 .unwrap()
         };
         assert!((run(&g).magnitude_db[0] - 26.).abs() < 1e-10);
+        g.nodes[0].config.start_hz = 8e9;
+        g.nodes[0].config.stop_hz = 12e9;
         g.nodes[1].config.dut_id = Some("macom-cgy2170yhv-c1".into());
         g.nodes[1].config.loss_db = -5.8;
         g.nodes[1].config.attenuation_db = 31.5;

@@ -1,53 +1,51 @@
 use super::*;
 impl Workbench {
     pub(super) fn network_view(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            caption(ui, "ANALYSE RÉSEAU / PNA & PNA-X");
-            if ui.button(crate::i18n::t("Charger la démo PNA-X")).clicked() {
-                self.replace_demo(
-                    rf_core::Graph::network_demo(),
-                    "Caractérisation réseau · PNA-X & DUT",
-                );
-            }
-        });
-        if let Some(t) = &self.network {
-            badge(
-                ui,
-                &format!(
-                    "{} · {} points · {}",
-                    t.parameter,
-                    t.frequency_hz.len(),
-                    if t.simulated { "SIMULÉ" } else { "MATÉRIEL" }
-                ),
-                blue(),
-            );
-            ui.label(crate::i18n::t("Magnitude"));
-            plot::series(
-                ui,
-                &t.frequency_hz,
-                &t.magnitude_db,
-                (ui.available_height() * 0.5).clamp(100., 300.),
-                "GHz",
-                "dB",
-                1e9,
-            );
-            ui.add_space(8.);
-            ui.label(crate::i18n::t("Phase"));
-            plot::series(
-                ui,
-                &t.frequency_hz,
-                &t.phase_deg,
-                (ui.available_height() - 45.).clamp(100., 300.),
-                "GHz",
-                "°",
-                1e9,
-            );
-        } else {
-            ui.label(crate::i18n::t(
-                "Aucun balayage réseau acquis. Charger la démo puis cliquer Exécuter.",
-            ));
+        ui.heading("Paramètres S / résultats PNA");
+        if ui.button("Ouvrir des fenêtres de résultats…").clicked() {
+            self.results_open = true;
         }
-        ui.label(RichText::new(crate::i18n::t("Le modèle PNA simulé illustre un gain/perte et une phase idéales. Il ne représente ni une calibration VNA, ni des données constructeur.")).size(12. * crate::theme::scale()).color(muted()));
+        let curves: Vec<_> = self.curves.iter().filter(|c| c.x_unit == "Hz").collect();
+        if curves.is_empty() {
+            ui.label("Aucune trace réseau : ajouter un PNA, régler ses paramètres puis Exécuter.");
+            return;
+        }
+        self.result_selection = self.result_selection.min(curves.len() - 1);
+        egui::ComboBox::from_id_salt("bottom-network")
+            .selected_text(format!(
+                "Bloc {} · {}{}",
+                curves[self.result_selection].node,
+                curves[self.result_selection].name,
+                if curves[self.result_selection].corrected {
+                    " corrigé"
+                } else {
+                    " brut"
+                }
+            ))
+            .show_ui(ui, |ui| {
+                for (i, c) in curves.iter().enumerate() {
+                    ui.selectable_value(
+                        &mut self.result_selection,
+                        i,
+                        format!(
+                            "Bloc {} · {} · {}",
+                            c.node,
+                            c.name,
+                            if c.corrected { "corrigé" } else { "brut" }
+                        ),
+                    );
+                }
+            });
+        let c = curves[self.result_selection];
+        plot::series(
+            ui,
+            &c.x,
+            &c.y,
+            (ui.available_height() - 30.).max(130.),
+            "GHz",
+            &c.y_unit,
+            1e9,
+        );
     }
     pub(super) fn measurement_view(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
@@ -337,6 +335,9 @@ impl Workbench {
                         .map_or(c.insertion_loss_db.unwrap_or(0.), |r| -r.gain_db.typical);
                 n.config.noise_figure_db = c.noise_figure_db.unwrap_or(0.);
                 if let Some(rf) = &c.rf {
+                    n.config.limits.band_hz = Some(rf.band_hz);
+                    n.config.limits.output_p1db_dbm = Some(rf.output_p1db_dbm.typical);
+                    n.config.limits.source = format!("{} · {}", rf.revision, rf.conditions);
                     n.config.frequency_hz = rf.reference_frequency_hz;
                     n.config.start_hz = rf.band_hz[0];
                     n.config.stop_hz = rf.band_hz[1];

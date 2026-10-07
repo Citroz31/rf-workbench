@@ -82,7 +82,7 @@ jobs:
           if ($tests.ExitCode -ne 0) { throw 'Executable self-tests failed.' }
           $simulation = Start-Process -FilePath $binary -ArgumentList '--headless-run','--demo-dsp' -WindowStyle Hidden -Wait -PassThru
           if ($simulation.ExitCode -ne 0) { throw 'Standalone DSP simulation failed.' }
-          foreach ($example in @('LNA-MAAL-FR1245.rfbench','Corechip-CGY2170YHV-C1.rfbench')) {
+          foreach ($example in @('LNA-MAAL-FR1245.rfbench','Corechip-CGY2170YHV-C1.rfbench','PNA-X-N5245B-4ports.rfbench')) {
             $fixture = (Resolve-Path -LiteralPath "examples/$example").Path
             $run = Start-Process -FilePath $binary -ArgumentList "--headless-run --open `"$fixture`"" -WindowStyle Hidden -Wait -PassThru
             if ($run.ExitCode -ne 0) { throw "Physical RF fixture failed: $example" }
@@ -115,9 +115,9 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'Tag creation failed; no release will be published.' }
           }
           $notes = @'
-          Windows x64 portable : téléchargez **RF-Workbench-Windows-x64-portable.zip**, extrayez-le entièrement dans un dossier utilisateur, puis double-cliquez sur **rf-workbench.exe**, directement à sa racine. LISEZ-MOI.txt, le guide PDF et cinq projets exemples sont inclus. L'EXE seul est aussi disponible ci-dessous.
+          Windows x64 portable : téléchargez **RF-Workbench-Windows-x64-portable.zip**, extrayez-le entièrement dans un dossier utilisateur, puis double-cliquez sur **rf-workbench.exe**, directement à sa racine. LISEZ-MOI.txt, le guide PDF et six projets exemples sont inclus. L'EXE seul est aussi disponible ci-dessous.
 
-          Version 0.6 : onglets renommables par clic droit, câblage RF/DC avec aimantation légère, PNA/PNA-X 1-4 ports et VNA USB 1-2 ports, composants MACOM MAAL-FR1245 et CGY2170YHV/C1, alimentations E3631A/E36313A et guide à jour.
+          Version 0.7 : projets indépendants avec accueil et récents, vérificateur RF, sweep fréquence/puissance PNA-X N5245B, matrice S, CalSet et plusieurs fenêtres dB/phase/Smith. Fixtures S2P avec Reverse, acquisition du 2xThru, extraction temporelle native IFFT/gating/FFT et guide de 32 chapitres. La méthode NZC est comparée à scikit-RF ; elle exige une grille harmonique proche de DC et ne revendique pas une certification IEEE ni l’AFR propriétaire Keysight. Applications avancées et calibration matérielle se préparent sur le PNA.
 
           La simulation fonctionne localement sans installation, sans Python, sans VISA, sans compte ni connexion Internet après téléchargement. L'application ne demande pas d'élévation administrateur. Elle n'est pas signée numériquement : les règles de votre entreprise peuvent nécessiter une validation IT, même pour une application portable.
 

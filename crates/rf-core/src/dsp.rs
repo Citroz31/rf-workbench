@@ -56,6 +56,16 @@ impl Div<f64> for Complex {
         self * (1. / b)
     }
 }
+impl Div<Complex> for Complex {
+    type Output = Self;
+    fn div(self, b: Self) -> Self {
+        let norm = b.norm2();
+        Self::new(
+            (self.re * b.re + self.im * b.im) / norm,
+            (self.im * b.re - self.re * b.im) / norm,
+        )
+    }
+}
 impl Neg for Complex {
     type Output = Self;
     fn neg(self) -> Self {

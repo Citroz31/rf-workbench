@@ -763,3 +763,4 @@ impl Rng {
         (-2. * a.ln()).sqrt() * (2. * PI * b).cos()
     }
 }
+pub mod fixture;

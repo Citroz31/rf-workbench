@@ -2,7 +2,7 @@
 use crate::studio::Layout;
 use rf_core::Project;
 use serde::{Deserialize, Serialize};
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct BenchFile {
     pub format: String,
     pub version: u32,
@@ -13,7 +13,7 @@ impl BenchFile {
     pub fn new(project: Project, layout: Layout) -> Self {
         Self {
             format: "rf-workbench/bench".into(),
-            version: 1,
+            version: 2,
             project,
             layout,
         }
@@ -30,7 +30,7 @@ impl BenchFile {
             ));
         }
         let b: Self = serde_json::from_value(value).map_err(|e| e.to_string())?;
-        if b.format != "rf-workbench/bench" || b.version != 1 {
+        if b.format != "rf-workbench/bench" || !matches!(b.version, 1 | 2) {
             return Err("Format ou version de banc non pris en charge".into());
         }
         Project::from_json(&b.project.to_json().map_err(|e| e.to_string())?)
@@ -42,7 +42,14 @@ impl BenchFile {
         Ok(b)
     }
     pub fn json(&self) -> Result<String, String> {
-        serde_json::to_string_pretty(self).map_err(|e| e.to_string())
+        self.layout.validate()?;
+        Project::from_json(&self.project.to_json().map_err(|e| e.to_string())?)
+            .map_err(|e| e.to_string())?;
+        let text = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
+        if text.len() > 4_000_000 {
+            return Err("Projet > 4 Mo ; réduire le nombre de points des fixtures".into());
+        }
+        Ok(text)
     }
 }
 pub fn project_path(path: &str) -> String {
@@ -80,5 +87,48 @@ mod tests {
         v["layout"]["library_width"] = serde_json::json!(0);
         assert!(BenchFile::parse(&v.to_string()).is_err());
         assert!(project_path("banc.json").ends_with("banc.rfbench"));
+    }
+    #[test]
+    fn version_two_preserves_fixtures_and_independent_result_views() {
+        let mut project = Project {
+            name: "Projet A".into(),
+            graph: rf_core::Graph::network_demo(),
+            ..Project::default()
+        };
+        project.graph.nodes[1]
+            .config
+            .instrument
+            .pna
+            .fixture
+            .input_s2p = "# Hz S RI R 50\n".into();
+        let mut layout = Layout::default();
+        layout.result_windows.push(crate::results::Window {
+            id: 1,
+            node: 2,
+            parameter: "S11".into(),
+            format: crate::results::Format::Smith,
+            rect: [300., 200., 500., 300.],
+            corrected: true,
+        });
+        let file = BenchFile::new(project, layout);
+        let json = file.json().unwrap();
+        let mut a = BenchFile::parse(&json).unwrap();
+        let b = BenchFile::parse(&json).unwrap();
+        a.project.name = "Projet B".into();
+        a.project.graph.nodes[1].config.power_dbm = -40.;
+        assert_eq!(b.project.name, "Projet A");
+        assert_eq!(b.version, 2);
+        assert!(b.layout.result_windows[0].corrected);
+        assert!(
+            b.project.graph.nodes[1]
+                .config
+                .instrument
+                .pna
+                .fixture
+                .input_s2p
+                .starts_with('#')
+        );
+        let old = json.replace("\"version\": 2", "\"version\": 1");
+        assert!(BenchFile::parse(&old).is_ok());
     }
 }

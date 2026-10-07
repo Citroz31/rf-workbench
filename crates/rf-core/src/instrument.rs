@@ -2,7 +2,81 @@
 use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
+pub struct PnaSetup {
+    pub reference_ohm: f64,
+    pub power_sweep: bool,
+    pub power_start_dbm: f64,
+    pub power_stop_dbm: f64,
+    pub source_port: u8,
+    pub all_s_parameters: bool,
+    pub calset: String,
+    pub apply_calset: bool,
+    pub result_path: String,
+    pub fixture: Fixture,
+}
+impl Default for PnaSetup {
+    fn default() -> Self {
+        Self {
+            reference_ohm: 50.,
+            power_sweep: false,
+            power_start_dbm: -30.,
+            power_stop_dbm: -10.,
+            source_port: 1,
+            all_s_parameters: false,
+            calset: String::new(),
+            apply_calset: false,
+            result_path: String::new(),
+            fixture: Fixture::default(),
+        }
+    }
+}
+impl PnaSetup {
+    pub fn validate(&self) -> Result<(), String> {
+        if !self.reference_ohm.is_finite()
+            || !(0.1..=10000.).contains(&self.reference_ohm)
+            || [self.power_start_dbm, self.power_stop_dbm]
+                .iter()
+                .any(|v| !v.is_finite() || !(-160. ..=30.).contains(v))
+            || self.power_stop_dbm <= self.power_start_dbm
+            || !(1..=4).contains(&self.source_port)
+            || !scpi_name(&self.calset)
+            || self.result_path.len() > 4096
+            || self.fixture.input_s2p.len() + self.fixture.output_s2p.len() > 3_500_000
+        {
+            return Err("Configuration PNA / fixture invalide".into());
+        }
+        Ok(())
+    }
+}
+pub fn scpi_name(s: &str) -> bool {
+    s.len() <= 256 && !s.contains(['\n', '\r', '\0', '"', '\'', ';'])
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct Fixture {
+    pub enabled: bool,
+    pub input_s2p: String,
+    pub output_s2p: String,
+    pub reverse_input: bool,
+    pub reverse_output: bool,
+    pub provenance: String,
+}
+impl Default for Fixture {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            input_s2p: String::new(),
+            output_s2p: String::new(),
+            reverse_input: false,
+            reverse_output: true,
+            provenance: String::new(),
+        }
+    }
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
 pub struct Controls {
+    pub pna: PnaSetup,
     /// Displayed physical RF ports; independent from a PNA measurement channel.
     pub port_count: u8,
     pub dc: DcControls,
@@ -24,6 +98,7 @@ impl Default for Controls {
     fn default() -> Self {
         Self {
             port_count: 2,
+            pna: PnaSetup::default(),
             dc: DcControls::default(),
             expected_idn: String::new(),
             timeout_ms: 5000,
@@ -43,6 +118,7 @@ impl Default for Controls {
 }
 impl Controls {
     pub fn validate(&self) -> Result<(), String> {
+        self.pna.validate()?;
         if !(1..=4).contains(&self.port_count)
             || self.expected_idn.len() > 256
             || !(1..=30000).contains(&self.timeout_ms)

@@ -1,6 +1,8 @@
 //! Platform-independent RF data, typed acyclic graphs and versioned bench files.
 pub mod dsp;
+pub mod flow;
 pub mod instrument;
+pub mod network;
 pub mod physical;
 pub use physical::{PhysicalConnection, PhysicalDirection, PhysicalPort, PhysicalPortKind};
 use serde::{Deserialize, Serialize};
@@ -456,6 +458,7 @@ pub struct Measurement {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct Config {
+    pub limits: flow::Limits,
     pub instrument: instrument::Controls,
     pub dsp: dsp::Settings,
     pub resource: String,
@@ -485,7 +488,7 @@ pub struct Config {
 }
 impl Default for Config {
     fn default() -> Self {
-        Self { instrument: instrument::Controls::default(), dsp: dsp::Settings::default(), resource: "SIM::RF::INSTR".into(), frequency_hz: 2.45e9, power_dbm: -10.0,
+        Self { limits: flow::Limits::default(), instrument: instrument::Controls::default(), dsp: dsp::Settings::default(), resource: "SIM::RF::INSTR".into(), frequency_hz: 2.45e9, power_dbm: -10.0,
             loss_db: 3.0, start_hz: 2.40e9, stop_hz: 2.50e9, points: 401,
             lower_dbm: -15.0, upper_dbm: -11.0, trace_query: ":TRAC:DATA? TRACE1".into(),
             sample_rate_hz: 100e6, tone_hz: 1e6, samples: 1024, resolution_bits: 14, voltage_v: 1.0, temperature_c: 25., resistance_ohm: 50., noise_figure_db: 2.5, s_parameter: "S21".into(), dut_id: None,
@@ -693,6 +696,7 @@ impl Graph {
         for node in &self.nodes {
             let c = &node.config;
             c.instrument.validate().map_err(Error::Invalid)?;
+            c.limits.validate().map_err(Error::Invalid)?;
             if node.id == u64::MAX
                 || node
                     .position
@@ -745,7 +749,12 @@ impl Graph {
                 Kind::Python => !c.script.trim().is_empty() && c.script.len() <= 128_000,
                 Kind::Peak => true,
                 Kind::Pna | Kind::PnaX | Kind::UsbVna => {
-                    c.loss_db.is_finite()
+                    c.power_dbm.is_finite()
+                        && (-160. ..=30.).contains(&c.power_dbm)
+                        && c.frequency_hz.is_finite()
+                        && c.frequency_hz > 0.
+                        && c.instrument.pna.source_port <= c.instrument.port_count
+                        && c.loss_db.is_finite()
                         && (-80. ..=160.).contains(&c.loss_db)
                         && c.start_hz.is_finite()
                         && c.stop_hz.is_finite()
@@ -878,6 +887,9 @@ impl Project {
             return Err(Error::Invalid("Projet trop volumineux".into()));
         }
         let p: Self = serde_json::from_str(json)?;
+        if p.name.trim().is_empty() || p.name.len() > 128 || p.name.chars().any(char::is_control) {
+            return Err(Error::Invalid("Nom de projet invalide".into()));
+        }
         if p.schema_version != SCHEMA_VERSION {
             return Err(Error::Invalid(format!(
                 "Version de projet {} non prise en charge",
@@ -888,6 +900,7 @@ impl Project {
         p.graph.order()?;
         for n in &p.graph.nodes {
             n.config.instrument.validate().map_err(Error::Invalid)?;
+            n.config.limits.validate().map_err(Error::Invalid)?;
         }
         if p.graph.nodes.len() > 1000
             || p.graph.nodes.iter().any(|n| {

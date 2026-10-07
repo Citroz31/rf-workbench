@@ -229,7 +229,9 @@ impl Graph {
         if receiver == source && (pin == input || pin == output) {
             return Ok(Some(dut));
         }
-        if pin != input || receiver_peer != Some((dut.id, output)) {
+        if !(pin == input && receiver_peer == Some((dut.id, output))
+            || pin == output && receiver_peer == Some((dut.id, input)))
+        {
             return Err(Error::Invalid("Simulation VNA : relier source → entrée et sortie → récepteur du DUT (mode RX/TX sélectionné)".into()));
         }
         Ok(Some(dut))

@@ -105,10 +105,13 @@ pub(crate) fn execute(
             }]
         }
         Kind::Pna | Kind::PnaX | Kind::UsbVna => {
-            let loss = match inputs.get(&0) {
+            let mut loss = match inputs.get(&0) {
                 Some(Value::Dut { loss, .. }) => *loss,
                 _ => c.loss_db,
             };
+            if c.s_parameter == "S12" {
+                loss = 60.;
+            } // explicit illustrative reverse isolation, not catalogue data
             let phase = match inputs.get(&0) {
                 Some(Value::Dut { phase, .. }) => *phase,
                 _ => 0.,
@@ -116,21 +119,49 @@ pub(crate) fn execute(
             let reflection =
                 rf_core::physical::s_parameter_ports(&c.s_parameter).is_some_and(|(i, j)| i == j);
             let frequency_hz: Vec<_> = (0..c.points)
-                .map(|i| c.start_hz + (c.stop_hz - c.start_hz) * i as f64 / (c.points - 1) as f64)
+                .map(|i| {
+                    if c.instrument.pna.power_sweep {
+                        c.frequency_hz
+                    } else {
+                        c.start_hz + (c.stop_hz - c.start_hz) * i as f64 / (c.points - 1) as f64
+                    }
+                })
                 .collect();
             let network = NetworkTrace {
                 magnitude_db: frequency_hz
                     .iter()
-                    .map(|f| {
+                    .enumerate()
+                    .map(|(i, f)| {
                         if reflection {
                             -20. + 0.7
-                                * ((*f - c.start_hz) / (c.stop_hz - c.start_hz)
+                                * ((f - c.start_hz) / (c.stop_hz - c.start_hz)
                                     * std::f64::consts::TAU)
                                     .cos()
+                        } else if c.instrument.pna.power_sweep {
+                            let power = c.instrument.pna.power_start_dbm
+                                + (c.instrument.pna.power_stop_dbm
+                                    - c.instrument.pna.power_start_dbm)
+                                    * i as f64
+                                    / (c.points - 1) as f64;
+                            let p1 = match inputs.get(&0) {
+                                Some(Value::Dut { output_p1db, .. }) => *output_p1db,
+                                _ => None,
+                            };
+                            let compression = if c.s_parameter == "S21" {
+                                p1.map_or(0., |op1| {
+                                    10. * (1.
+                                        + (10f64.powf(0.1) - 1.)
+                                            * 10f64.powf((power - (op1 + loss + 1.)) / 10.))
+                                    .log10()
+                                })
+                            } else {
+                                0.
+                            };
+                            -loss - compression
                         } else {
                             -loss
                                 + 0.15
-                                    * ((*f - c.start_hz) / (c.stop_hz - c.start_hz)
+                                    * ((f - c.start_hz) / (c.stop_hz - c.start_hz)
                                         * std::f64::consts::TAU)
                                         .sin()
                         }

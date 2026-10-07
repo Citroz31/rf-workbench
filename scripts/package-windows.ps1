@@ -74,7 +74,7 @@ DÉMARRAGE
 3. Double-cliquer sur rf-workbench.exe (type Application si Windows masque .exe).
    Aucun CMD, terminal, VS Code ni installation n'est nécessaire au lancement.
 4. À l'accueil, ouvrir un projet de examples (PNA-X.rfbench, PA-36-38GHz.rfbench,
-   QAM16-AWGN.rfbench, LNA-MAAL-FR1245.rfbench, Corechip-CGY2170YHV-C1.rfbench),
+   QAM16-AWGN.rfbench, LNA-MAAL-FR1245.rfbench, Corechip-CGY2170YHV-C1.rfbench, PNA-X-N5245B-4ports.rfbench),
    conserver Simulation, puis utiliser Exécuter.
 
 La simulation intégrée de ces exemples fonctionne sans Rust, Python ni VISA.

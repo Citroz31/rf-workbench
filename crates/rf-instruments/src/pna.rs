@@ -1,8 +1,312 @@
-//! Keysight PNA / PNA-X binary acquisition. No preset, calibration or RF output change.
+//! Keysight PNA / PNA-X binary acquisition. Sweep/calibration writes are opt-in.
 //! SCPI reference: helpfiles.keysight.com/csg/NA520xA/Programming/GP-IB_Command_Finder/
 use crate::{Error, ResourceManager, Result, Session};
 use rf_core::{Config, Kind, MAX_POINTS, NetworkTrace};
 use std::time::Duration;
+
+fn configure_power_and_cal(s: &mut dyn Session, c: &Config) -> Result<()> {
+    let ch = c.instrument.channel;
+    let setup = &c.instrument.pna;
+    if setup.source_port > c.instrument.port_count {
+        return Err(Error::Protocol("Port source hors configuration".into()));
+    }
+    if !c.power_dbm.is_finite() || !(-160. ..=30.).contains(&c.power_dbm) {
+        return Err(Error::Protocol("Puissance source invalide".into()));
+    }
+    let requested = if setup.power_sweep {
+        [setup.power_start_dbm, setup.power_stop_dbm]
+    } else {
+        [c.power_dbm, c.power_dbm]
+    };
+    let ports: Vec<_> = if setup.power_sweep {
+        vec![setup.source_port]
+    } else {
+        (1..=c.instrument.port_count).collect()
+    };
+    for port in ports {
+        let min = number(&s.query(&format!("SOUR{ch}:POW{port}? MIN"))?)?;
+        let max = number(&s.query(&format!("SOUR{ch}:POW{port}? MAX"))?)?;
+        if requested[0] < min || requested[1] > max {
+            return Err(Error::Protocol(format!(
+                "Puissance hors plage rapportée port {port}: {min}–{max} dBm"
+            )));
+        }
+    }
+    if setup.apply_calset {
+        if setup.calset.trim().is_empty() {
+            return Err(Error::Protocol(
+                "Choisir un CalSet avant de l'appliquer".into(),
+            ));
+        }
+        let catalog = list(&s.query("CSET:CAT? NAME")?);
+        if !catalog.contains(&setup.calset) {
+            return Err(Error::Protocol("CalSet absent de l'appareil".into()));
+        }
+        s.write(&format!("SENS{ch}:CORR:CSET:ACT \"{}\",0", setup.calset))?;
+        s.write(&format!("SENS{ch}:CORR:STAT ON"))?;
+    }
+    if !setup.power_sweep {
+        s.write(&format!("SOUR{ch}:POW:COUP ON"))?;
+        s.write(&format!("SOUR{ch}:POW {}", c.power_dbm))?;
+    }
+    Ok(())
+}
+fn number(text: &str) -> Result<f64> {
+    text.trim()
+        .parse::<f64>()
+        .ok()
+        .filter(|v| v.is_finite() && v.abs() < 1e30)
+        .ok_or_else(|| Error::Protocol("Valeur numérique instrument invalide".into()))
+}
+/// Explicitly add standard S traces to an existing Standard channel.
+pub fn prepare(s: &mut dyn Session, c: &Config) -> Result<String> {
+    c.instrument.validate().map_err(Error::Protocol)?;
+    let ch = c.instrument.channel;
+    if !is_pna(&s.query("*IDN?")?) {
+        return Err(Error::Protocol("PNA/PNA-X requis".into()));
+    }
+    let ports = number(&s.query("SYST:CAP:HARD:PORT:COUN?")?)? as u8;
+    if c.instrument.port_count > ports {
+        return Err(Error::Protocol(
+            "Ports demandés absents de l'appareil".into(),
+        ));
+    }
+    if s.query(&format!("SENS{ch}:CLAS:NAME?"))?
+        .trim()
+        .trim_matches('"')
+        != "Standard"
+    {
+        return Err(Error::Protocol("Canal Standard existant requis".into()));
+    }
+    let catalog = measurements(&s.query(&format!("CALC{ch}:PAR:CAT:EXT?"))?)?;
+    let mut count = 0;
+    for i in 1..=c.instrument.port_count {
+        for j in 1..=c.instrument.port_count {
+            let p = format!("S{i}{j}");
+            if !catalog.iter().any(|(_, param)| param == &p) {
+                let name = format!("RFW_CH{ch}_{p}");
+                if catalog.iter().any(|(n, _)| n == &name) {
+                    return Err(Error::Protocol(
+                        "Nom RFW existant avec un autre paramètre".into(),
+                    ));
+                }
+                s.write(&format!("CALC{ch}:PAR:DEF:EXT \"{name}\",\"{p}\""))?;
+                count += 1;
+            }
+        }
+    }
+    let error = s.query("SYST:ERR?")?;
+    if !error.trim_start().starts_with("0,") {
+        return Err(Error::Protocol(format!("Préparation PNA : {error}")));
+    }
+    Ok(format!(
+        "{count} traces ajoutées au canal {ch}. Relire ses capacités ; aucun sweep lancé."
+    ))
+}
+pub fn acquire_curves(
+    s: &mut dyn Session,
+    c: &Config,
+    kind: Kind,
+    node: u64,
+) -> Result<Vec<rf_core::network::Curve>> {
+    if c.instrument.pna.power_sweep {
+        return power_curves(s, c, kind, node);
+    }
+    let mut curves = Vec::new();
+    let mut first = c.clone();
+    if c.instrument.pna.all_s_parameters {
+        let ch = c.instrument.channel;
+        if !c.instrument.trigger
+            && s.query(&format!("SENS{ch}:SWE:MODE?"))?
+                .trim()
+                .trim_matches('"')
+                != "HOLD"
+        {
+            return Err(Error::Protocol(
+                "Matrice multi-traces : canal HOLD requis ou activer Déclencher (sweep unique)"
+                    .into(),
+            ));
+        }
+        let catalog = measurements(&s.query(&format!("CALC{ch}:PAR:CAT:EXT?"))?)?;
+        // Resolve every trace before any sweep write, avoiding partial matrices.
+        let mut selected = Vec::new();
+        for i in 1..=c.instrument.port_count {
+            for j in 1..=c.instrument.port_count {
+                let p = format!("S{i}{j}");
+                let names: Vec<_> = catalog.iter().filter(|(_, param)| param == &p).collect();
+                let name = if p == c.s_parameter && !c.instrument.measurement.is_empty() {
+                    names
+                        .iter()
+                        .find(|(n, _)| *n == c.instrument.measurement)
+                        .copied()
+                } else if names.len() == 1 {
+                    Some(names[0])
+                } else {
+                    None
+                }
+                .ok_or_else(|| {
+                    Error::Protocol(format!(
+                        "{p}: créer une trace unique dans ce canal avant de lire la matrice"
+                    ))
+                })?;
+                selected.push((p, name.0.clone()));
+            }
+        }
+        // Measure the selected trace first to configure/trigger exactly once.
+        selected.sort_by_key(|(p, _)| p != &c.s_parameter);
+        for (index, (p, name)) in selected.into_iter().enumerate() {
+            first.s_parameter = p;
+            first.instrument.measurement = name;
+            if index > 0 {
+                first.instrument.configure_sweep = false;
+                first.instrument.trigger = false;
+            }
+            let t = acquire_vna(s, &first, kind)?;
+            curves.push(rf_core::network::Curve::from_trace(node, &t));
+        }
+    } else {
+        let t = acquire_vna(s, c, kind)?;
+        curves.push(rf_core::network::Curve::from_trace(node, &t));
+    }
+    Ok(curves)
+}
+fn power_curves(
+    s: &mut dyn Session,
+    c: &Config,
+    kind: Kind,
+    node: u64,
+) -> Result<Vec<rf_core::network::Curve>> {
+    c.instrument.validate().map_err(Error::Protocol)?;
+    let ch = c.instrument.channel;
+    let p = &c.instrument.pna;
+    if c.instrument.port_count > kind.max_rf_ports().unwrap_or(0)
+        || p.source_port > c.instrument.port_count
+        || !(2..=MAX_POINTS).contains(&c.points)
+    {
+        return Err(Error::Protocol("Ports/points invalides".into()));
+    }
+    let id = s.query("*IDN?")?;
+    if !(is_pna(&id) || kind == Kind::UsbVna && is_usb_vna(&id))
+        || !c.instrument.expected_idn.is_empty()
+            && !id
+                .to_lowercase()
+                .contains(&c.instrument.expected_idn.to_lowercase())
+    {
+        return Err(Error::Protocol("Identité instrument différente".into()));
+    }
+    if number(&s.query("SYST:CAP:HARD:PORT:COUN?")?)? < f64::from(c.instrument.port_count) {
+        return Err(Error::Protocol("Ports physiques insuffisants".into()));
+    }
+    if s.query(&format!("SENS{ch}:CLAS:NAME?"))?
+        .trim()
+        .trim_matches('"')
+        != "Standard"
+    {
+        return Err(Error::Protocol(
+            "Sweep puissance Standard requis ; GCA reste une application distincte".into(),
+        ));
+    }
+    let (_, source) = rf_core::physical::s_parameter_ports(&c.s_parameter)
+        .ok_or_else(|| Error::Protocol("Paramètre S invalide".into()))?;
+    if source != p.source_port {
+        return Err(Error::Protocol(
+            "Le port source du paramètre S doit correspondre au sweep puissance".into(),
+        ));
+    }
+    let cat = measurements(&s.query(&format!("CALC{ch}:PAR:CAT:EXT?"))?)?;
+    let entries: Vec<_> = cat
+        .iter()
+        .filter(|(name, param)| {
+            param == &c.s_parameter
+                && (c.instrument.measurement.is_empty() || name == &c.instrument.measurement)
+        })
+        .collect();
+    if entries.len() != 1 {
+        return Err(Error::Protocol(
+            "Choisir une seule trace S existante".into(),
+        ));
+    }
+    s.write(&format!("CALC{ch}:PAR:SEL \"{}\",FAST", entries[0].0))?;
+    if c.instrument.configure_sweep {
+        let min = number(&s.query("SYST:CAP:FREQ:MIN?")?)?;
+        let max = number(&s.query("SYST:CAP:FREQ:MAX?")?)?;
+        if !c.frequency_hz.is_finite() || c.frequency_hz < min || c.frequency_hz > max {
+            return Err(Error::Protocol("Fréquence CW hors plage".into()));
+        }
+        configure_power_and_cal(s, c)?;
+        s.write(&format!("SENS{ch}:SWE:TYPE POW"))?;
+        s.write(&format!("SENS{ch}:FREQ:CW {}", c.frequency_hz))?;
+        s.write(&format!("SOUR{ch}:POW:COUP OFF"))?;
+        s.write(&format!(
+            "SOUR{ch}:POW{}:PORT:STAR {}",
+            p.source_port, p.power_start_dbm
+        ))?;
+        s.write(&format!(
+            "SOUR{ch}:POW{}:PORT:STOP {}",
+            p.source_port, p.power_stop_dbm
+        ))?;
+        s.write(&format!("SENS{ch}:SWE:POIN {}", c.points))?;
+        s.write(&format!("SENS{ch}:BWID {}", c.instrument.if_bandwidth_hz))?;
+        s.write(&format!("SENS{ch}:AVER:COUN {}", c.instrument.averages))?;
+        s.write(&format!(
+            "SENS{ch}:AVER {}",
+            if c.instrument.averaging { "ON" } else { "OFF" }
+        ))?;
+    } else if !s
+        .query(&format!("SENS{ch}:SWE:TYPE?"))?
+        .trim()
+        .starts_with("POW")
+    {
+        return Err(Error::Protocol(
+            "Le canal n'est pas en sweep de puissance".into(),
+        ));
+    }
+    if c.instrument.trigger {
+        s.write(&format!("SENS{ch}:SWE:MODE HOLD"))?;
+        s.write(&format!("INIT{ch}:IMM"))?;
+        if s.query("*OPC?")?.trim() != "1" {
+            return Err(Error::Protocol("Sweep non terminé".into()));
+        }
+    }
+    let (old_data, old_order) = saved_format(s)?;
+    let result = (|| {
+        s.write("FORM:BORD SWAP")?;
+        s.write("FORM:DATA REAL,64")?;
+        let x = decode(&s.read_binary(&format!("CALC{ch}:X?"))?, 64)?;
+        s.write(&format!("FORM:DATA REAL,{}", c.instrument.precision))?;
+        let data = decode(
+            &s.read_binary(&format!("CALC{ch}:DATA? SDATA"))?,
+            c.instrument.precision,
+        )?;
+        if !(2..=MAX_POINTS).contains(&x.len())
+            || data.len() != 2 * x.len()
+            || x.windows(2).any(|p| p[1] <= p[0])
+            || x.iter().any(|p| !(-200. ..=100.).contains(p))
+        {
+            return Err(Error::Protocol("Axe puissance/SDATA incohérent".into()));
+        }
+        let y = data
+            .chunks_exact(2)
+            .map(|z| 10. * (z[0] * z[0] + z[1] * z[1]).max(1e-30).log10())
+            .collect();
+        let phase = data
+            .chunks_exact(2)
+            .map(|z| z[1].atan2(z[0]).to_degrees())
+            .collect();
+        Ok(vec![rf_core::network::Curve {
+            node,
+            name: c.s_parameter.clone(),
+            x,
+            x_unit: "dBm".into(),
+            y,
+            y_unit: "dB".into(),
+            phase_deg: Some(phase),
+            simulated: false,
+            corrected: false,
+        }])
+    })();
+    finish_transfer(s, &old_data, &old_order, result)
+}
 
 #[derive(Clone, Debug, Default)]
 pub struct Capabilities {
@@ -329,6 +633,8 @@ pub fn acquire_vna(session: &mut dyn Session, c: &Config, kind: Kind) -> Result<
                 "Balayage hors plage de fréquence / taille supportée".into(),
             ));
         }
+        configure_power_and_cal(session, c)?;
+        session.write(&format!("SENS{ch}:SWE:TYPE LIN"))?;
         for cmd in [
             format!("SENS{ch}:FREQ:STAR {}", c.start_hz),
             format!("SENS{ch}:FREQ:STOP {}", c.stop_hz),
@@ -341,6 +647,7 @@ pub fn acquire_vna(session: &mut dyn Session, c: &Config, kind: Kind) -> Result<
         }
     }
     if c.instrument.trigger {
+        session.write(&format!("SENS{ch}:SWE:MODE HOLD"))?;
         session.write(&format!("INIT{ch}:IMM"))?;
         if session.query("*OPC?")?.trim() != "1" {
             return Err(Error::Protocol("Balayage non terminé".into()));
@@ -370,10 +677,9 @@ pub fn acquire_vna(session: &mut dyn Session, c: &Config, kind: Kind) -> Result<
         let mut phase_deg = Vec::new();
         for z in values.chunks_exact(2) {
             let mag = z[0].hypot(z[1]);
-            if mag == 0. {
-                return Err(Error::Protocol("Module S nul : niveau dB indéfini".into()));
-            }
-            magnitude_db.push(20. * mag.log10());
+            // Preserve a finite display floor for exact zeros; matrix operations
+            // independently reject vanishing transmission before inversion.
+            magnitude_db.push(20. * mag.max(1e-15).log10());
             phase_deg.push(z[1].atan2(z[0]).to_degrees());
         }
         Ok(NetworkTrace {

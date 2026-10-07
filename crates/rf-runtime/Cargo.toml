@@ -8,6 +8,7 @@ license.workspace = true
 rf-dsp.workspace = true
 rf-hal.workspace = true
 rf-core.workspace = true
+rf-dut-library.workspace = true
 rf-instruments.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

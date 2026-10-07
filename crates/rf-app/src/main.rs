@@ -11,6 +11,8 @@ mod paths;
 mod plot;
 #[cfg(test)]
 mod plot_tests;
+mod project_registry;
+mod results;
 mod shortcuts;
 mod studio;
 mod theme;
@@ -97,7 +99,7 @@ fn main() -> eframe::Result<()> {
         let last = last.unwrap();
         println!(
             "{}",
-            serde_json::json!({"iterations":iterations,"total_ms":start.elapsed().as_secs_f64()*1000.,"last_run_ms":last.elapsed_ms,"peak":last.trace.and_then(|t|t.peak().ok()),"network":last.network.map(|n|serde_json::json!({"parameter":n.parameter,"points":n.frequency_hz.len(),"first_magnitude_db":n.magnitude_db.first(),"first_phase_deg":n.phase_deg.first(),"simulated":n.simulated})),"measurements":last.measurements.iter().map(|m|serde_json::json!({"name":m.name,"value":m.value,"unit":m.unit,"simulated":m.simulated})).collect::<Vec<_>>(),"tests":last.tests,"completed":last.completed})
+            serde_json::json!({"iterations":iterations,"total_ms":start.elapsed().as_secs_f64()*1000.,"last_run_ms":last.elapsed_ms,"peak":last.trace.and_then(|t|t.peak().ok()),"network":last.network.map(|n|serde_json::json!({"parameter":n.parameter,"points":n.frequency_hz.len(),"first_magnitude_db":n.magnitude_db.first(),"first_phase_deg":n.phase_deg.first(),"simulated":n.simulated})),"measurements":last.measurements.iter().map(|m|serde_json::json!({"name":m.name,"value":m.value,"unit":m.unit,"simulated":m.simulated})).collect::<Vec<_>>(),"curves":last.curves,"tests":last.tests,"completed":last.completed})
         );
         return Ok(());
     }

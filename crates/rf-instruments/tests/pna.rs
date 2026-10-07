@@ -287,6 +287,12 @@ fn applied_sweep_checks_hardware_range_and_identity() {
     s.responses
         .insert("SYST:CAP:FREQ:MAX?".into(), "5e10".into());
     s.responses.insert("*OPC?".into(), "1".into());
+    for port in 1..=2 {
+        s.responses
+            .insert(format!("SOUR3:POW{port}? MIN"), "-60".into());
+        s.responses
+            .insert(format!("SOUR3:POW{port}? MAX"), "10".into());
+    }
     pna::acquire(&mut s, &c).unwrap();
     assert!(s.commands.contains(&"SENS3:FREQ:STAR 36000000000".into()));
     assert!(s.commands.contains(&"INIT3:IMM".into()));
@@ -302,4 +308,63 @@ fn applied_sweep_checks_hardware_range_and_identity() {
     let mut s = mock();
     assert!(pna::acquire(&mut s, &c).is_err());
     assert_eq!(s.commands, ["*IDN?"]);
+}
+#[test]
+fn multi_trace_read_uses_one_trigger_and_validates_catalog_before_writes() {
+    let mut c = config();
+    c.instrument.pna.all_s_parameters = true;
+    c.instrument.trigger = true;
+    let mut s = mock();
+    s.responses.insert(
+        "CALC3:PAR:CAT:EXT?".into(),
+        "\"gain,S21,return,S11,reverse,S12,output,S22\"".into(),
+    );
+    s.responses.insert("*OPC?".into(), "1".into());
+    let curves = pna::acquire_curves(&mut s, &c, rf_core::Kind::PnaX, 7).unwrap();
+    assert_eq!(curves.len(), 4);
+    assert!(curves.iter().all(|c| c.node == 7 && c.x_unit == "Hz"));
+    assert_eq!(s.commands.iter().filter(|s| *s == "INIT3:IMM").count(), 1);
+    let mut s = mock();
+    assert!(pna::acquire_curves(&mut s, &c, rf_core::Kind::PnaX, 7).is_err());
+    assert!(
+        !s.commands
+            .iter()
+            .any(|c| c.starts_with("INIT") || c.starts_with("SOUR"))
+    );
+}
+#[test]
+fn power_axis_and_out_of_range_level_are_not_silently_accepted() {
+    let mut c = config();
+    c.instrument.pna.power_sweep = true;
+    c.instrument.pna.power_start_dbm = -30.;
+    c.instrument.pna.power_stop_dbm = -10.;
+    c.instrument.configure_sweep = true;
+    c.frequency_hz = 37e9;
+    c.points = 3;
+    let mut s = mock();
+    for (key, value) in [
+        ("SYST:CAP:FREQ:MIN?", "1e7"),
+        ("SYST:CAP:FREQ:MAX?", "5e10"),
+        ("SOUR3:POW1? MIN", "-60"),
+        ("SOUR3:POW1? MAX", "10"),
+    ] {
+        s.responses.insert(key.into(), value.into());
+    }
+    s.binary.insert(
+        "CALC3:X?".into(),
+        [-30_f64, -20., -10.]
+            .into_iter()
+            .flat_map(f64::to_le_bytes)
+            .collect(),
+    );
+    let r = pna::acquire_curves(&mut s, &c, rf_core::Kind::PnaX, 1).unwrap();
+    assert_eq!(r[0].x_unit, "dBm");
+    assert_eq!(r[0].x, [-30., -20., -10.]);
+    assert!(s.commands.contains(&"SENS3:SWE:TYPE POW".into()));
+    assert!(s.commands.contains(&"SOUR3:POW1:PORT:STOP -10".into()));
+    assert!(s.commands.contains(&"FORM:DATA ASC,0".into()));
+    s.commands.clear();
+    c.instrument.pna.power_stop_dbm = 20.;
+    assert!(pna::acquire_curves(&mut s, &c, rf_core::Kind::PnaX, 1).is_err());
+    assert!(!s.commands.iter().any(|c| c.starts_with("SOUR3:POW1:PORT")));
 }

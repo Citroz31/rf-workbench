@@ -1,3 +1,20 @@
+# Validation 0.7 — projets, PNA et fixtures
+
+Contrôles locaux Windows x64, Rust 1.90, 7 octobre 2026.
+
+- Formatage et Clippy strict workspace/all-targets réussis ; **130 tests Rust** et **5 intégrations Python** réussis.
+- Reset du worker : une sortie DC simulée activée est coupée, les sessions sont fermées, la séquence repart à zéro ; projets historiques et nouveaux champs relus.
+- Flow : bandes incompatibles, niveaux d'entrée/sortie déclarés et puissance de sweep contrôlés. OP1dB produit un avertissement de compression, pas une limite de dommage inventée.
+- PNA : matrice S d'un seul balayage HOLD, refus avant émission RF si une trace manque, niveaux interrogés avant écriture, axe de puissance signé et unités séparées de l'axe Hz.
+- Touchstone RI/MA/DB, reverse, cascades/deembedding complexes, grilles singulières/non compatibles et refus d'un 2xThru 36–38 GHz seuls vérifiés.
+- Extraction native comparée aux fixtures complexes de **scikit-rf 1.8.0 / IEEEP370_SE_NZC_2xThru**, transitions 53/47 Ω, plan de coupe forcé 50 Ω ; erreur complexe maximale sous **2e-5**. L'oracle est un outil de développement ; aucun Python n'est nécessaire dans l'application.
+- Sweep puissance simulé : perte de gain 1 dB à Pin = OP1dB − gain + 1 dB, sans présenter ce modèle comme une courbe constructeur.
+- Six captures natives 1600 × 1000 inspectées : accueil, projet, PNA, résultats, fixtures, flow. Le guide de 32 chapitres est rendu et contrôlé sur toutes ses pages.
+
+Ces tests ne qualifient pas un N5245B physique, son firmware, ses licences ni ses calibrations. Le solveur RF n'est pas un simulateur électromagnétique, et les limites inconnues restent signalées. L'extraction NZC suppose des demi-fixtures de longueurs électriques égales ; elle n'est pas une certification IEEE 370, un ZC complet ou l'AFR propriétaire Keysight. Les applications NF/IMD/GCA utilisent les canaux préparés sur l'instrument.
+
+La livraison Windows MSVC doit réussir ses tests et vérifier le ZIP et l'EXE par téléchargement anonyme avant d'être annoncée. Les historiques ci-dessous décrivent leurs versions respectives.
+
 # Validation 0.5.0 - interface, projets et PNA
 
 ## Version 0.6 - Windows local, 7 octobre 2026

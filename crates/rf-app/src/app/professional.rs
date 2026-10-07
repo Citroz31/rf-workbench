@@ -259,116 +259,19 @@ impl Workbench {
         self.canvas.annotation = Some(id);
         self.view = View::Schematic;
     }
-    pub(super) fn snapshot_workspace(&mut self) {
-        if let Some(w) = self.studio.workspaces.get_mut(self.studio.active) {
-            w.name = self.project.name.clone();
-            w.project = self.project.clone();
-            w.project_path = self.project_path.clone();
-            w.csv_path = self.csv_path.clone();
-            w.layout = self.layout.clone();
-            if self.view.dockable() {
-                w.layout.primary = self.view;
+    pub(super) fn project_chip(&mut self, ui: &mut egui::Ui) {
+        let chip = ui.button(&self.project.name);
+        chip.context_menu(|ui| {
+            if ui.button("Renommer le projet…").clicked() {
+                self.setup_rename = Some(RenameSetup {
+                    index: 0,
+                    name: self.project.name.clone(),
+                    focus: true,
+                    error: String::new(),
+                });
+                ui.close();
             }
-            w.pan = [self.canvas.pan.x, self.canvas.pan.y];
-            w.zoom = self.canvas.zoom;
-            w.history = self.history.clone();
-            w.buffers = self.buffers.clone();
-            w.trace = (self.trace_display == TraceDisplay::Acquired).then(|| self.trace.clone());
-            w.network = self.network.clone();
-            w.waveform = self.waveform.clone();
-            w.measurements = self.measurements.clone();
-            w.waterfall = self.waterfall.clone();
-        }
-    }
-    pub(super) fn restore_workspace(&mut self, index: usize) {
-        self.instrument_dialog = None;
-        self.hardware = false;
-        if self.worker.is_busy() {
-            return;
-        }
-        self.routing_job = None;
-        let Some(w) = self.studio.workspaces.get(index).cloned() else {
-            return;
-        };
-        self.studio.active = index;
-        self.project = w.project;
-        if !w.project_path.is_empty() {
-            self.project_path = w.project_path;
-        }
-        if !w.csv_path.is_empty() {
-            self.csv_path = w.csv_path;
-        }
-        self.layout = w.layout;
-        self.view = self.layout.primary;
-        self.history = w.history;
-        self.canvas = Canvas::configured(self.preferences.snap, self.preferences.orthogonal);
-        self.canvas.restore_view(w.pan, w.zoom);
-        self.dsp_history = super::dsp::History::default();
-        self.dsp_draft = super::dsp::Draft::default();
-        self.buffers = w.buffers;
-        self.network = w.network;
-        self.waveform = w.waveform;
-        self.measurements = w.measurements;
-        self.waterfall = w.waterfall;
-        self.preview = w.trace.is_none()
-            && self.network.is_none()
-            && self.waveform.is_none()
-            && self.measurements.is_empty();
-        self.trace_display = if w.trace.is_some() {
-            TraceDisplay::Acquired
-        } else if self.preview {
-            TraceDisplay::Preview
-        } else {
-            TraceDisplay::Unavailable
-        };
-        self.trace = w.trace.unwrap_or_else(|| {
-            rf_instruments::simulate_trace(&rf_core::Config::default(), 2.45e9, -13., 0).unwrap()
         });
-        self.tests.clear();
-        self.debug_snapshot = None;
-        self.iq_keys = [None, None];
-        self.wave_key = None;
-        self.buffer_key = None;
-        self.layout_revision += 1;
-    }
-    pub(super) fn workspace_tabs(&mut self, ui: &mut egui::Ui) {
-        let mut switch = None;
-        let mut rename = None;
-        for (i, w) in self.studio.workspaces.iter().enumerate() {
-            let tab = ui
-                .add_enabled(
-                    !self.worker.is_busy(),
-                    egui::Button::new(&w.name).selected(i == self.studio.active),
-                )
-                .on_hover_text(pair(
-                    "Clic droit : renommer le setup",
-                    "Right click: rename setup",
-                ));
-            if tab.clicked() {
-                switch = Some(i);
-            }
-            tab.context_menu(|ui| {
-                if ui
-                    .button(pair("Renommer le setup…", "Rename setup…"))
-                    .clicked()
-                {
-                    rename = Some(i);
-                    ui.close();
-                }
-            });
-        }
-        if let Some(index) = rename {
-            self.setup_rename = Some(RenameSetup {
-                index,
-                name: self.studio.workspaces[index].name.clone(),
-                focus: true,
-                error: String::new(),
-            });
-        }
-        if let Some(i) = switch {
-            self.snapshot_workspace();
-            self.restore_workspace(i);
-        }
     }
     pub(super) fn rename_setup_window(&mut self, ctx: &egui::Context) {
         let Some(mut draft) = self.setup_rename.take() else {
@@ -420,11 +323,12 @@ impl Workbench {
         }
     }
     fn save_studio(&mut self) {
-        self.snapshot_workspace();
-        match self
-            .studio
+        let mut preferences = self.studio.clone();
+        preferences.workspaces.clear();
+        preferences.active = 0;
+        match preferences
             .validate()
-            .and_then(|_| serde_json::to_string_pretty(&self.studio).map_err(|e| e.to_string()))
+            .and_then(|_| serde_json::to_string_pretty(&preferences).map_err(|e| e.to_string()))
             .and_then(|s| atomic_save(&self.studio_path, &s))
         {
             Ok(()) => self.log(
@@ -440,28 +344,10 @@ impl Workbench {
     }
     pub(super) fn studio_view(&mut self, ui: &mut egui::Ui) {
         egui::ScrollArea::vertical().id_salt("studio-settings").show(ui,|ui| {
-            ui.heading(t("Espaces de travail"));
-            ui.label(pair("Chaque banc conserve son graphe, sa disposition, ses résultats et son historique de session.","Each bench keeps its graph, layout, results and session history."));
-            ui.horizontal(|ui| {if ui.button(t("Enregistrer Studio")).clicked(){self.save_studio();}ui.monospace(&self.studio_path);});
-            ui.separator();
-            if ui.button(pair("Renommer le setup actif…", "Rename active setup…")).clicked() { self.setup_rename=Some(RenameSetup {index:self.studio.active,name:self.project.name.clone(),focus:true,error:String::new()}); }
-            ui.horizontal(|ui| {
-                ui.add(egui::TextEdit::singleline(&mut self.workspace_name).char_limit(80));
-                if ui.add_enabled(!self.worker.is_busy()&&self.studio.workspaces.len()<8&&!self.workspace_name.trim().is_empty(),egui::Button::new(t("Nouvel espace"))).clicked() {
-                    self.snapshot_workspace();
-                    let project=Project{name:self.workspace_name.clone(),graph:rf_core::Graph::default(),..Project::default()};
-                    let mut workspace=Workspace::new(self.workspace_name.clone(),project);
-                    let stamp=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
-                    let directory=std::path::Path::new(&self.project_path).parent().unwrap_or_else(||std::path::Path::new("."));
-                    workspace.project_path=directory.join(format!("bench-{stamp}.rfw.json")).to_string_lossy().into_owned();
-                    workspace.csv_path=directory.join(format!("trace-{stamp}.csv")).to_string_lossy().into_owned();
-                    self.studio.workspaces.push(workspace);
-                    self.restore_workspace(self.studio.workspaces.len()-1);self.canvas.fit();self.view=View::Studio;
-                }
-                if ui.add_enabled(!self.worker.is_busy()&&self.studio.workspaces.len()>1,egui::Button::new(pair("Fermer cet espace","Close workspace"))).on_hover_text(pair("Retire cet espace de Studio ; enregistrer vos projets avant de fermer.","Removes this workspace from Studio; save your projects before closing.")).clicked() {
-                    self.studio.workspaces.remove(self.studio.active);self.studio.active=0;self.restore_workspace(0);self.view=View::Studio;
-                }
-            });
+            ui.heading("Projet indépendant et préférences");
+            ui.label("Créer ou ouvrir un fichier .rfbench via Accueil / projets. Un seul banc est actif ; les résultats et sessions sont réinitialisés à chaque ouverture.");
+            if ui.button("Enregistrer les préférences / layouts").clicked(){self.save_studio();}
+            if ui.button("Renommer le projet…").clicked(){self.setup_rename=Some(RenameSetup{index:0,name:self.project.name.clone(),focus:true,error:String::new()});}
             ui.separator();ui.heading(t("Disposition"));
             ui.label(pair("Les menus Disposition de chaque vue permettent de la déplacer. Les fenêtres flottantes se déplacent par leur barre de titre.","Use each pane's Layout menu to move it. Floating windows move by their title bars."));
             ui.horizontal(|ui| {
