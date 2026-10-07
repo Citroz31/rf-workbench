@@ -47,7 +47,7 @@ impl Workbench {
                 "Aucun balayage réseau acquis. Charger la démo puis cliquer Exécuter.",
             ));
         }
-        ui.label(RichText::new(crate::i18n::t("Le modèle PNA illustre une perte et une phase idéales. Il ne représente ni une calibration VNA, ni des données constructeur.")).size(12. * crate::theme::scale()).color(muted()));
+        ui.label(RichText::new(crate::i18n::t("Le modèle PNA simulé illustre un gain/perte et une phase idéales. Il ne représente ni une calibration VNA, ni des données constructeur.")).size(12. * crate::theme::scale()).color(muted()));
     }
     pub(super) fn measurement_view(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
@@ -101,6 +101,7 @@ impl Workbench {
         }
     }
     pub(super) fn replace_demo(&mut self, graph: rf_core::Graph, name: &str) {
+        self.instrument_dialog = None;
         self.history.record(self.project.graph.clone());
         self.project.graph = graph;
         self.project.name = name.into();
@@ -390,7 +391,7 @@ impl Workbench {
         caption(ui, "PROJET / FICHIERS");
         ui.label(crate::i18n::t("Nom du banc"));
         ui.text_edit_singleline(&mut self.project.name);
-        ui.label(crate::i18n::t("Projet (.rfw.json)"));
+        ui.label(crate::i18n::t("Projet (.rfbench)"));
         ui.add(egui::TextEdit::singleline(&mut self.project_path).desired_width(f32::INFINITY));
         ui.horizontal(|ui| {
             if ui.button(crate::i18n::t("Enregistrer le projet")).clicked() {
@@ -410,6 +411,15 @@ impl Workbench {
         }
         ui.add_space(20.);
         caption(ui, "BANCS DE DÉMONSTRATION");
+        if ui
+            .button("PA 36–38 GHz · gain 20 dB (petit signal)")
+            .clicked()
+        {
+            self.replace_demo(
+                rf_core::Graph::pa_demo(),
+                "PA 36–38 GHz · gain 20 dB (simulation)",
+            );
+        }
         ui.horizontal_wrapped(|ui| {
             if ui.button(crate::i18n::t("RF / spectre")).clicked() {
                 self.replace_demo(rf_core::Graph::demo(), "Chaîne RF · 2.45 GHz");

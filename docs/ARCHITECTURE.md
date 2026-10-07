@@ -76,3 +76,13 @@ Le moteur est séquentiel ; il n'inclut pas de boucles de programme, sous-schém
 Les adaptateurs SDK isolés dans `python/adapters/` ne sont pas la passerelle de scripts utilisateur `rfworkbench/runner.py`. Ils ont des tests de stockage/réseau séparés dans la CI et ne nécessitent pas leurs dépendances pour compiler Rust. La supervision possède les pipes sur un thread, borne les messages JSON et interrompt/récolte le helper lors d'un délai. Une fermeture normale finalise les formats nécessitant un footer ; une interruption forcée peut perdre cette finalisation.
 
 Les capacités sont des déclarations de pilotes, pas des capacités inventées à partir du nom d'un appareil. Horloges, triggers, PTP/GPSDO/MIMO non supportés sont refusés. Seule l'identification peut reconnecter et être rejouée automatiquement. La matrice complète, les conventions de puissance/PSD et les limites figurent dans [V0.4](V0.4.md).
+
+## Interface et acquisition 0.5
+
+`bench_file` enveloppe un `Project` et un `studio::Layout` dans le format JSON versionné `.rfbench`, limité à 4 Mo. Les anciens JSON `Project` restent acceptés. Les paramètres de `Config.instrument` ont des defaults pour conserver la lecture des anciens graphes. Créer/ouvrir un banc sauvegarde l'espace courant en mémoire puis ouvre un nouvel espace ; chaque changement d'espace revient en simulation.
+
+Les panneaux utilisent les interactions de resize egui ; les graphiques ont leur propre `Resize` vertical. Les fenêtres d'instrument éditent une copie jusqu'à Appliquer. Le navigateur de fichiers met en cache une liste bornée et la lit sur un thread, y compris les métadonnées des entrées. Les chargements locaux JSON sont bornés mais synchrones. Les I/O instruments restent dans le worker et ne sont jamais rejoués automatiquement.
+
+`rf-instruments::pna` possède le protocole Keysight de canal, catalogue, classes VALID, plage de fréquence et SDATA. `pna_application` conserve les FDATA scalaires et le format d'affichage. Les deux chemins lisent l'axe réel en REAL64, bornent/vérifient les payloads, puis tentent les deux restaurations de format/endianness. Le worker réutilise les sessions PNA Standard pendant une exécution continue, indexées par bloc et profil ; l'arrêt ferme ces sessions sans modifier la sortie RF du PNA. Les opérations ponctuelles de console/applications ouvrent une session distincte.
+
+Les capacités affichées correspondent à une ressource et à un canal. L'identité attendue peut filtrer le numéro de série. La validation finale du canal/de la trace ne repose pas seulement sur le cache UI. Un pilote typé supplémentaire devra décrire ses commandes, données, limites, capacités et arrêt ; une console SCPI ne remplace pas cette implémentation. Voir [V0.5](V0.5.md) et le guide PDF.

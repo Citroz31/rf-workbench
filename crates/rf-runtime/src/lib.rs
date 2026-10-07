@@ -51,6 +51,7 @@ pub struct Engine {
     dsp: rf_dsp::Processor,
     io: BTreeMap<u64, rf_hal::transport::Io>,
     sources: BTreeMap<u64, rf_hal::streaming::Source>,
+    pna_sessions: BTreeMap<u64, (String, u64, Box<dyn Session>)>,
 }
 impl Engine {
     pub fn query(&mut self, resource: &str, command: &str, hardware: bool) -> Result<String> {
@@ -99,6 +100,7 @@ impl Engine {
         self.io.clear();
         self.sources.clear();
         self.dsp.reset();
+        self.pna_sessions.clear();
         errors
     }
     pub fn execute(
@@ -146,7 +148,9 @@ impl Engine {
             }
         }
         for n in graph.nodes.iter().filter(|n| n.kind.is_extended()) {
-            if Resource::parse(&n.config.resource).map_err(|e| e.to_string())? != Resource::Sim {
+            if Resource::parse(&n.config.resource).map_err(|e| e.to_string())? != Resource::Sim
+                && !matches!(n.kind, Kind::Pna | Kind::PnaX)
+            {
                 return Err(format!("{} : profil matériel non implémenté", n.title));
             }
         }
@@ -259,6 +263,31 @@ impl Engine {
                     });
                 }
                 values.insert((id, 0), Value::Dsp(Arc::new(data)));
+                result.completed.push(id);
+                capture(&mut result, node, &values);
+                observe(debug::Phase::After, node, &result)?;
+                continue;
+            }
+            if matches!(node.kind, Kind::Pna | Kind::PnaX) && c.resource != "SIM::RF::INSTR" {
+                if !hardware {
+                    return Err("PNA : activer le mode Matériel".into());
+                }
+                let replace = self
+                    .pna_sessions
+                    .get(&id)
+                    .is_none_or(|(r, t, _)| r != &c.resource || *t != c.instrument.timeout_ms);
+                if replace {
+                    let session = ResourceManager
+                        .open_resource(&c.resource, Duration::from_millis(c.instrument.timeout_ms))
+                        .map_err(|e| e.to_string())?;
+                    self.pna_sessions
+                        .insert(id, (c.resource.clone(), c.instrument.timeout_ms, session));
+                }
+                let (_, _, s) = self.pna_sessions.get_mut(&id).unwrap();
+                let network =
+                    rf_instruments::pna::acquire(s.as_mut(), c).map_err(|e| e.to_string())?;
+                result.network = Some(network.clone());
+                values.insert((id, 0), Value::Network(network));
                 result.completed.push(id);
                 capture(&mut result, node, &values);
                 observe(debug::Phase::After, node, &result)?;
@@ -514,6 +543,31 @@ pub fn self_tests() -> Vec<TestResult> {
 }
 
 pub enum Command {
+    PnaApplication {
+        node: u64,
+        config: rf_core::Config,
+        compression: bool,
+        hardware: bool,
+    },
+    IdentifyInstruments {
+        node: u64,
+        manual: String,
+        hardware: bool,
+        timeout_ms: u64,
+    },
+    InspectPna {
+        node: u64,
+        config: rf_core::Config,
+        hardware: bool,
+    },
+    InstrumentConsole {
+        node: u64,
+        config: rf_core::Config,
+        command: String,
+        write: bool,
+        binary_path: Option<String>,
+        hardware: bool,
+    },
     Discover,
     Debug {
         graph: Graph,
@@ -540,6 +594,22 @@ pub enum Command {
 }
 #[derive(Clone, Debug)]
 pub enum Event {
+    PnaApplicationData {
+        node: u64,
+        data: rf_instruments::pna_application::ApplicationData,
+    },
+    Devices {
+        node: u64,
+        devices: Vec<rf_instruments::discovery::Device>,
+    },
+    PnaCapabilities {
+        node: u64,
+        capabilities: rf_instruments::pna::Capabilities,
+    },
+    InstrumentResponse {
+        node: u64,
+        text: String,
+    },
     Resources(Vec<String>),
     Done(Box<RunResult>),
     Suite(Vec<TestResult>),
@@ -577,6 +647,136 @@ impl Worker {
                 // an immediate Stop must also cancel a queued command.
                 let mut shutdown = true;
                 match command {
+                    Command::PnaApplication {
+                        node,
+                        config,
+                        compression,
+                        hardware,
+                    } => {
+                        let result=(||->Result<Option<rf_instruments::pna_application::ApplicationData>>{
+                            if !hardware{return Err("Activer Matériel pour l'application PNA".into());}
+                            config.instrument.validate()?;
+                            let mut s=ResourceManager.open_resource(&config.resource,Duration::from_millis(config.instrument.timeout_ms)).map_err(|e|e.to_string())?;
+                            if compression {rf_instruments::pna_application::set_compression(s.as_mut(),&config).map_err(|e|e.to_string())?;Ok(None)}else{rf_instruments::pna_application::acquire(s.as_mut(),&config).map(Some).map_err(|e|e.to_string())}
+                        })();
+                        let _=etx.send(match result{Ok(Some(data))=>Event::PnaApplicationData{node,data},Ok(None)=>Event::InstrumentResponse{node,text:"Niveau GCA appliqué au canal identifié ; aucune mesure déclenchée.".into()},Err(e)=>Event::Error(e)});
+                    }
+                    Command::IdentifyInstruments {
+                        node,
+                        manual,
+                        hardware,
+                        timeout_ms,
+                    } => {
+                        if !hardware {
+                            let _ = etx.send(Event::Error(
+                                "Activer Matériel pour identifier les équipements".into(),
+                            ));
+                        } else {
+                            let mut resources = match rf_hal::discover_visa() {
+                                Ok(v) => v,
+                                Err(e) => {
+                                    let _ = etx.try_send(Event::Message(e));
+                                    Vec::new()
+                                }
+                            };
+                            if !manual.is_empty() && manual != "SIM::RF::INSTR" {
+                                resources.push(manual);
+                            }
+                            let devices = rf_instruments::discovery::identify(
+                                &rf_instruments::discovery::physical(&resources),
+                                Duration::from_millis(timeout_ms.clamp(1, 30000)),
+                                &c,
+                            );
+                            let _ = etx.send(Event::Devices { node, devices });
+                        }
+                    }
+                    Command::InspectPna {
+                        node,
+                        config,
+                        hardware,
+                    } => {
+                        let result = if !hardware {
+                            Err("Activer Matériel pour lire les capacités".into())
+                        } else {
+                            rf_instruments::pna::inspect(
+                                &config.resource,
+                                config.instrument.channel,
+                                Duration::from_millis(config.instrument.timeout_ms.clamp(1, 30000)),
+                            )
+                            .map_err(|e| e.to_string())
+                        };
+                        let _ = etx.send(match result {
+                            Ok(capabilities) => Event::PnaCapabilities { node, capabilities },
+                            Err(e) => Event::Error(e),
+                        });
+                    }
+                    Command::InstrumentConsole {
+                        node,
+                        config,
+                        command,
+                        write,
+                        binary_path,
+                        hardware,
+                    } => {
+                        let result = (|| -> Result<String> {
+                            config.instrument.validate()?;
+                            let parsed =
+                                Resource::parse(&config.resource).map_err(|e| e.to_string())?;
+                            if parsed != Resource::Sim && !hardware {
+                                return Err("Activer Matériel pour cette console".into());
+                            }
+                            let mut session = ResourceManager
+                                .open_resource(
+                                    &config.resource,
+                                    Duration::from_millis(config.instrument.timeout_ms),
+                                )
+                                .map_err(|e| e.to_string())?;
+                            if !config.instrument.expected_idn.trim().is_empty() {
+                                let idn = session.query("*IDN?").map_err(|e| e.to_string())?;
+                                if !idn
+                                    .to_lowercase()
+                                    .contains(&config.instrument.expected_idn.trim().to_lowercase())
+                                {
+                                    return Err(
+                                        "IDN différent du profil attendu ; aucune commande envoyée"
+                                            .into(),
+                                    );
+                                }
+                            }
+                            if let Some(path) = binary_path {
+                                if write {
+                                    return Err(
+                                        "Acquisition binaire incompatible avec write".into()
+                                    );
+                                }
+                                let bytes =
+                                    session.read_binary(&command).map_err(|e| e.to_string())?;
+                                use std::io::Write;
+                                let mut file = std::fs::OpenOptions::new()
+                                    .write(true)
+                                    .create_new(true)
+                                    .open(&path)
+                                    .map_err(|e| e.to_string())?;
+                                file.write_all(&bytes).map_err(|e| e.to_string())?;
+                                Ok(format!(
+                                    "{} octets binaires enregistrés : {path}",
+                                    bytes.len()
+                                ))
+                            } else if write {
+                                session.write(&command).map_err(|e| e.to_string())?;
+                                Ok(
+                                    "Write envoyé ; vérifier SYST:ERR? et l'état de l'équipement."
+                                        .into(),
+                                )
+                            } else {
+                                session.query(&command).map_err(|e| e.to_string())
+                            }
+                        })();
+                        let _ = etx.send(match result {
+                            Ok(text) => Event::InstrumentResponse { node, text },
+                            Err(e) => Event::Error(e),
+                        });
+                    }
                     Command::Discover => match rf_hal::discover_visa() {
                         Ok(v) => {
                             let _ = etx.send(Event::Resources(v));

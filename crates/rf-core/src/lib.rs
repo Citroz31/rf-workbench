@@ -1,5 +1,6 @@
 //! Platform-independent RF data, typed acyclic graphs and versioned bench files.
 pub mod dsp;
+pub mod instrument;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use thiserror::Error;
@@ -414,6 +415,7 @@ pub struct Measurement {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct Config {
+    pub instrument: instrument::Controls,
     pub dsp: dsp::Settings,
     pub resource: String,
     pub frequency_hz: f64,
@@ -439,7 +441,7 @@ pub struct Config {
 }
 impl Default for Config {
     fn default() -> Self {
-        Self { dsp: dsp::Settings::default(), resource: "SIM::RF::INSTR".into(), frequency_hz: 2.45e9, power_dbm: -10.0,
+        Self { instrument: instrument::Controls::default(), dsp: dsp::Settings::default(), resource: "SIM::RF::INSTR".into(), frequency_hz: 2.45e9, power_dbm: -10.0,
             loss_db: 3.0, start_hz: 2.40e9, stop_hz: 2.50e9, points: 401,
             lower_dbm: -15.0, upper_dbm: -11.0, trace_query: ":TRAC:DATA? TRACE1".into(),
             sample_rate_hz: 100e6, tone_hz: 1e6, samples: 1024, resolution_bits: 14, voltage_v: 1.0, temperature_c: 25., resistance_ohm: 50., noise_figure_db: 2.5, s_parameter: "S21".into(), dut_id: None,
@@ -640,6 +642,7 @@ impl Graph {
         }
         for node in &self.nodes {
             let c = &node.config;
+            c.instrument.validate().map_err(Error::Invalid)?;
             if node.id == u64::MAX
                 || node
                     .position
@@ -666,7 +669,7 @@ impl Graph {
                 }
                 Kind::Dut => {
                     c.loss_db.is_finite()
-                        && (0.0..=160.0).contains(&c.loss_db)
+                        && (-80.0..=160.0).contains(&c.loss_db)
                         && c.noise_figure_db.is_finite()
                         && (0. ..=60.).contains(&c.noise_figure_db)
                         && c.frequency_hz.is_finite()
@@ -688,7 +691,7 @@ impl Graph {
                 Kind::Peak => true,
                 Kind::Pna | Kind::PnaX => {
                     c.loss_db.is_finite()
-                        && (0. ..=160.).contains(&c.loss_db)
+                        && (-80. ..=160.).contains(&c.loss_db)
                         && c.start_hz.is_finite()
                         && c.stop_hz.is_finite()
                         && c.start_hz > 0.
@@ -743,6 +746,24 @@ impl Graph {
         }
         for (a, b) in [(1, 2), (2, 3), (3, 4), (4, 5), (5, 6)] {
             g.connect(a, b).expect("demo graph");
+        }
+        g
+    }
+    pub fn pa_demo() -> Self {
+        let mut g = Self::network_demo();
+        for n in &mut g.nodes {
+            if n.kind == Kind::Dut {
+                n.title = "PA · 20 dB · OP1dB ≈ 34 dBm · Psat cible 40 dBm".into();
+                n.config.loss_db = -20.;
+                n.comment="Modèle petit signal uniquement. P1dB et Psat sont des objectifs du banc, pas simulés par ce bloc.".into();
+            }
+            if matches!(n.kind, Kind::Pna | Kind::PnaX) {
+                n.config.start_hz = 36e9;
+                n.config.stop_hz = 38e9;
+                n.config.points = 201;
+                n.config.power_dbm = -30.;
+                n.title = "PNA-X · 36–38 GHz".into();
+            }
         }
         g
     }
@@ -804,6 +825,9 @@ impl Project {
         }
         // Drafts may have unconnected inputs, but their structure must be sound.
         p.graph.order()?;
+        for n in &p.graph.nodes {
+            n.config.instrument.validate().map_err(Error::Invalid)?;
+        }
         if p.graph.nodes.len() > 1000
             || p.graph.nodes.iter().any(|n| {
                 n.id == u64::MAX || n.position.iter().any(|v| !v.is_finite() || v.abs() > 1e6)

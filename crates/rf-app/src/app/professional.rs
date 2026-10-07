@@ -274,6 +274,8 @@ impl Workbench {
         }
     }
     pub(super) fn restore_workspace(&mut self, index: usize) {
+        self.instrument_dialog = None;
+        self.hardware = false;
         if self.worker.is_busy() {
             return;
         }
@@ -575,6 +577,7 @@ if ui.small_button(crate::i18n::t("×")).on_hover_text(pair("Retirer le layout",
                 .default_pos([pane.rect[0], pane.rect[1]])
                 .default_size([pane.rect[2], pane.rect[3]])
                 .resizable(true)
+                .min_size([300., 220.])
                 .show(ctx, |ui| {
                     self.pane_header(ui, pane.view);
                     egui::ScrollArea::vertical()

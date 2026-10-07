@@ -1,11 +1,15 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod analysis;
 mod app;
+mod bench_file;
 mod canvas;
 mod editor;
+mod file_browser;
 mod help;
 mod i18n;
 mod plot;
+#[cfg(test)]
+mod plot_tests;
 mod shortcuts;
 mod studio;
 mod theme;
@@ -13,6 +17,38 @@ mod visuals;
 
 fn main() -> eframe::Result<()> {
     let args: Vec<String> = std::env::args().collect();
+    if let Some(i) = args.iter().position(|a| a == "--write-examples") {
+        let dir = std::path::Path::new(args.get(i + 1).expect("destination examples"));
+        std::fs::create_dir_all(dir).expect("examples directory");
+        for (file, graph, name) in [
+            (
+                "PA-36-38GHz.rfbench",
+                rf_core::Graph::pa_demo(),
+                "PA 36–38 GHz · gain 20 dB (simulation)",
+            ),
+            (
+                "PNA-X.rfbench",
+                rf_core::Graph::network_demo(),
+                "PNA-X / DUT",
+            ),
+            (
+                "QAM16-AWGN.rfbench",
+                rf_runtime::dsp_demo(),
+                "QAM16 / AWGN / Viterbi",
+            ),
+        ] {
+            let b = bench_file::BenchFile::new(
+                rf_core::Project {
+                    schema_version: rf_core::SCHEMA_VERSION,
+                    name: name.into(),
+                    graph,
+                },
+                studio::Layout::default(),
+            );
+            std::fs::write(dir.join(file), b.json().unwrap()).unwrap();
+        }
+        return Ok(());
+    }
     if args.iter().any(|a| a == "--self-test") {
         let mut tests = rf_core::self_tests();
         tests.extend(rf_instruments::self_tests());

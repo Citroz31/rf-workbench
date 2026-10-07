@@ -76,12 +76,25 @@ fn mismatched_iq_cadences_and_hardware_profiles_fail_explicitly() {
             .unwrap_err()
             .contains("fréquence")
     );
-    let mut g = Graph::network_demo();
-    g.nodes[1].config.resource = "TCPIP::127.0.0.1::5025::SOCKET".into();
+    let mut g = Graph::default();
+    g.add(Kind::Awg, [0., 0.]);
+    g.nodes[0].config.resource = "TCPIP::127.0.0.1::5025::SOCKET".into();
     assert!(
         Engine::default()
             .execute(&g, 0, "unused", true, &AtomicBool::new(false))
             .unwrap_err()
             .contains("profil matériel non implémenté")
     );
+}
+
+#[test]
+fn pa_example_is_explicit_small_signal_simulation() {
+    let g = Graph::pa_demo();
+    let r = run(&g);
+    let t = r.network.unwrap();
+    assert!(t.simulated);
+    assert_eq!(t.frequency_hz.first(), Some(&36e9));
+    assert_eq!(t.frequency_hz.last(), Some(&38e9));
+    assert!(t.magnitude_db.iter().all(|x| (19.8..=20.2).contains(x)));
+    assert!(g.nodes[0].comment.contains("petit signal"));
 }

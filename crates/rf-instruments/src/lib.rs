@@ -1,4 +1,7 @@
 //! VISA-style resource manager: simulator, native SCPI TCP and vendor VISA.
+pub mod discovery;
+pub mod pna;
+pub mod pna_application;
 pub mod visa;
 use rf_core::{Config, Trace};
 use std::io::{BufRead, BufReader, Read, Write};

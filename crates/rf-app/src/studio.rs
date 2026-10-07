@@ -25,7 +25,11 @@ pub struct Pane {
     pub rect: [f32; 4],
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Layout {
+    pub library_width: f32,
+    pub inspector_width: f32,
+    pub journal_height: f32,
     pub primary: View,
     pub panes: Vec<Pane>,
     pub right_width: f32,
@@ -36,6 +40,9 @@ pub struct Layout {
 impl Default for Layout {
     fn default() -> Self {
         Self {
+            library_width: 210.,
+            inspector_width: 300.,
+            journal_height: 100.,
             primary: View::Schematic,
             panes: vec![Pane {
                 view: View::Acquisition,
@@ -69,7 +76,13 @@ impl Layout {
         }
     }
     pub fn validate(&self) -> Result<(), String> {
-        if self.panes.len() > 12
+        if !self.library_width.is_finite()
+            || !(150. ..=600.).contains(&self.library_width)
+            || !self.inspector_width.is_finite()
+            || !(220. ..=850.).contains(&self.inspector_width)
+            || !self.journal_height.is_finite()
+            || !(45. ..=600.).contains(&self.journal_height)
+            || self.panes.len() > 12
             || !self.right_width.is_finite()
             || !(240. ..=900.).contains(&self.right_width)
             || !self.bottom_height.is_finite()

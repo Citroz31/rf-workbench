@@ -12,7 +12,11 @@ use rf_runtime::{Command, Event, RunResult, Worker};
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 mod dsp;
+mod instrument;
+#[cfg(test)]
+mod instrument_tests;
 mod professional;
+mod projects;
 mod workspace;
 use crate::{
     analysis::Waterfall,
@@ -93,6 +97,11 @@ enum TraceDisplay {
     Unavailable,
 }
 pub struct Workbench {
+    welcome: bool,
+    project_dialog: Option<bool>,
+    browse_directory: String,
+    file_browser: crate::file_browser::Browser,
+    instrument_dialog: Option<instrument::Dialog>,
     context: egui::Context,
     studio: Studio,
     layout: Layout,
@@ -184,7 +193,7 @@ impl Workbench {
             .unwrap_or_else(|| "python".into());
         let project_path = std::env::current_dir()
             .unwrap_or_default()
-            .join("bench.rfw.json")
+            .join("bench.rfbench")
             .to_string_lossy()
             .into_owned();
         let csv_path = std::env::current_dir()
@@ -245,6 +254,10 @@ impl Workbench {
             project.graph = rf_runtime::dsp_demo();
             project.name = "RF / DSP · QAM16 & canal".into();
         }
+        if args.iter().any(|a| a == "--demo-pa") {
+            project.graph = rf_core::Graph::pa_demo();
+            project.name = "PA 36–38 GHz · gain 20 dB (simulation)".into();
+        }
         let view = if args.iter().any(|a| a == "--gallery") {
             View::Library
         } else if args.iter().any(|a| a == "--settings") {
@@ -262,6 +275,29 @@ impl Workbench {
             .and_then(|s| Studio::from_json(&s).ok())
             .unwrap_or_default();
         let mut bench = Self {
+            welcome: !args.iter().any(|a| {
+                a.starts_with("--demo-")
+                    || [
+                        "--gallery",
+                        "--dsp",
+                        "--dashboard",
+                        "--settings",
+                        "--studio",
+                        "--help-ui",
+                        "--debug-ui",
+                        "--instrument-ui",
+                        "--project-ui",
+                        "--open",
+                    ]
+                    .contains(&a.as_str())
+            }),
+            project_dialog: None,
+            file_browser: Default::default(),
+            browse_directory: std::env::current_dir()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned(),
+            instrument_dialog: None,
             context: cc.egui_ctx.clone(),
             layout: Layout::default(),
             studio,
@@ -368,6 +404,43 @@ impl Workbench {
         } else if !args.iter().any(|a| a.starts_with("--demo-")) {
             bench.restore_workspace(bench.studio.active);
         }
+        if let Some(i) = args.iter().position(|a| a == "--open")
+            && let Some(path) = args.get(i + 1)
+        {
+            bench.project_path = path.clone();
+            bench.load();
+        }
+        if !args.iter().any(|a| a == "--open")
+            && let Some(path) = args
+                .iter()
+                .skip(1)
+                .find(|a| a.to_lowercase().ends_with(".rfbench"))
+        {
+            bench.project_path = path.clone();
+            bench.load();
+        }
+        if args.iter().any(|a| a == "--welcome") {
+            bench.welcome = true;
+        }
+        if args.iter().any(|a| a == "--project-ui") {
+            bench.project_dialog = Some(false);
+        }
+        if args.iter().any(|a| a == "--instrument-ui")
+            && let Some(id) = bench
+                .project
+                .graph
+                .nodes
+                .iter()
+                .find(|n| matches!(n.kind, Kind::Pna | Kind::PnaX))
+                .map(|n| n.id)
+        {
+            bench.open_instrument(id);
+            if args.iter().any(|a| a == "--instrument-functions")
+                && let Some(d) = &mut bench.instrument_dialog
+            {
+                d.tab = 1;
+            }
+        }
         if args.iter().any(|a| a == "--studio") {
             bench.view = View::Studio;
         }
@@ -381,6 +454,7 @@ impl Workbench {
             bench.studio.language = crate::studio::Language::English;
         }
         for (flag, view) in [
+            ("--pa-ui", View::Network),
             ("--dsp", View::Dsp),
             ("--waterfall", View::Waterfall),
             ("--constellation", View::Constellation),
@@ -519,6 +593,37 @@ impl Workbench {
         let events: Vec<_> = self.worker.events.try_iter().collect();
         for event in events {
             match event {
+                Event::PnaApplicationData { node, data } => {
+                    if let Some(d) = &mut self.instrument_dialog
+                        && d.id == node
+                    {
+                        d.application = Some(data);
+                        d.message="FDATA acquise ; unités de l’affichage instrument, axe dans son domaine actuel.".into();
+                    }
+                }
+                Event::Devices { node, devices } => {
+                    if let Some(d) = &mut self.instrument_dialog
+                        && d.id == node
+                    {
+                        d.accept_devices(devices);
+                    }
+                }
+                Event::PnaCapabilities { node, capabilities } => {
+                    if let Some(d) = &mut self.instrument_dialog
+                        && d.id == node
+                    {
+                        d.capabilities = Some(capabilities);
+                        d.message = "Identification / capacités mises à jour.".into();
+                    }
+                }
+                Event::InstrumentResponse { node, text } => {
+                    self.log(text.clone(), false);
+                    if let Some(d) = &mut self.instrument_dialog
+                        && d.id == node
+                    {
+                        d.output = text;
+                    }
+                }
                 Event::Done(r) => {
                     self.result(*r);
                     self.log("Traitement terminé".into(), false);
@@ -553,9 +658,9 @@ impl Workbench {
         }
     }
     fn save(&mut self) {
-        let result = self
-            .project
-            .to_json()
+        self.project_path = crate::bench_file::project_path(&self.project_path);
+        let result = crate::bench_file::BenchFile::new(self.project.clone(), self.layout.clone())
+            .json()
             .map_err(|e| e.to_string())
             .and_then(|s| atomic_save(&self.project_path, &s));
         match result {
@@ -573,10 +678,22 @@ impl Workbench {
                     std::fs::read_to_string(&self.project_path).map_err(|e| e.to_string())
                 }
             })
-            .and_then(|s| Project::from_json(&s).map_err(|e| e.to_string()));
+            .and_then(|s| crate::bench_file::BenchFile::parse(&s));
         match result {
             Ok(p) => {
-                self.project = p;
+                self.snapshot_workspace();
+                let mut workspace = Workspace::new(p.project.name.clone(), p.project.clone());
+                workspace.layout = p.layout.clone();
+                self.studio.workspaces.push(workspace);
+                self.studio.active = self.studio.workspaces.len() - 1;
+                self.project = p.project;
+                self.layout = p.layout;
+                self.view = self.layout.primary;
+                self.layout_revision += 1;
+                self.hardware = false;
+                self.welcome = false;
+                self.project_dialog = None;
+                self.instrument_dialog = None;
                 self.history.clear();
                 self.canvas =
                     Canvas::configured(self.preferences.snap, self.preferences.orthogonal);
@@ -647,12 +764,12 @@ impl Workbench {
             Action::Stop => self.worker.stop(),
             Action::Save => {
                 if !self.worker.is_busy() {
-                    self.save();
+                    self.project_dialog = Some(true);
                 }
             }
             Action::Open => {
                 if !self.worker.is_busy() {
-                    self.load();
+                    self.project_dialog = Some(false);
                 }
             }
             Action::Undo => {
@@ -706,7 +823,18 @@ impl Workbench {
         }
     }
     fn top(&mut self, ctx: &egui::Context) {
+        ctx.style_mut(|s| {
+            s.interaction.resize_grab_radius_side = 8.;
+            s.interaction.resize_grab_radius_corner = 14.;
+        });
         egui::TopBottomPanel::top("header").show(ctx, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                if ui.small_button("Accueil / projets").clicked() && !self.worker.is_busy() {
+                    self.snapshot_workspace();
+                    self.welcome = true;
+                }
+                ui.label("↔ Glisser les séparateurs · ↘ fenêtres redimensionnables");
+            });
             ui.add_space(5.);
             ui.horizontal(|ui| {
                 ui.label(
@@ -726,7 +854,7 @@ impl Workbench {
                         .color(muted()),
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    badge(ui, "v0.4 · WINDOWS", muted());
+                    badge(ui, "v0.5 · WINDOWS", muted());
                     badge(
                         ui,
                         if self.hardware {
@@ -910,10 +1038,10 @@ impl Workbench {
         });
     }
     fn sidebar(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::left("library")
+        let shown = egui::SidePanel::left(egui::Id::new(("library", self.layout_revision)))
             .resizable(true)
-            .default_width(210.)
-            .width_range(190. ..=320.)
+            .default_width(self.layout.library_width)
+            .width_range(150. ..=600.)
             .show(ctx, |ui| {
                 caption(ui, "BIBLIOTHÈQUE DE BLOCS");
                 ui.add(
@@ -967,9 +1095,11 @@ impl Workbench {
                     }
                 });
             });
+        self.layout.library_width = shown.response.rect.width().clamp(150., 600.);
     }
     fn inspector(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::right("inspector").resizable(true).default_width(270.).width_range(240. ..=400.).show(ctx,|ui|{egui::ScrollArea::vertical().show(ui,|ui|{
+        let mut configure = None;
+        let shown=egui::SidePanel::right(egui::Id::new(("inspector",self.layout_revision))).resizable(true).default_width(self.layout.inspector_width).width_range(220. ..=850.).show(ctx,|ui|{egui::ScrollArea::vertical().show(ui,|ui|{
             ui.add_space(10.);caption(ui,"INSPECTEUR");
             if let Some(note_id)=self.canvas.annotation {
                 let before=self.project.graph.clone();
@@ -983,7 +1113,11 @@ impl Workbench {
             if let Some(id)=self.canvas.selected && let Some(n)=self.project.graph.nodes.iter_mut().find(|n|n.id==id){
                 old=Some(n.clone());badge(ui,n.kind.tag(),crate::theme::kind(n.kind));changed|=ui.text_edit_singleline(&mut n.title).changed();
                 let (r,_)=ui.allocate_exact_size(egui::vec2(ui.available_width(),90.),egui::Sense::hover());visuals::symbol(ui.painter(),r.shrink(8.),n.kind);ui.separator();let c=&mut n.config;
-                match n.kind {
+                if instrument::supports(n.kind) {
+                    ui.label(&c.resource);ui.label("Réglages et connexion dans une fenêtre redimensionnable.");
+                    if ui.button("Configurer l’instrument…").clicked(){configure=Some(id);}
+                    ui.label(format!("{} · Channel {}",n.kind.label(),c.instrument.channel));
+                }else{match n.kind {
                     Kind::Dsp(op)=>{changed|=dsp::settings_ui(ui,op,&mut c.dsp,id,&mut self.dsp_draft);},
                     Kind::Generator=>{changed|=number(ui,"FRÉQUENCE",&mut c.frequency_hz,1e6," Hz");changed|=number(ui,"PUISSANCE",&mut c.power_dbm,0.1," dBm");},
                     Kind::Dut=>{changed|=number(ui,"PERTE D'INSERTION",&mut c.loss_db,0.1," dB");changed|=number(ui,"FACTEUR DE BRUIT",&mut c.noise_figure_db,0.1," dB");ui.label(c.dut_id.as_deref().unwrap_or("DUT générique · modèle local"));if ui.button(crate::i18n::t("Ouvrir le catalogue DUT")).clicked(){self.view=View::DutCatalog;}ui.label(RichText::new(crate::i18n::t("MODEL fournit un modèle au PNA/NF Meter. RF IN/OUT représente la chaîne de signal.")).size(11. * crate::theme::scale()).color(muted()));},
@@ -997,8 +1131,8 @@ impl Workbench {
                     Kind::Python=>{if ui.button(crate::i18n::t("Éditer le script Python")).clicked(){self.script=c.script.clone();open_python=true;}ui.label(crate::i18n::t("Entrée trace / sortie output"));},Kind::Peak=>{ui.label(crate::i18n::t("Maximum de trace en dBm"));},
                     Kind::Limit=>{changed|=number(ui,"LIMITE BASSE",&mut c.lower_dbm,0.1," dBm");changed|=number(ui,"LIMITE HAUTE",&mut c.upper_dbm,0.1," dBm");},
                 }
-                if matches!(n.kind,Kind::Generator|Kind::Analyzer)||n.kind.is_extended(){caption(ui,"RESSOURCE VISA / SCPI");changed|=ui.text_edit_singleline(&mut c.resource).changed();}
-                if n.kind.is_extended(){ui.label(RichText::new(crate::i18n::t("Modèle simulé dans v0.3. Les profils matériels spécifiques restent à développer.")).size(11. * crate::theme::scale()).color(gold()));}
+                }
+                if n.kind.is_extended() && !instrument::supports(n.kind){ui.label(RichText::new(crate::i18n::t("Modèle simulé dans v0.3. Les profils matériels spécifiques restent à développer.")).size(11. * crate::theme::scale()).color(gold()));}
                 ui.separator();
                 changed|=ui.checkbox(&mut n.breakpoint,crate::i18n::t("Breakpoint")).changed();
                 changed|=ui.checkbox(&mut n.probe,crate::i18n::t("Sonde")).changed();
@@ -1012,6 +1146,10 @@ impl Workbench {
             if let Some(id)=remove{self.history.record(self.project.graph.clone());self.project.graph.remove(id);self.canvas.selected=None;self.canvas.cancel_wire();}
 if open_python{self.view=View::Python;}
         });});
+        self.layout.inspector_width = shown.response.rect.width().clamp(220., 850.);
+        if let Some(id) = configure {
+            self.open_instrument(id);
+        }
     }
     fn bottom(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::bottom("status")
@@ -1052,10 +1190,10 @@ if open_python{self.view=View::Python;}
         if !self.preferences.show_journal {
             return;
         }
-        egui::TopBottomPanel::bottom("journal")
+        let shown = egui::TopBottomPanel::bottom(egui::Id::new(("journal", self.layout_revision)))
             .resizable(true)
-            .default_height(85.)
-            .height_range(70. ..=350.)
+            .default_height(self.layout.journal_height)
+            .height_range(45. ..=600.)
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     caption(ui, "JOURNAL D'EXÉCUTION");
@@ -1078,6 +1216,7 @@ if open_python{self.view=View::Python;}
                         }
                     });
             });
+        self.layout.journal_height = shown.response.rect.height().clamp(45., 600.);
     }
     fn center(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default()
@@ -1431,7 +1570,10 @@ impl eframe::App for Workbench {
                 }
             }
         }
-        let typing = crate::shortcuts::text_editing(ctx);
+        let typing = crate::shortcuts::text_editing(ctx)
+            || self.welcome
+            || self.instrument_dialog.is_some()
+            || self.project_dialog.is_some();
         let native_paste = events.iter().any(|e| matches!(e, egui::Event::Paste(_)));
         for event in &events {
             if !typing {
@@ -1463,17 +1605,25 @@ impl eframe::App for Workbench {
             self.appearance = Some(appearance);
         }
         self.canvas.auto_route = self.studio.auto_route;
-        self.top(ctx);
-        self.bottom(ctx);
-        self.sidebar(ctx);
-        if self.studio.inspector
-            && (self.view.dockable() || self.layout.panes.iter().any(|p| p.view == View::Schematic))
-        {
-            self.inspector(ctx);
+        if self.welcome {
+            self.welcome_view(ctx);
+            self.project_window(ctx);
+        } else {
+            self.top(ctx);
+            self.bottom(ctx);
+            self.sidebar(ctx);
+            if self.studio.inspector
+                && (self.view.dockable()
+                    || self.layout.panes.iter().any(|p| p.view == View::Schematic))
+            {
+                self.inspector(ctx);
+            }
+            self.docked(ctx);
+            self.center(ctx);
+            self.floating(ctx);
+            self.instrument_window(ctx);
+            self.project_window(ctx);
         }
-        self.docked(ctx);
-        self.center(ctx);
-        self.floating(ctx);
         if self.canvas.routes_dirty && self.routing_job.is_none() {
             self.canvas.routes_dirty = false;
             self.start_routing(false, true, false);
@@ -1489,7 +1639,8 @@ impl eframe::App for Workbench {
         self.last_frame = Instant::now();
         if self.capture_path.is_some() {
             self.capture_frames += 1;
-            let ready = self.routing_job.is_none()
+            let ready = (self.project_dialog.is_none() || !self.file_browser.busy())
+                && self.routing_job.is_none()
                 && (!self.worker.is_busy()
                     || self.debug_snapshot.as_ref().is_some_and(|s| s.paused));
             if self.capture_frames >= 5 && !self.capture_requested && ready {

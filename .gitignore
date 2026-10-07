@@ -2,6 +2,7 @@
 /dist/
 *.rfw.json
 *.csv
+!/examples/*.csv
 __pycache__/
 .venv/
 /python/.coverage

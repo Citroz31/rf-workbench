@@ -1,3 +1,26 @@
+# Validation 0.5.0 - interface, projets et PNA
+
+Contrôles locaux sur Windows x64, Rust 1.90.0, Python 3.12.14, le 7 octobre 2026.
+
+| Vérification | Résultat |
+| --- | --- |
+| Tests Rust workspace | 102 réussis, dont 7 tests PNA et les tests de nouveaux projets, gain PA, adresse unique et resize graphique |
+| Intégration Rust/Python | 5 réussis avec un vrai processus Python, y compris annulation et timeout |
+| Formatage / Clippy all-targets `-D warnings` | Réussis |
+| Compilation Windows release | Réussie |
+| Autotests disponibles dans l'application | 20 réussis |
+| Rendu natif 1600 × 1000 | Accueil, fenêtre PNA (Connexion/Fonctions), navigateur de projets et banc PA inspectés |
+| Guide utilisateur | 24 pages A4, rendues et inspectées ; texte, pagination et bornes des mots vérifiés sur toutes les pages |
+| Archive Windows / sources | CRC, présence du PDF/exemples et correspondance du binaire/commit vérifiées lors de l'empaquetage |
+
+Les tests PNA vérifient SDATA REAL32/64, axe REAL64, channel/nom de mesure, absence de trigger par défaut, identité attendue, limites de sweep, classes autorisées, FDATA/GCA avec relecture, payloads invalides et restauration après erreur (y compris erreur simultanée de restauration). Un serveur SCPI TCP local transmet les blocs IEEE 488.2 par fragments de trois octets. Le test egui de redimensionnement injecte un vrai déplacement de pointeur dans le coin du graphique et constate sa nouvelle hauteur.
+
+Le projet PA vérifie un gain petit signal de 20 dB ± 0,15 dB sur 36–38 GHz ; il ne simule ni saturation ni P1dB. La courbe de compression du guide et son CSV sont explicitement synthétiques. Le guide suppose OP1dB = 34 dBm en sortie, donc Pin1dB = 15 dBm pour un gain comprimé de 19 dB.
+
+Aucun runtime VISA ni instrument du laboratoire n'a été utilisé ici. GPIB/USB/LAN physiques, débits binaires, firmware/licences, calibrations et arrêt RF nécessitent une validation matérielle. La détection des classes et la lecture FDATA ne constituent pas une implémentation complète des applications GCA/NF/spectre/IMD. Les tests de pointeur et captures ne prouvent pas une latence garantie, tous les DPI ni une ergonomie tactile. Linux/macOS sont testés par la matrice [GitHub Actions](https://github.com/Citroz31/rf-workbench/actions) après publication ; iOS/Android ne sont pas empaquetés.
+
+Les contrôles Python 0.4 restent applicables : le protocole Python n'a pas changé dans cette version. Les résultats CI du commit de livraison se consultent dans GitHub Actions ; leur simple configuration ne prouve pas leur réussite.
+
 # Validation 0.4.0 — RF/DSP et HAL
 
 Vérifications locales sur Windows x64, Rust 1.90.0 et Python 3.12.14, le 7 octobre 2026. L'exécutable Windows est construit à partir de ces sources.

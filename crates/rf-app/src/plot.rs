@@ -11,6 +11,36 @@ pub fn series(
     y_unit: &str,
     x_scale: f64,
 ) {
+    let id = ui.next_auto_id();
+    egui::Resize::default()
+        .id_salt(id)
+        .default_width(ui.available_width())
+        .default_height(height)
+        .min_height(100.)
+        .max_height(900.)
+        .resizable([false, true])
+        .with_stroke(true)
+        .show(ui, |ui| {
+            series_body(
+                ui,
+                x,
+                y,
+                ui.available_height().clamp(100., 900.),
+                x_unit,
+                y_unit,
+                x_scale,
+            );
+        });
+}
+fn series_body(
+    ui: &mut egui::Ui,
+    x: &[f64],
+    y: &[f64],
+    height: f32,
+    x_unit: &str,
+    y_unit: &str,
+    x_scale: f64,
+) {
     let (rect, response) =
         ui.allocate_exact_size(egui::vec2(ui.available_width(), height), Sense::hover());
     let p = ui.painter_at(rect);
@@ -106,6 +136,20 @@ pub fn series(
 }
 
 pub fn plot(ui: &mut egui::Ui, trace: &Trace, height: f32, marker: bool) {
+    let id = ui.next_auto_id();
+    egui::Resize::default()
+        .id_salt(id)
+        .default_width(ui.available_width())
+        .default_height(height)
+        .min_height(100.)
+        .max_height(900.)
+        .resizable([false, true])
+        .with_stroke(true)
+        .show(ui, |ui| {
+            plot_body(ui, trace, ui.available_height().clamp(100., 900.), marker);
+        });
+}
+fn plot_body(ui: &mut egui::Ui, trace: &Trace, height: f32, marker: bool) {
     let (rect, response) =
         ui.allocate_exact_size(egui::vec2(ui.available_width(), height), Sense::hover());
     let painter = ui.painter_at(rect);
