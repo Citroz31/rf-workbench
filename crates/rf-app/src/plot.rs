@@ -1,5 +1,5 @@
 use crate::theme::*;
-use eframe::egui::{self, Align2, FontId, Pos2, Rect, Sense, Stroke};
+use eframe::egui::{self, Align2, Pos2, Rect, Sense, Stroke};
 use rf_core::Trace;
 
 pub fn series(
@@ -14,7 +14,7 @@ pub fn series(
     let (rect, response) =
         ui.allocate_exact_size(egui::vec2(ui.available_width(), height), Sense::hover());
     let p = ui.painter_at(rect);
-    p.rect_filled(rect, 8., BG);
+    p.rect_filled(rect, 8., bg());
     let area = Rect::from_min_max(
         rect.min + egui::vec2(65., 22.),
         rect.max - egui::vec2(20., 35.),
@@ -47,25 +47,25 @@ pub fn series(
         let py = area.top() + area.height() * f as f32;
         p.line_segment(
             [Pos2::new(px, area.top()), Pos2::new(px, area.bottom())],
-            Stroke::new(1., BORDER),
+            Stroke::new(1., border()),
         );
         p.line_segment(
             [Pos2::new(area.left(), py), Pos2::new(area.right(), py)],
-            Stroke::new(1., BORDER),
+            Stroke::new(1., border()),
         );
         p.text(
             Pos2::new(px, area.bottom() + 14.),
             Align2::CENTER_CENTER,
             format!("{:.3}", (first + (last - first) * f) / x_scale),
-            FontId::proportional(10.),
-            MUTED,
+            crate::theme::font(10.),
+            muted(),
         );
         p.text(
             Pos2::new(area.left() - 7., py),
             Align2::RIGHT_CENTER,
             format!("{:.2}", high - (high - low) * f),
-            FontId::proportional(10.),
-            MUTED,
+            crate::theme::font(10.),
+            muted(),
         );
     }
     let stride = y.len().div_ceil((area.width() as usize * 2).max(200));
@@ -78,20 +78,20 @@ pub fn series(
             points.push(point(x[i], y[i]));
         }
     }
-    p.add(egui::Shape::line(points, Stroke::new(1.7, BLUE)));
+    p.add(egui::Shape::line(points, Stroke::new(1.7, blue())));
     p.text(
         area.left_top() + egui::vec2(8., 8.),
         Align2::LEFT_TOP,
         y_unit,
-        FontId::proportional(11.),
-        MUTED,
+        crate::theme::font(11.),
+        muted(),
     );
     p.text(
         rect.right_bottom() - egui::vec2(5., 5.),
         Align2::RIGHT_BOTTOM,
         x_unit,
-        FontId::proportional(11.),
-        MUTED,
+        crate::theme::font(11.),
+        muted(),
     );
     if let Some(cursor) = response.hover_pos()
         && area.contains(cursor)
@@ -109,7 +109,7 @@ pub fn plot(ui: &mut egui::Ui, trace: &Trace, height: f32, marker: bool) {
     let (rect, response) =
         ui.allocate_exact_size(egui::vec2(ui.available_width(), height), Sense::hover());
     let painter = ui.painter_at(rect);
-    painter.rect_filled(rect, 8., BG);
+    painter.rect_filled(rect, 8., bg());
     let area = Rect::from_min_max(
         rect.min + egui::vec2(56., 22.),
         rect.max - egui::vec2(22., 35.),
@@ -129,28 +129,32 @@ pub fn plot(ui: &mut egui::Ui, trace: &Trace, height: f32, marker: bool) {
     };
     for i in 0..=6 {
         let x = area.left() + area.width() * i as f32 / 6.;
-        let y = area.top() + area.height() * i as f32 / 6.;
         painter.line_segment(
             [Pos2::new(x, area.top()), Pos2::new(x, area.bottom())],
-            Stroke::new(1., BORDER.gamma_multiply(0.5)),
-        );
-        painter.line_segment(
-            [Pos2::new(area.left(), y), Pos2::new(area.right(), y)],
-            Stroke::new(1., BORDER.gamma_multiply(0.5)),
+            Stroke::new(1., border().gamma_multiply(0.5)),
         );
         painter.text(
             Pos2::new(x, area.bottom() + 14.),
             Align2::CENTER_CENTER,
             format!("{:.3}", (start + (stop - start) * i as f64 / 6.) / 1e9),
-            FontId::proportional(10.),
-            MUTED,
+            crate::theme::font(10.),
+            muted(),
+        );
+    }
+    let vertical_ticks = ((area.height() / (24. * crate::theme::scale())) as usize).clamp(1, 6);
+    for i in 0..=vertical_ticks {
+        let fraction = i as f32 / vertical_ticks as f32;
+        let y = area.top() + area.height() * fraction;
+        painter.line_segment(
+            [Pos2::new(area.left(), y), Pos2::new(area.right(), y)],
+            Stroke::new(1., border().gamma_multiply(0.5)),
         );
         painter.text(
             Pos2::new(area.left() - 10., y),
             Align2::RIGHT_CENTER,
-            format!("{:.0}", max - (max - min) * i as f64 / 6.),
-            FontId::proportional(10.),
-            MUTED,
+            format!("{:.0}", max - (max - min) * f64::from(fraction)),
+            crate::theme::font(10.),
+            muted(),
         );
     }
     // Envelope decimation retains narrow peaks; rendering work is bounded by pixels.
@@ -181,30 +185,30 @@ pub fn plot(ui: &mut egui::Ui, trace: &Trace, height: f32, marker: bool) {
             ));
         }
     }
-    painter.add(egui::Shape::line(pts, Stroke::new(1.7, TEAL)));
+    painter.add(egui::Shape::line(pts, Stroke::new(1.7, teal())));
     painter.text(
         area.left_top() + egui::vec2(8., 8.),
         Align2::LEFT_TOP,
         "dBm",
-        FontId::proportional(11.),
-        MUTED,
+        crate::theme::font(11.),
+        muted(),
     );
     painter.text(
         rect.right_bottom() - egui::vec2(7., 5.),
         Align2::RIGHT_BOTTOM,
         "GHz",
-        FontId::proportional(11.),
-        MUTED,
+        crate::theme::font(11.),
+        muted(),
     );
     if marker && let Ok((f, a)) = trace.peak() {
         let p = point(f, a.clamp(min, max));
-        painter.circle_filled(p, 4., GOLD);
+        painter.circle_filled(p, 4., gold());
         painter.text(
             p + egui::vec2(9., -7.),
             Align2::LEFT_BOTTOM,
             format!("M1  {a:.2} dBm"),
-            FontId::proportional(11.),
-            GOLD,
+            crate::theme::font(11.),
+            gold(),
         );
     }
     if let Some(cursor) = response.hover_pos()
@@ -217,7 +221,7 @@ pub fn plot(ui: &mut egui::Ui, trace: &Trace, height: f32, marker: bool) {
                 Pos2::new(cursor.x, area.top()),
                 Pos2::new(cursor.x, area.bottom()),
             ],
-            Stroke::new(1., MUTED),
+            Stroke::new(1., muted()),
         );
         response.on_hover_text(format!(
             "{:.6} GHz\n{:.3} dBm",

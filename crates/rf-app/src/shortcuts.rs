@@ -2,6 +2,11 @@ use eframe::egui::{self, Key};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
+pub fn text_editing(ctx: &egui::Context) -> bool {
+    ctx.memory(|m| m.focused())
+        .is_some_and(|id| egui::text_edit::TextEditState::load(ctx, id).is_some())
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Action {
     Select,
@@ -21,9 +26,20 @@ pub enum Action {
     Network,
     Measurements,
     Export,
+    Copy,
+    Paste,
+    SelectAll,
+    AutoLayout,
+    Route,
+    Annotate,
+    Help,
+    BlockHelp,
+    DebugStart,
+    DebugStep,
+    DebugContinue,
 }
 impl Action {
-    pub const ALL: [Self; 17] = [
+    pub const ALL: [Self; 28] = [
         Self::Select,
         Self::Wire,
         Self::Pan,
@@ -41,6 +57,17 @@ impl Action {
         Self::Network,
         Self::Measurements,
         Self::Export,
+        Self::Copy,
+        Self::Paste,
+        Self::SelectAll,
+        Self::AutoLayout,
+        Self::Route,
+        Self::Annotate,
+        Self::Help,
+        Self::BlockHelp,
+        Self::DebugStart,
+        Self::DebugStep,
+        Self::DebugContinue,
     ];
     pub fn label(self) -> &'static str {
         match self {
@@ -61,6 +88,17 @@ impl Action {
             Self::Network => "Paramètres S",
             Self::Measurements => "Formes d'onde & mesures",
             Self::Export => "Exporter le spectre",
+            Self::Copy => "Copier",
+            Self::Paste => "Coller",
+            Self::SelectAll => "Tout sélectionner",
+            Self::AutoLayout => "Organiser le graphe",
+            Self::Route => "Router les câbles",
+            Self::Annotate => "Ajouter une annotation",
+            Self::Help => "Aide globale",
+            Self::BlockHelp => "Aide du bloc",
+            Self::DebugStart => "Démarrer le debug",
+            Self::DebugStep => "Pas à pas",
+            Self::DebugContinue => "Continuer",
         }
     }
     fn default_keys(self) -> &'static str {
@@ -82,6 +120,17 @@ impl Action {
             Self::Network => "N",
             Self::Measurements => "M",
             Self::Export => "Ctrl+E",
+            Self::Copy => "Ctrl+C",
+            Self::Paste => "Ctrl+V",
+            Self::SelectAll => "Ctrl+A",
+            Self::AutoLayout => "Ctrl+L",
+            Self::Route => "Ctrl+R",
+            Self::Annotate => "Ctrl+Shift+A",
+            Self::Help => "F1",
+            Self::BlockHelp => "F2",
+            Self::DebugStart => "F6",
+            Self::DebugStep => "F10",
+            Self::DebugContinue => "F8",
         }
     }
 }
@@ -172,6 +221,23 @@ fn parse(text: &str) -> Result<Chord, String> {
     Ok(c)
 }
 impl Preferences {
+    pub fn upgrade(mut self) -> Self {
+        for action in Action::ALL {
+            if !self.shortcuts.iter().any(|b| b.action == action) {
+                let keys = action.default_keys();
+                let used = self
+                    .shortcuts
+                    .iter()
+                    .flat_map(|b| b.keys.split(','))
+                    .any(|s| parse(s.trim()).ok() == parse(keys).ok());
+                self.shortcuts.push(Binding {
+                    action,
+                    keys: if used { String::new() } else { keys.into() },
+                });
+            }
+        }
+        self
+    }
     pub fn validate(&self) -> Result<(), String> {
         if self.schema_version != 1 || self.shortcuts.len() != Action::ALL.len() {
             return Err("Version ou liste d'actions invalide".into());
@@ -235,6 +301,49 @@ impl Preferences {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn focused_buttons_allow_shortcuts_but_text_editors_suspend_them() {
+        let ctx = egui::Context::default();
+        let mut text = String::new();
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let field = ui.text_edit_singleline(&mut text);
+                field.request_focus();
+                assert!(text_editing(ctx));
+                let button = ui.button("Run");
+                button.request_focus();
+                assert!(ctx.wants_keyboard_input());
+                assert!(!text_editing(ctx));
+            });
+        });
+    }
+    #[test]
+    fn old_bindings_upgrade_without_overwriting_user_shortcuts() {
+        let mut p = Preferences::default();
+        p.shortcuts.truncate(17);
+        p.shortcuts[0].keys = "F1".into();
+        let upgraded = p.upgrade();
+        upgraded.validate().unwrap();
+        assert_eq!(upgraded.shortcuts[0].keys, "F1");
+        assert!(
+            upgraded
+                .shortcuts
+                .iter()
+                .find(|b| b.action == Action::Help)
+                .unwrap()
+                .keys
+                .is_empty()
+        );
+        assert_eq!(
+            upgraded
+                .shortcuts
+                .iter()
+                .find(|b| b.action == Action::Copy)
+                .unwrap()
+                .keys,
+            "Ctrl+C"
+        );
+    }
     fn event(key: Key, modifiers: egui::Modifiers) -> egui::Event {
         egui::Event::Key {
             key,

@@ -32,16 +32,16 @@ pub fn symbol(p: &egui::Painter, rect: Rect, kind: Kind) {
         | Kind::Thermostream => {
             let chassis = Rect::from_min_max(at(0.03, 0.06), at(0.97, 0.92));
             p.rect_filled(chassis, 5., egui::Color32::from_rgb(63, 78, 94));
-            p.rect_stroke(chassis, 5., Stroke::new(1., MUTED), StrokeKind::Inside);
+            p.rect_stroke(chassis, 5., Stroke::new(1., muted()), StrokeKind::Inside);
             let screen = Rect::from_min_max(at(0.09, 0.18), at(0.65, 0.72));
-            p.rect_filled(screen, 3., BG);
+            p.rect_filled(screen, 3., bg());
             for n in 1..5 {
                 let x = 0.09 + 0.56 * n as f32 / 5.;
-                line((x, 0.18), (x, 0.72), BORDER);
+                line((x, 0.18), (x, 0.72), border());
             }
             for n in 1..4 {
                 let y = 0.18 + 0.54 * n as f32 / 4.;
-                line((0.09, y), (0.65, y), BORDER);
+                line((0.09, y), (0.65, y), border());
             }
             if matches!(
                 kind,
@@ -73,12 +73,16 @@ pub fn symbol(p: &egui::Painter, rect: Rect, kind: Kind) {
                     .collect();
                 p.add(egui::Shape::line(points, Stroke::new(1.6, accent)));
                 if kind == Kind::PnaX {
-                    line((0.11, 0.3), (0.63, 0.63), GOLD);
+                    line((0.11, 0.3), (0.63, 0.63), gold());
                 }
             }
-            p.circle_filled(at(0.81, 0.42), rect.height() * 0.14, CARD);
-            p.circle_stroke(at(0.81, 0.42), rect.height() * 0.14, Stroke::new(1., MUTED));
-            line((0.81, 0.42), (0.85, 0.32), TEXT);
+            p.circle_filled(at(0.81, 0.42), rect.height() * 0.14, card_fill());
+            p.circle_stroke(
+                at(0.81, 0.42),
+                rect.height() * 0.14,
+                Stroke::new(1., muted()),
+            );
+            line((0.81, 0.42), (0.85, 0.32), text_color());
             for x in [0.74, 0.82, 0.9] {
                 for y in [0.66, 0.77] {
                     p.rect_filled(
@@ -87,7 +91,7 @@ pub fn symbol(p: &egui::Painter, rect: Rect, kind: Kind) {
                             egui::vec2(rect.width() * 0.045, rect.height() * 0.055),
                         ),
                         1.,
-                        MUTED,
+                        muted(),
                     );
                 }
             }
@@ -100,35 +104,35 @@ pub fn symbol(p: &egui::Painter, rect: Rect, kind: Kind) {
                 p.circle_stroke(
                     at(0.12 + i as f32 * 0.12, 0.84),
                     rect.height() * 0.045,
-                    Stroke::new(1.3, GOLD),
+                    Stroke::new(1.3, gold()),
                 );
             }
         }
         Kind::Dut => {
             let chip = Rect::from_min_max(at(0.30, 0.14), at(0.70, 0.86));
-            p.rect_filled(chip, 5., CARD);
+            p.rect_filled(chip, 5., card_fill());
             p.rect_stroke(chip, 5., Stroke::new(1.8, accent), StrokeKind::Inside);
             for n in 0..5 {
                 let y = 0.23 + n as f32 * 0.13;
-                line((0.20, y), (0.30, y), GOLD);
-                line((0.70, y), (0.80, y), GOLD);
+                line((0.20, y), (0.30, y), gold());
+                line((0.70, y), (0.80, y), gold());
             }
             text(0.5, 0.5, "DUT", accent);
         }
         Kind::IqModulator => {
             for (y, label) in [(0.27, "I"), (0.73, "Q")] {
-                line((0.04, y), (0.27, y), BLUE);
+                line((0.04, y), (0.27, y), blue());
                 p.circle_stroke(at(0.35, y), rect.height() * 0.13, Stroke::new(1.5, accent));
                 line((0.31, y - 0.07), (0.39, y + 0.07), accent);
                 line((0.31, y + 0.07), (0.39, y - 0.07), accent);
                 line((0.43, y), (0.64, y), accent);
                 line((0.64, y), (0.64, 0.5), accent);
-                text(0.10, y - 0.14, label, BLUE);
+                text(0.10, y - 0.14, label, blue());
             }
-            line((0.35, 0.42), (0.35, 0.58), GOLD);
-            line((0.64, 0.5), (0.95, 0.5), GOLD);
-            text(0.87, 0.27, "RF", GOLD);
-            text(0.49, 0.5, "LO", GOLD);
+            line((0.35, 0.42), (0.35, 0.58), gold());
+            line((0.64, 0.5), (0.95, 0.5), gold());
+            text(0.87, 0.27, "RF", gold());
+            text(0.49, 0.5, "LO", gold());
         }
         Kind::Dac | Kind::Adc => {
             let points = if kind == Kind::Dac {
@@ -150,11 +154,11 @@ pub fn symbol(p: &egui::Painter, rect: Rect, kind: Kind) {
             };
             p.add(egui::Shape::convex_polygon(
                 points,
-                CARD,
+                card_fill(),
                 Stroke::new(1.7, accent),
             ));
-            line((0.03, 0.5), (0.20, 0.5), BLUE);
-            line((0.80, 0.5), (0.97, 0.5), TEAL);
+            line((0.03, 0.5), (0.20, 0.5), blue());
+            line((0.80, 0.5), (0.97, 0.5), teal());
             text(
                 0.5,
                 0.38,
@@ -165,21 +169,21 @@ pub fn symbol(p: &egui::Painter, rect: Rect, kind: Kind) {
                 0.5,
                 0.65,
                 if kind == Kind::Dac { "010 ~" } else { "~ 010" },
-                MUTED,
+                muted(),
             );
         }
         Kind::VariableResistor => {
-            line((0.05, 0.52), (0.25, 0.52), GOLD);
-            line((0.75, 0.52), (0.95, 0.52), GOLD);
+            line((0.05, 0.52), (0.25, 0.52), gold());
+            line((0.75, 0.52), (0.95, 0.52), gold());
             p.rect_stroke(
                 Rect::from_min_max(at(0.25, 0.34), at(0.75, 0.7)),
                 0.,
                 Stroke::new(1.7, accent),
                 StrokeKind::Inside,
             );
-            line((0.34, 0.88), (0.67, 0.08), TEXT);
-            line((0.67, 0.08), (0.57, 0.18), TEXT);
-            line((0.67, 0.08), (0.68, 0.27), TEXT);
+            line((0.34, 0.88), (0.67, 0.08), text_color());
+            line((0.67, 0.08), (0.57, 0.18), text_color());
+            line((0.67, 0.08), (0.68, 0.27), text_color());
         }
         Kind::Thermometer => {
             p.rect_stroke(
@@ -194,7 +198,7 @@ pub fn symbol(p: &egui::Painter, rect: Rect, kind: Kind) {
                 line(
                     (0.58, 0.18 + n as f32 * 0.12),
                     (0.66, 0.18 + n as f32 * 0.12),
-                    MUTED,
+                    muted(),
                 );
             }
             text(0.80, 0.5, "°C", accent);
@@ -208,21 +212,21 @@ pub fn symbol(p: &egui::Painter, rect: Rect, kind: Kind) {
             p.rect_stroke(
                 Rect::from_min_max(at(0.13, 0.40), at(0.25, 0.65)),
                 1.,
-                Stroke::new(2., GOLD),
+                Stroke::new(2., gold()),
                 StrokeKind::Inside,
             );
-            line((0.68, 0.52), (0.87, 0.52), TEXT);
-            line((0.87, 0.52), (0.93, 0.8), TEXT);
+            line((0.68, 0.52), (0.87, 0.52), text_color());
+            line((0.87, 0.52), (0.93, 0.8), text_color());
             text(0.46, 0.51, "RF", accent);
         }
         Kind::Python => {
-            text(0.5, 0.5, "{ Py }", PURPLE);
-            line((0.17, 0.17), (0.83, 0.17), BORDER);
-            line((0.17, 0.83), (0.83, 0.83), BORDER);
+            text(0.5, 0.5, "{ Py }", purple());
+            line((0.17, 0.17), (0.83, 0.17), border());
+            line((0.17, 0.83), (0.83, 0.83), border());
         }
         Kind::Peak => {
-            line((0.05, 0.85), (0.95, 0.85), MUTED);
-            line((0.1, 0.85), (0.1, 0.12), MUTED);
+            line((0.05, 0.85), (0.95, 0.85), muted());
+            line((0.1, 0.85), (0.1, 0.12), muted());
             let pts: Vec<Pos2> = (0..35)
                 .map(|i| {
                     let t = i as f32 / 34.;
@@ -233,13 +237,13 @@ pub fn symbol(p: &egui::Painter, rect: Rect, kind: Kind) {
                 })
                 .collect();
             p.add(egui::Shape::line(pts, Stroke::new(1.8, accent)));
-            p.circle_filled(at(0.52, 0.2), 3., GOLD);
+            p.circle_filled(at(0.52, 0.2), 3., gold());
         }
         Kind::Limit => {
-            line((0.1, 0.26), (0.9, 0.26), GOLD);
-            line((0.1, 0.74), (0.9, 0.74), GOLD);
-            line((0.3, 0.5), (0.45, 0.64), TEAL);
-            line((0.45, 0.64), (0.72, 0.34), TEAL);
+            line((0.1, 0.26), (0.9, 0.26), gold());
+            line((0.1, 0.74), (0.9, 0.74), gold());
+            line((0.3, 0.5), (0.45, 0.64), teal());
+            line((0.45, 0.64), (0.72, 0.34), teal());
         }
     }
 }
@@ -270,16 +274,16 @@ pub enum Icon {
 pub fn icon_button(ui: &mut egui::Ui, icon: Icon, tooltip: &str, selected: bool) -> egui::Response {
     let (r, response) = ui.allocate_exact_size(egui::vec2(32., 30.), egui::Sense::click());
     let p = ui.painter();
-    let color = if selected { TEAL } else { TEXT };
+    let color = if selected { teal() } else { text_color() };
     p.rect_filled(
         r,
         5.,
         if selected {
             egui::Color32::from_rgb(26, 75, 73)
         } else if response.hovered() {
-            BORDER
+            border()
         } else {
-            CARD
+            card_fill()
         },
     );
     let a = |x: f32, y: f32| r.min + egui::vec2(x, y);

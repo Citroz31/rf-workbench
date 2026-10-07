@@ -139,16 +139,22 @@ pub(crate) fn execute(
             result.network = Some(network.clone());
             vec![Value::Network]
         }
-        Kind::VariableResistor => vec![Value::Scalar(c.resistance_ohm)],
-        Kind::Thermostream => vec![Value::Scalar(c.temperature_c)],
-        Kind::Thermometer => vec![Value::Scalar(match inputs.get(&0) {
-            Some(Value::Scalar(t)) => *t,
-            _ => c.temperature_c,
-        })],
-        Kind::NoiseFigureMeter => vec![Value::Scalar(match inputs.get(&0) {
-            Some(Value::Dut { noise, .. }) => *noise,
-            _ => c.noise_figure_db,
-        })],
+        Kind::VariableResistor => vec![Value::Scalar(c.resistance_ohm, true)],
+        Kind::Thermostream => vec![Value::Scalar(c.temperature_c, true)],
+        Kind::Thermometer => vec![Value::Scalar(
+            match inputs.get(&0) {
+                Some(Value::Scalar(t, _)) => *t,
+                _ => c.temperature_c,
+            },
+            true,
+        )],
+        Kind::NoiseFigureMeter => vec![Value::Scalar(
+            match inputs.get(&0) {
+                Some(Value::Dut { noise, .. }) => *noise,
+                _ => c.noise_figure_db,
+            },
+            true,
+        )],
         Kind::PowerSensor => {
             let Some(Value::Signal {
                 level, simulated, ..
@@ -159,23 +165,23 @@ pub(crate) fn execute(
             if !simulated {
                 return Err("Power Sensor simulé ne mesure pas un signal matériel".into());
             }
-            vec![Value::Scalar(*level)]
+            vec![Value::Scalar(*level, true)]
         }
         Kind::PowerMeter => {
-            let Some(Value::Scalar(power)) = inputs.get(&0) else {
+            let Some(Value::Scalar(power, simulated)) = inputs.get(&0) else {
                 return Err("Power Meter : relier un capteur de puissance".into());
             };
-            vec![Value::Scalar(*power)]
+            vec![Value::Scalar(*power, *simulated)]
         }
         _ => return Err("Modèle de simulation absent".into()),
     };
     for (v, p) in values.iter().zip(node.kind.outputs()) {
-        if let Value::Scalar(value) = v {
+        if let Value::Scalar(value, simulated) = v {
             result.measurements.push(Measurement {
                 name: node.title.clone(),
                 value: *value,
                 unit: p.port.label().into(),
-                simulated: true,
+                simulated: *simulated,
             });
         }
     }

@@ -11,10 +11,17 @@ use rf_dut_library::{Catalog, Component};
 use rf_runtime::{Command, Event, RunResult, Worker};
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
+mod professional;
 mod workspace;
+use crate::{
+    analysis::Waterfall,
+    i18n::{pair, t},
+    studio::{Layout, Location, Studio, Workspace},
+};
+use rf_runtime::debug::{Buffer, Snapshot};
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum View {
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub(crate) enum View {
     Schematic,
     Acquisition,
     Tests,
@@ -26,8 +33,87 @@ enum View {
     DutCatalog,
     Settings,
     Project,
+    Waterfall,
+    Constellation,
+    Smith,
+    Eye,
+    Timing,
+    Debug,
+    Studio,
+    Help,
+}
+impl View {
+    pub const DOCKS: [Self; 10] = [
+        Self::Schematic,
+        Self::Acquisition,
+        Self::Network,
+        Self::Measurements,
+        Self::Waterfall,
+        Self::Constellation,
+        Self::Smith,
+        Self::Eye,
+        Self::Timing,
+        Self::Debug,
+    ];
+    pub fn dockable(self) -> bool {
+        Self::DOCKS.contains(&self)
+    }
+    pub fn label(self) -> String {
+        t(match self {
+            Self::Schematic => "Schéma",
+            Self::Acquisition => "Spectre",
+            Self::Network => "Paramètres S",
+            Self::Measurements => "Mesures",
+            Self::Waterfall => "Waterfall",
+            Self::Constellation => "Constellation",
+            Self::Smith => "Smith",
+            Self::Eye => "Diagramme de l'œil",
+            Self::Timing => "Chronogramme",
+            Self::Debug => "Débogage",
+            Self::Library => "Blocs",
+            Self::Tests => "Tests",
+            Self::Python => "Python",
+            Self::Instruments => "SCPI",
+            Self::DutCatalog => "DUT",
+            Self::Project => "Projet",
+            Self::Settings => "Raccourcis",
+            Self::Studio => "Espaces de travail",
+            Self::Help => "Aide",
+        })
+    }
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TraceDisplay {
+    Preview,
+    Acquired,
+    Unavailable,
 }
 pub struct Workbench {
+    context: egui::Context,
+    studio: Studio,
+    layout: Layout,
+    studio_path: String,
+    layout_name: String,
+    workspace_name: String,
+    buffers: Vec<Buffer>,
+    debug_snapshot: Option<Snapshot>,
+    buffer_key: Option<(u64, usize)>,
+    probes_only: bool,
+    waterfall: Waterfall,
+    iq_keys: [Option<(u64, usize)>; 2],
+    wave_key: Option<(u64, usize)>,
+    samples_per_symbol: usize,
+    sample_offset: usize,
+    trajectory: bool,
+    threshold: f64,
+    z0: f64,
+    help_kind: Option<Kind>,
+    help_search: String,
+    clipboard: Option<rf_core::Graph>,
+    appearance: Option<(bool, bool, f32, crate::studio::Language)>,
+    layout_revision: u64,
+    routing_job: Option<crate::editor::RoutingJob>,
+    capture_cycles: Option<u64>,
     capture_path: Option<String>,
     capture_frames: u32,
     capture_requested: bool,
@@ -37,6 +123,7 @@ pub struct Workbench {
     worker: Worker,
     view: View,
     trace: Trace,
+    trace_display: TraceDisplay,
     network: Option<NetworkTrace>,
     waveform: Option<Waveform>,
     measurements: Vec<Measurement>,
@@ -104,6 +191,7 @@ impl Workbench {
             .ok()
             .filter(|s| s.len() <= 64_000)
             .and_then(|s| serde_json::from_str::<Preferences>(&s).ok())
+            .map(Preferences::upgrade)
             .filter(|p| p.validate().is_ok())
             .unwrap_or_default();
         let catalog_path = std::env::current_dir()
@@ -150,7 +238,41 @@ impl Workbench {
         } else {
             View::Schematic
         };
+        let studio_path = std::env::current_dir()
+            .unwrap_or_default()
+            .join("studio.rfw.json")
+            .to_string_lossy()
+            .into_owned();
+        let studio = read_limited(&studio_path, 32_000_000)
+            .ok()
+            .and_then(|s| Studio::from_json(&s).ok())
+            .unwrap_or_default();
         let mut bench = Self {
+            context: cc.egui_ctx.clone(),
+            layout: Layout::default(),
+            studio,
+            studio_path,
+            layout_name: "Banc RF".into(),
+            workspace_name: "Nouveau banc".into(),
+            buffers: Vec::new(),
+            debug_snapshot: None,
+            buffer_key: None,
+            probes_only: false,
+            waterfall: Waterfall::default(),
+            iq_keys: [None, None],
+            wave_key: None,
+            samples_per_symbol: 16,
+            sample_offset: 0,
+            trajectory: true,
+            threshold: 0.,
+            z0: 50.,
+            help_kind: None,
+            help_search: String::new(),
+            clipboard: None,
+            appearance: None,
+            layout_revision: 0,
+            routing_job: None,
+            capture_cycles: None,
             capture_path: args
                 .iter()
                 .position(|a| a == "--capture")
@@ -184,6 +306,7 @@ impl Workbench {
             worker,
             view,
             trace,
+            trace_display: TraceDisplay::Preview,
             preview: true,
             tests: Vec::new(),
             logs: VecDeque::from([
@@ -213,9 +336,80 @@ impl Workbench {
             clock: Instant::now(),
             last_status: "Prêt · simulation".into(),
         };
+        if bench.studio.workspaces.is_empty() {
+            bench
+                .studio
+                .workspaces
+                .push(Workspace::new("Banc RF".into(), bench.project.clone()));
+        } else if !args.iter().any(|a| a.starts_with("--demo-")) {
+            bench.restore_workspace(bench.studio.active);
+        }
+        if args.iter().any(|a| a == "--studio") {
+            bench.view = View::Studio;
+        }
+        if args.iter().any(|a| a == "--help-ui") {
+            bench.view = View::Help;
+        }
+        if args.iter().any(|a| a == "--light") {
+            bench.studio.light = true;
+        }
+        if args.iter().any(|a| a == "--english") {
+            bench.studio.language = crate::studio::Language::English;
+        }
+        for (flag, view) in [
+            ("--waterfall", View::Waterfall),
+            ("--constellation", View::Constellation),
+            ("--smith", View::Smith),
+            ("--eye", View::Eye),
+            ("--timing", View::Timing),
+            ("--debug-ui", View::Debug),
+        ] {
+            if args.iter().any(|a| a == flag) {
+                bench.view = view;
+                bench.layout.panes.clear();
+            }
+        }
+        if args.iter().any(|a| a == "--smith") {
+            for n in &mut bench.project.graph.nodes {
+                if matches!(n.kind, Kind::Pna | Kind::PnaX) {
+                    n.config.s_parameter = "S11".into();
+                }
+            }
+        }
+        if args.iter().any(|a| a == "--dashboard") {
+            bench.studio.inspector = false;
+            bench.layout.panes.clear();
+            bench.layout.set(View::Debug, Location::Right);
+            bench.layout.set(View::Acquisition, Location::Bottom);
+        }
+        if args.iter().any(|a| a == "--route-demo") {
+            bench.start_routing(args.iter().any(|a| a == "--organize-demo"), false, true);
+        }
+        if let Some(index) = args.iter().position(|a| a == "--capture-cycles") {
+            bench.capture_cycles = args
+                .get(index + 1)
+                .and_then(|n| n.parse().ok())
+                .filter(|n| *n > 0 && *n <= 128);
+            bench.continuous = bench.capture_cycles.is_some();
+        }
+        if args.iter().any(|a| a == "--start-debug") {
+            bench.debug_start();
+        }
         if args.iter().any(|a| a == "--run-demo") {
             bench.run();
-            if args.iter().any(|a| a == "--results") {
+            if args.iter().any(|a| a == "--results")
+                && !args.iter().any(|a| {
+                    matches!(
+                        a.as_str(),
+                        "--waterfall"
+                            | "--constellation"
+                            | "--smith"
+                            | "--eye"
+                            | "--timing"
+                            | "--debug-ui"
+                    )
+                })
+            {
                 bench.view = if args.iter().any(|a| a == "--demo-pna") {
                     View::Network
                 } else {
@@ -252,7 +446,17 @@ impl Workbench {
         });
     }
     fn result(&mut self, r: RunResult) {
+        self.preview = false;
+        self.trace_display = if r.trace.is_some() {
+            TraceDisplay::Acquired
+        } else {
+            TraceDisplay::Unavailable
+        };
+        self.buffers = r.buffers;
+        self.debug_snapshot = None;
+        self.canvas.active_node = None;
         if let Some(t) = r.trace {
+            self.waterfall.push(&t);
             self.trace = t;
             self.preview = false;
         }
@@ -263,8 +467,18 @@ impl Workbench {
         self.canvas.completed = r.completed;
         self.elapsed = r.elapsed_ms;
         self.sequence = r.sequence + 1;
+        if self.capture_cycles.is_some_and(|n| self.sequence >= n) {
+            self.worker.stop();
+        }
     }
     fn poll(&mut self) {
+        self.poll_routing();
+        if let Some(snapshot) = self.worker.take_debug() {
+            self.buffers = snapshot.buffers.clone();
+            self.canvas.completed = snapshot.completed.clone();
+            self.canvas.active_node = Some(snapshot.node);
+            self.debug_snapshot = Some(snapshot);
+        }
         if let Some(r) = self.worker.take_latest() {
             self.result(r);
         }
@@ -286,6 +500,10 @@ impl Workbench {
                 Event::Message(s) => self.log(s, false),
                 Event::Error(e) => self.log(e, true),
                 Event::Idle => {
+                    if let Some(snapshot) = &mut self.debug_snapshot {
+                        snapshot.paused = false;
+                    }
+                    self.canvas.active_node = None;
                     if !self.last_status.contains("Erreur") {
                         self.log(
                             "Tâche terminée ; consulter les résultats et le journal".into(),
@@ -326,9 +544,13 @@ impl Workbench {
                     Canvas::configured(self.preferences.snap, self.preferences.orthogonal);
                 self.network = None;
                 self.waveform = None;
+                self.buffers.clear();
+                self.waterfall = Waterfall::default();
+                self.debug_snapshot = None;
                 self.measurements.clear();
                 self.tests.clear();
                 self.preview = true;
+                self.trace_display = TraceDisplay::Preview;
                 self.canvas.completed.clear();
                 self.log(
                     "Projet ouvert ; exécuter pour acquérir une nouvelle trace".into(),
@@ -360,7 +582,8 @@ impl Workbench {
             .project
             .graph
             .add(kind, [36. + (n % 4.) * 294., 40. + (n / 4.).floor() * 280.]);
-        self.canvas.selected = Some(id);
+        self.canvas.select_only(id);
+        self.studio.used(kind);
         self.canvas.completed.clear();
         self.canvas.fit();
         self.view = View::Schematic;
@@ -404,35 +627,39 @@ impl Workbench {
                 self.history.redo(&mut self.project.graph);
                 self.canvas.completed.clear();
             }
-            Action::Delete => {
-                if self.view == View::Schematic
-                    && let Some(id) = self.canvas.selected
-                {
-                    self.history.record(self.project.graph.clone());
-                    self.project.graph.remove(id);
-                    self.canvas.selected = None;
-                    self.canvas.cancel_wire();
+            Action::Delete => self.delete_selection(),
+            Action::Duplicate => {
+                let clip = crate::editor::selection(&self.project.graph, &self.canvas.selected_ids);
+                self.paste_graph(&clip);
+            }
+            Action::Copy => self.copy_selection(),
+            Action::Paste => {
+                if let Some(clip) = self.clipboard.clone() {
+                    self.paste_graph(&clip);
                 }
             }
-            Action::Duplicate => {
-                if let Some(old) = self
+            Action::SelectAll => {
+                self.canvas.selected_ids = self.project.graph.nodes.iter().map(|n| n.id).collect();
+                self.canvas.selected = self.canvas.selected_ids.iter().next().copied();
+            }
+            Action::AutoLayout => self.organize(),
+            Action::Route => self.route_all(),
+            Action::Annotate => self.add_annotation(),
+            Action::Help => {
+                self.help_kind = None;
+                self.view = View::Help;
+            }
+            Action::BlockHelp => {
+                self.help_kind = self
                     .canvas
                     .selected
                     .and_then(|id| self.project.graph.node(id))
-                    .cloned()
-                    && self.project.graph.nodes.len() < 1000
-                {
-                    self.history.record(self.project.graph.clone());
-                    let id = self
-                        .project
-                        .graph
-                        .add(old.kind, [old.position[0] + 36., old.position[1] + 36.]);
-                    let n = self.project.graph.nodes.last_mut().unwrap();
-                    n.config = old.config;
-                    n.title = format!("{} · copie", old.title);
-                    self.canvas.selected = Some(id);
-                }
+                    .map(|n| n.kind);
+                self.view = View::Help;
             }
+            Action::DebugStart => self.debug_start(),
+            Action::DebugStep => self.worker.debug_step(),
+            Action::DebugContinue => self.worker.debug_continue(),
             Action::Library => self.view = View::Library,
             Action::Settings => self.view = View::Settings,
             Action::Network => self.view = View::Network,
@@ -444,15 +671,24 @@ impl Workbench {
         egui::TopBottomPanel::top("header").show(ctx, |ui| {
             ui.add_space(5.);
             ui.horizontal(|ui| {
-                ui.label(RichText::new("RF").size(24.).strong().color(TEAL));
-                ui.label(RichText::new("WORKBENCH").size(19.).strong());
                 ui.label(
-                    RichText::new("/ Instrumentation & métrologie")
-                        .size(12.)
-                        .color(MUTED),
+                    RichText::new(crate::i18n::t("RF"))
+                        .size(24. * crate::theme::scale())
+                        .strong()
+                        .color(teal()),
+                );
+                ui.label(
+                    RichText::new(crate::i18n::t("WORKBENCH"))
+                        .size(19. * crate::theme::scale())
+                        .strong(),
+                );
+                ui.label(
+                    RichText::new(crate::i18n::t("/ Instrumentation & métrologie"))
+                        .size(12. * crate::theme::scale())
+                        .color(muted()),
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    badge(ui, "v0.2 · WINDOWS", MUTED);
+                    badge(ui, "v0.3 · WINDOWS", muted());
                     badge(
                         ui,
                         if self.hardware {
@@ -460,7 +696,7 @@ impl Workbench {
                         } else {
                             "SIMULATION"
                         },
-                        if self.hardware { GOLD } else { TEAL },
+                        if self.hardware { gold() } else { teal() },
                     );
                 });
             });
@@ -484,12 +720,37 @@ impl Workbench {
                         self.view = view;
                     }
                     if ui
-                        .selectable_label(self.view == view, RichText::new(name).size(12.))
+                        .selectable_label(
+                            self.view == view,
+                            RichText::new(t(name)).size(12. * crate::theme::scale()),
+                        )
                         .clicked()
                     {
                         self.view = view;
                     }
                     ui.add_space(6.);
+                }
+                ui.menu_button(t("Vues RF"), |ui| {
+                    for view in [
+                        View::Waterfall,
+                        View::Constellation,
+                        View::Smith,
+                        View::Eye,
+                        View::Timing,
+                    ] {
+                        if ui.button(view.label()).clicked() {
+                            self.view = view;
+                            ui.close();
+                        }
+                    }
+                });
+                for view in [View::Debug, View::Studio, View::Help] {
+                    if ui
+                        .selectable_label(self.view == view, view.label())
+                        .clicked()
+                    {
+                        self.view = view;
+                    }
                 }
             });
             ui.separator();
@@ -535,7 +796,7 @@ impl Workbench {
                     {
                         self.run();
                     }
-                    ui.checkbox(&mut self.continuous, "Continu");
+                    ui.checkbox(&mut self.continuous, crate::i18n::t("Continu"));
                 });
                 ui.add_enabled_ui(busy, |ui| {
                     if icon_button(ui, Icon::Stop, &self.preferences.hint(Action::Stop), false)
@@ -552,136 +813,155 @@ impl Workbench {
                     self.preferences_draft.snap = self.canvas.snap;
                 }
                 if ui
-                    .checkbox(&mut self.canvas.orthogonal, "Câbles orthogonaux")
+                    .checkbox(
+                        &mut self.canvas.orthogonal,
+                        crate::i18n::t("Câbles orthogonaux"),
+                    )
                     .changed()
                 {
                     self.preferences_draft.orthogonal = self.canvas.orthogonal;
                 }
                 ui.add_enabled_ui(!busy, |ui| {
-                    ui.checkbox(&mut self.hardware, "Matériel réel");
+                    ui.checkbox(&mut self.hardware, crate::i18n::t("Matériel réel"));
+                });
+            });
+            ui.horizontal_wrapped(|ui| {
+                self.workspace_tabs(ui);
+                ui.menu_button(t("Édition"), |ui| {
+                    for action in [
+                        Action::SelectAll,
+                        Action::Copy,
+                        Action::Paste,
+                        Action::Annotate,
+                        Action::AutoLayout,
+                        Action::Route,
+                    ] {
+                        if ui.button(t(action.label())).clicked() {
+                            self.action(action);
+                            ui.close();
+                        }
+                    }
+                    ui.separator();
+                    for (label, mode) in [
+                        ("Aligner à gauche", crate::editor::Alignment::Left),
+                        ("Aligner en haut", crate::editor::Alignment::Top),
+                        (
+                            "Distribuer horizontalement",
+                            crate::editor::Alignment::Horizontal,
+                        ),
+                        (
+                            "Distribuer verticalement",
+                            crate::editor::Alignment::Vertical,
+                        ),
+                    ] {
+                        if ui.button(t(label)).clicked() {
+                            self.history.record(self.project.graph.clone());
+                            crate::editor::align(
+                                &mut self.project.graph,
+                                &self.canvas.selected_ids,
+                                mode,
+                            );
+                            self.canvas.fit();
+                            ui.close();
+                        }
+                    }
                 });
             });
             ui.add_space(3.);
         });
     }
     fn sidebar(&mut self, ctx: &egui::Context) {
-        let query = self.search.to_lowercase();
         egui::SidePanel::left("library")
             .resizable(true)
-            .default_width(232.)
-            .width_range(190. ..=310.)
+            .default_width(210.)
+            .width_range(190. ..=320.)
             .show(ctx, |ui| {
-                ui.add_space(10.);
                 caption(ui, "BIBLIOTHÈQUE DE BLOCS");
-                ui.label(
-                    RichText::new("18 éléments · ports nommés")
-                        .size(11.)
-                        .color(MUTED),
-                );
                 ui.add(
                     egui::TextEdit::singleline(&mut self.search)
-                        .hint_text("PNA, DAC, thermique…")
+                        .hint_text(pair("Recherche floue…", "Fuzzy search…"))
                         .desired_width(f32::INFINITY),
                 );
-                ui.add_space(6.);
                 egui::ScrollArea::vertical().show(ui, |ui| {
-                    for category in [
-                        "Instruments RF",
-                        "Électronique & conversion",
-                        "Thermique",
-                        "Composants DUT",
-                        "Analyse & automatisation",
-                    ] {
-                        egui::CollapsingHeader::new(category)
-                            .default_open(true)
-                            .show(ui, |ui| {
-                                for k in Kind::ALL.into_iter().filter(|k| {
-                                    k.category() == category
-                                        && k.label().to_lowercase().contains(&query)
-                                }) {
-                                    let (rect, response) = ui.allocate_exact_size(
-                                        egui::vec2(ui.available_width(), 48.),
-                                        egui::Sense::click(),
-                                    );
-                                    let p = ui.painter();
-                                    p.rect_filled(
-                                        rect,
-                                        5.,
-                                        if response.hovered() { BORDER } else { CARD },
-                                    );
-                                    visuals::symbol(
-                                        p,
-                                        egui::Rect::from_min_size(
-                                            rect.min + egui::vec2(4., 5.),
-                                            egui::vec2(57., 36.),
-                                        ),
-                                        k,
-                                    );
-                                    p.text(
-                                        rect.min + egui::vec2(66., 18.),
-                                        egui::Align2::LEFT_CENTER,
-                                        k.label(),
-                                        egui::FontId::proportional(12.),
-                                        crate::theme::kind(k),
-                                    );
-                                    p.text(
-                                        rect.min + egui::vec2(66., 34.),
-                                        egui::Align2::LEFT_CENTER,
-                                        "Ajouter au banc",
-                                        egui::FontId::proportional(10.),
-                                        MUTED,
-                                    );
-                                    if response
-                                        .on_hover_text(format!(
-                                            "{} · {} entrées / {} sorties",
-                                            k.label(),
-                                            k.inputs().len(),
-                                            k.outputs().len()
-                                        ))
-                                        .clicked()
-                                    {
-                                        self.add_block(k);
+                    let hits = crate::editor::search(&self.search);
+                    if !self.search.trim().is_empty() {
+                        caption(ui, "Résultats");
+                        for k in hits {
+                            self.palette_item(ui, k);
+                        }
+                    } else {
+                        for (name, list) in [
+                            ("Favoris", self.studio.favorites.clone()),
+                            ("Récents", self.studio.recent.clone()),
+                        ] {
+                            egui::CollapsingHeader::new(t(name))
+                                .default_open(true)
+                                .show(ui, |ui| {
+                                    for k in list {
+                                        self.palette_item(ui, k);
                                     }
-                                }
-                            });
+                                });
+                        }
+                        for category in [
+                            "Instruments RF",
+                            "Électronique & conversion",
+                            "Thermique",
+                            "Composants DUT",
+                            "Analyse & automatisation",
+                        ] {
+                            egui::CollapsingHeader::new(t(category))
+                                .default_open(true)
+                                .show(ui, |ui| {
+                                    for k in
+                                        Kind::ALL.into_iter().filter(|k| k.category() == category)
+                                    {
+                                        self.palette_item(ui, k);
+                                    }
+                                });
+                        }
                     }
-                    ui.add_space(12.);
-                    ui.label(
-                        RichText::new(
-                            "W : câblage · V : sélection
-H : déplacement · F : cadrage
-Les touches sont personnalisables.",
-                        )
-                        .size(11.)
-                        .color(MUTED),
-                    );
                 });
             });
     }
     fn inspector(&mut self, ctx: &egui::Context) {
         egui::SidePanel::right("inspector").resizable(true).default_width(270.).width_range(240. ..=400.).show(ctx,|ui|{egui::ScrollArea::vertical().show(ui,|ui|{
-            ui.add_space(10.);caption(ui,"INSPECTEUR");let mut old=None;let mut changed=false;let mut remove=None;let mut open_python=false;
+            ui.add_space(10.);caption(ui,"INSPECTEUR");
+            if let Some(note_id)=self.canvas.annotation {
+                let before=self.project.graph.clone();
+                if let Some(note)=self.project.graph.annotations.iter_mut().find(|a|a.id==note_id) {
+                    caption(ui,"Annotation");
+                    if ui.add(egui::TextEdit::multiline(&mut note.text).char_limit(2048).desired_rows(5).desired_width(f32::INFINITY)).changed() {self.history.record(before);}
+                }
+            }
+            ui.label(format!("{} {}",self.canvas.selected_ids.iter().filter(|id|self.project.graph.node(**id).is_some()).count(),pair("bloc(s) sélectionné(s)","block(s) selected")));
+            let mut old=None;let mut changed=false;let mut remove=None;let mut open_python=false;
             if let Some(id)=self.canvas.selected && let Some(n)=self.project.graph.nodes.iter_mut().find(|n|n.id==id){
                 old=Some(n.clone());badge(ui,n.kind.tag(),crate::theme::kind(n.kind));changed|=ui.text_edit_singleline(&mut n.title).changed();
                 let (r,_)=ui.allocate_exact_size(egui::vec2(ui.available_width(),90.),egui::Sense::hover());visuals::symbol(ui.painter(),r.shrink(8.),n.kind);ui.separator();let c=&mut n.config;
                 match n.kind {
                     Kind::Generator=>{changed|=number(ui,"FRÉQUENCE",&mut c.frequency_hz,1e6," Hz");changed|=number(ui,"PUISSANCE",&mut c.power_dbm,0.1," dBm");},
-                    Kind::Dut=>{changed|=number(ui,"PERTE D'INSERTION",&mut c.loss_db,0.1," dB");changed|=number(ui,"FACTEUR DE BRUIT",&mut c.noise_figure_db,0.1," dB");ui.label(c.dut_id.as_deref().unwrap_or("DUT générique · modèle local"));if ui.button("Ouvrir le catalogue DUT").clicked(){self.view=View::DutCatalog;}ui.label(RichText::new("MODEL fournit un modèle au PNA/NF Meter. RF IN/OUT représente la chaîne de signal.").size(11.).color(MUTED));},
+                    Kind::Dut=>{changed|=number(ui,"PERTE D'INSERTION",&mut c.loss_db,0.1," dB");changed|=number(ui,"FACTEUR DE BRUIT",&mut c.noise_figure_db,0.1," dB");ui.label(c.dut_id.as_deref().unwrap_or("DUT générique · modèle local"));if ui.button(crate::i18n::t("Ouvrir le catalogue DUT")).clicked(){self.view=View::DutCatalog;}ui.label(RichText::new(crate::i18n::t("MODEL fournit un modèle au PNA/NF Meter. RF IN/OUT représente la chaîne de signal.")).size(11. * crate::theme::scale()).color(muted()));},
                     Kind::Analyzer|Kind::Pna|Kind::PnaX=>{changed|=number(ui,"DÉBUT BALAYAGE",&mut c.start_hz,1e6," Hz");changed|=number(ui,"FIN BALAYAGE",&mut c.stop_hz,1e6," Hz");caption(ui,"POINTS");changed|=ui.add(egui::DragValue::new(&mut c.points).range(2..=rf_core::MAX_POINTS)).changed();if n.kind==Kind::Analyzer{caption(ui,"REQUÊTE TRACE ASCII");changed|=ui.text_edit_singleline(&mut c.trace_query).changed();}else{caption(ui,"PARAMÈTRE S");egui::ComboBox::from_id_salt("s-param").selected_text(&c.s_parameter).show_ui(ui,|ui|{for p in ["S11","S21","S12","S22"]{changed|=ui.selectable_value(&mut c.s_parameter,p.into(),p).changed();}});}},
                     Kind::Awg|Kind::Dac|Kind::Adc=>{changed|=number(ui,"CADENCE AWG",&mut c.sample_rate_hz,1e6," Sa/s");changed|=number(ui,"FRÉQUENCE DE BASE",&mut c.tone_hz,1e4," Hz");caption(ui,"ÉCHANTILLONS AWG");changed|=ui.add(egui::DragValue::new(&mut c.samples).range(2..=65536)).changed();caption(ui,"RÉSOLUTION");changed|=ui.add(egui::DragValue::new(&mut c.resolution_bits).range(2..=24).suffix(" bits")).changed();changed|=number(ui,"PLEINE ÉCHELLE",&mut c.voltage_v,0.05," V");},
-                    Kind::IqModulator=>{changed|=number(ui,"PERTE CONVERSION",&mut c.loss_db,0.1," dB");ui.label("Entrées I / Q analogiques et oscillateur LO. Modèle idéal de transposition.");},
+                    Kind::IqModulator=>{changed|=number(ui,"PERTE CONVERSION",&mut c.loss_db,0.1," dB");ui.label(crate::i18n::t("Entrées I / Q analogiques et oscillateur LO. Modèle idéal de transposition."));},
                     Kind::VariableResistor=>{changed|=number(ui,"RÉSISTANCE",&mut c.resistance_ohm,1.," Ω");},
-                    Kind::Thermometer|Kind::Thermostream=>{changed|=number(ui,"TEMPÉRATURE / CONSIGNE",&mut c.temperature_c,0.1," °C");ui.label("Thermostream : consigne idéale sans dynamique thermique. Thermomètre : entrée TEMP ou valeur locale.");},
+                    Kind::Thermometer|Kind::Thermostream=>{changed|=number(ui,"TEMPÉRATURE / CONSIGNE",&mut c.temperature_c,0.1," °C");ui.label(crate::i18n::t("Thermostream : consigne idéale sans dynamique thermique. Thermomètre : entrée TEMP ou valeur locale."));},
                     Kind::NoiseFigureMeter=>{changed|=number(ui,"FACTEUR DE BRUIT",&mut c.noise_figure_db,0.1," dB");},
-                    Kind::PowerSensor|Kind::PowerMeter=>{ui.label("Mesure scalaire en dBm. Relier RF → Power Sensor → Power Meter.");},
-                    Kind::Python=>{if ui.button("Éditer le script Python").clicked(){self.script=c.script.clone();open_python=true;}ui.label("Entrée trace / sortie output");},Kind::Peak=>{ui.label("Maximum de trace en dBm");},
+                    Kind::PowerSensor|Kind::PowerMeter=>{ui.label(crate::i18n::t("Mesure scalaire en dBm. Relier RF → Power Sensor → Power Meter."));},
+                    Kind::Python=>{if ui.button(crate::i18n::t("Éditer le script Python")).clicked(){self.script=c.script.clone();open_python=true;}ui.label(crate::i18n::t("Entrée trace / sortie output"));},Kind::Peak=>{ui.label(crate::i18n::t("Maximum de trace en dBm"));},
                     Kind::Limit=>{changed|=number(ui,"LIMITE BASSE",&mut c.lower_dbm,0.1," dBm");changed|=number(ui,"LIMITE HAUTE",&mut c.upper_dbm,0.1," dBm");},
                 }
                 if matches!(n.kind,Kind::Generator|Kind::Analyzer)||n.kind.is_extended(){caption(ui,"RESSOURCE VISA / SCPI");changed|=ui.text_edit_singleline(&mut c.resource).changed();}
-                if n.kind.is_extended(){ui.label(RichText::new("Modèle simulé dans v0.2. Les profils matériels spécifiques restent à développer.").size(11.).color(GOLD));}
+                if n.kind.is_extended(){ui.label(RichText::new(crate::i18n::t("Modèle simulé dans v0.3. Les profils matériels spécifiques restent à développer.")).size(11. * crate::theme::scale()).color(gold()));}
+                ui.separator();
+                changed|=ui.checkbox(&mut n.breakpoint,crate::i18n::t("Breakpoint")).changed();
+                changed|=ui.checkbox(&mut n.probe,crate::i18n::t("Sonde")).changed();
+                caption(ui,"Commentaire");
+                changed|=ui.add(egui::TextEdit::multiline(&mut n.comment).char_limit(2048).desired_rows(3).desired_width(f32::INFINITY)).changed();
+                if ui.button(crate::i18n::t("Aide du bloc")).clicked(){self.help_kind=Some(n.kind);self.view=View::Help;}
                 ui.separator();caption(ui,"PORTS DE DONNÉES");for p in n.kind.inputs(){ui.colored_label(port(p.port),format!("IN {} · {}{}",p.name,p.port.label(),if p.required{" · requis"}else{" · optionnel"}));}for p in n.kind.outputs(){ui.colored_label(port(p.port),format!("OUT {} · {}",p.name,p.port.label()));}
-                if ui.button(RichText::new("Supprimer le bloc").color(RED)).clicked(){remove=Some(id);}
-            }else{ui.label("Sélectionner un bloc.");}
+                if ui.button(RichText::new(crate::i18n::t("Supprimer le bloc")).color(red())).clicked(){remove=Some(id);}
+            }else{ui.label(crate::i18n::t("Sélectionner un bloc."));}
             if changed && let Some(old)=old{let mut before=self.project.graph.clone();if let Some(n)=before.nodes.iter_mut().find(|n|n.id==old.id){*n=old;}self.history.record(before);self.canvas.completed.clear();}
             if let Some(id)=remove{self.history.record(self.project.graph.clone());self.project.graph.remove(id);self.canvas.selected=None;self.canvas.cancel_wire();}
 if open_python{self.view=View::Python;}
@@ -699,7 +979,7 @@ if open_python{self.view=View::Python;}
                         } else {
                             "●  PRÊT"
                         },
-                        TEAL,
+                        teal(),
                     );
                     ui.label(
                         RichText::new(format!(
@@ -707,8 +987,8 @@ if open_python{self.view=View::Python;}
                             self.project.graph.nodes.len(),
                             self.project.graph.edges.len()
                         ))
-                        .size(11.)
-                        .color(MUTED),
+                        .size(11. * crate::theme::scale())
+                        .color(muted()),
                     );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
@@ -717,8 +997,8 @@ if open_python{self.view=View::Python;}
                                 self.frame_ms, self.elapsed, self.sequence
                             ))
                             .monospace()
-                            .size(11.)
-                            .color(MUTED),
+                            .size(11. * crate::theme::scale())
+                            .color(muted()),
                         );
                     });
                 });
@@ -734,7 +1014,7 @@ if open_python{self.view=View::Python;}
                 ui.horizontal(|ui| {
                     caption(ui, "JOURNAL D'EXÉCUTION");
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.small_button("Effacer").clicked() {
+                        if ui.small_button(crate::i18n::t("Effacer")).clicked() {
                             self.logs.clear();
                         }
                     });
@@ -743,25 +1023,26 @@ if open_python{self.view=View::Python;}
                     .stick_to_bottom(true)
                     .show(ui, |ui| {
                         for (msg, error) in &self.logs {
-                            ui.label(RichText::new(msg).monospace().size(11.).color(if *error {
-                                RED
-                            } else {
-                                MUTED
-                            }));
+                            ui.label(
+                                RichText::new(t(msg))
+                                    .monospace()
+                                    .size(11. * crate::theme::scale())
+                                    .color(if *error { red() } else { muted() }),
+                            );
                         }
                     });
             });
     }
     fn center(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(PANEL).inner_margin(18.))
+            .frame(egui::Frame::new().fill(panel()).inner_margin(18.))
             .show(ctx, |ui| {
                 ui.heading(&self.project.name);
                 ui.horizontal(|ui| {
                     ui.label(
-                        RichText::new("Banc RF / Spectre & conformité")
-                            .size(12.)
-                            .color(MUTED),
+                        RichText::new(crate::i18n::t("Banc RF / Spectre & conformité"))
+                            .size(12. * crate::theme::scale())
+                            .color(muted()),
                     );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         badge(
@@ -773,87 +1054,110 @@ if open_python{self.view=View::Python;}
                             } else {
                                 "MESURE MATÉRIELLE"
                             },
-                            if self.trace.simulated { TEAL } else { GOLD },
+                            if self.trace.simulated { teal() } else { gold() },
                         );
                     });
                 });
                 ui.add_space(9.);
-                match self.view {
-                    View::Schematic => {
-                        ui.horizontal(|ui| {
-                            caption(ui, "SCHÉMA DU BANC");
-                            if ui.small_button("Ajuster").clicked() {
-                                self.canvas.fit();
-                            }
-                            ui.label(
-                                RichText::new(format!("{:.0}%", self.canvas.zoom * 100.))
-                                    .size(11.)
-                                    .color(MUTED),
-                            );
-                            if let Err(e) = self.project.graph.validate() {
-                                ui.label(RichText::new(e.to_string()).size(11.).color(GOLD));
-                            }
-                        });
-                        let height = (ui.available_height() - 195.).max(260.);
-                        if let Some(error) =
-                            self.canvas
-                                .show(ui, &mut self.project.graph, &mut self.history, height)
-                        {
-                            self.log(error, true);
-                        }
-                        ui.add_space(12.);
-                        self.trace_header(ui);
-                        plot::plot(ui, &self.trace, 145., self.marker);
-                    }
-                    View::Acquisition => {
-                        self.trace_header(ui);
-                        if let Ok((freq, power)) = self.trace.peak() {
-                            ui.horizontal(|ui| {
-                                metric(ui, "PIC", &format!("{power:.3} dBm"), TEAL);
-                                metric(ui, "FRÉQUENCE", &format!("{:.6} GHz", freq / 1e9), BLUE);
-                                metric(
-                                    ui,
-                                    "POINTS",
-                                    &self.trace.amplitude_dbm.len().to_string(),
-                                    TEXT,
-                                );
-                            });
-                        }
-                        plot::plot(
-                            ui,
-                            &self.trace,
-                            (ui.available_height() - 80.).max(200.),
-                            self.marker,
-                        );
-                        ui.horizontal(|ui| {
-                            ui.label("La courbe suit la dernière acquisition complète.");
-                            if ui.button("Exporter CSV").clicked() {
-                                self.export();
-                            }
-                        });
-                    }
-                    View::Tests => self.test_view(ui),
-                    View::Python => self.python_view(ui),
-                    View::Instruments => self.instrument_view(ui),
-                    View::Network => self.network_view(ui),
-                    View::Measurements => self.measurement_view(ui),
-                    View::Library => self.library_view(ui),
-                    View::DutCatalog => self.catalog_view(ui),
-                    View::Settings => self.settings_view(ui),
-                    View::Project => self.project_view(ui),
-                }
+                self.pane_header(ui, self.view);
+                self.render_view(ui, self.view);
             });
+    }
+    fn render_view(&mut self, ui: &mut egui::Ui, view: View) {
+        match view {
+            View::Schematic => {
+                ui.horizontal(|ui| {
+                    caption(ui, "SCHÉMA DU BANC");
+                    if ui.small_button(crate::i18n::t("Ajuster")).clicked() {
+                        self.canvas.fit();
+                    }
+                    ui.label(
+                        RichText::new(format!("{:.0}%", self.canvas.zoom * 100.))
+                            .size(11. * crate::theme::scale())
+                            .color(muted()),
+                    );
+                    if let Err(e) = self.project.graph.validate() {
+                        ui.label(
+                            RichText::new(e.to_string())
+                                .size(11. * crate::theme::scale())
+                                .color(gold()),
+                        );
+                    }
+                });
+                let height = ui.available_height().max(75.);
+                if let Some(error) =
+                    self.canvas
+                        .show(ui, &mut self.project.graph, &mut self.history, height)
+                {
+                    self.log(error, true);
+                }
+            }
+            View::Acquisition => {
+                if self.trace_display == TraceDisplay::Unavailable {
+                    ui.label(pair(
+                        "Aucun spectre acquis par ce banc.",
+                        "This bench has no acquired spectrum.",
+                    ));
+                    return;
+                }
+                self.trace_header(ui);
+                if let Ok((freq, power)) = self.trace.peak() {
+                    ui.horizontal(|ui| {
+                        metric(ui, "PIC", &format!("{power:.3} dBm"), teal());
+                        metric(ui, "FRÉQUENCE", &format!("{:.6} GHz", freq / 1e9), blue());
+                        metric(
+                            ui,
+                            "POINTS",
+                            &self.trace.amplitude_dbm.len().to_string(),
+                            text_color(),
+                        );
+                    });
+                }
+                plot::plot(
+                    ui,
+                    &self.trace,
+                    (ui.available_height() - 45.).clamp(120., 700.),
+                    self.marker,
+                );
+                ui.horizontal(|ui| {
+                    ui.label(crate::i18n::t(
+                        "La courbe suit la dernière acquisition complète.",
+                    ));
+                    if ui.button(crate::i18n::t("Exporter CSV")).clicked() {
+                        self.export();
+                    }
+                });
+            }
+            View::Tests => self.test_view(ui),
+            View::Python => self.python_view(ui),
+            View::Instruments => self.instrument_view(ui),
+            View::Network => self.network_view(ui),
+            View::Measurements => self.measurement_view(ui),
+            View::Library => self.library_view(ui),
+            View::DutCatalog => self.catalog_view(ui),
+            View::Settings => self.settings_view(ui),
+            View::Project => self.project_view(ui),
+            View::Waterfall | View::Constellation | View::Smith | View::Eye | View::Timing => {
+                self.analysis_view(ui, view)
+            }
+            View::Debug => self.debug_view(ui),
+            View::Studio => self.studio_view(ui),
+            View::Help => self.help_view(ui),
+        }
     }
     fn trace_header(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             caption(ui, "SPECTRE RF");
+            if self.trace_display == TraceDisplay::Preview {
+                badge(ui, "APERÇU SIMULÉ", gold());
+            }
             ui.label(
-                RichText::new("Amplitude / fréquence")
-                    .size(11.)
-                    .color(MUTED),
+                RichText::new(crate::i18n::t("Amplitude / fréquence"))
+                    .size(11. * crate::theme::scale())
+                    .color(muted()),
             );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.checkbox(&mut self.marker, "Marqueur M1");
+                ui.checkbox(&mut self.marker, crate::i18n::t("Marqueur M1"));
             });
         });
     }
@@ -862,28 +1166,31 @@ if open_python{self.view=View::Python;}
             if ui
                 .add_enabled(
                     !self.worker.is_busy(),
-                    egui::Button::new("Lancer les autotests"),
+                    egui::Button::new(crate::i18n::t("Lancer les autotests")),
                 )
                 .clicked()
             {
                 self.submit(Command::Suite);
             }
             if ui
-                .add_enabled(!self.worker.is_busy(), egui::Button::new("Tester le banc"))
+                .add_enabled(
+                    !self.worker.is_busy(),
+                    egui::Button::new(crate::i18n::t("Tester le banc")),
+                )
                 .clicked()
             {
                 self.run();
             }
         });
-        ui.label(RichText::new("Les autotests vérifient le logiciel. Tester le banc évalue les limites définies par ses blocs.").color(MUTED));
+        ui.label(RichText::new(crate::i18n::t("Les autotests vérifient le logiciel. Tester le banc évalue les limites définies par ses blocs.")).color(muted()));
         ui.add_space(12.);
         if self.tests.is_empty() {
-            ui.label("Aucun résultat. Lancer une série de tests.");
+            ui.label(crate::i18n::t("Aucun résultat. Lancer une série de tests."));
         }
         egui::ScrollArea::vertical().show(ui, |ui| {
             for t in &self.tests {
                 egui::Frame::new()
-                    .fill(CARD)
+                    .fill(card_fill())
                     .inner_margin(16.)
                     .corner_radius(8.)
                     .show(ui, |ui| {
@@ -892,11 +1199,11 @@ if open_python{self.view=View::Python;}
                             badge(
                                 ui,
                                 if t.passed { "PASS" } else { "FAIL" },
-                                if t.passed { TEAL } else { RED },
+                                if t.passed { teal() } else { red() },
                             );
                             ui.strong(&t.name);
                         });
-                        ui.label(RichText::new(&t.detail).color(MUTED));
+                        ui.label(RichText::new(&t.detail).color(muted()));
                     });
                 ui.add_space(4.);
             }
@@ -909,12 +1216,15 @@ if open_python{self.view=View::Python;}
                 .desired_width(f32::INFINITY)
                 .hint_text("C:\\Python312\\python.exe"),
         );
-        ui.label(RichText::new("API : trace, output, ResourceManager().open_resource(...).query(...) / .write(...)").size(12.).color(MUTED));
+        ui.label(RichText::new(crate::i18n::t("API : trace, output, ResourceManager().open_resource(...).query(...) / .write(...)")).size(12. * crate::theme::scale()).color(muted()));
         ui.horizontal(|ui| {
-            if ui.button("Charger l'exemple").clicked() {
+            if ui.button(crate::i18n::t("Charger l'exemple")).clicked() {
                 self.script = include_str!("../../../python/examples/cable_compensation.py").into();
             }
-            if ui.button("Appliquer au bloc sélectionné").clicked() {
+            if ui
+                .button(crate::i18n::t("Appliquer au bloc sélectionné"))
+                .clicked()
+            {
                 let before = self.project.graph.clone();
                 if let Some(node) = self
                     .project
@@ -933,7 +1243,7 @@ if open_python{self.view=View::Python;}
             if ui
                 .add_enabled(
                     !self.worker.is_busy(),
-                    egui::Button::new("Exécuter sur la trace"),
+                    egui::Button::new(crate::i18n::t("Exécuter sur la trace")),
                 )
                 .clicked()
             {
@@ -958,20 +1268,22 @@ if open_python{self.view=View::Python;}
                 );
             });
         ui.add_space(12.);
-        ui.label(RichText::new("Le processus est supervisé et interrompu après 5 s (hors requête instrument déjà en cours). Python dispose des permissions de ton compte ; exécuter uniquement des scripts de confiance.").size(12.).color(MUTED));
+        ui.label(RichText::new(crate::i18n::t("Le processus est supervisé et interrompu après 5 s (hors requête instrument déjà en cours). Python dispose des permissions de ton compte ; exécuter uniquement des scripts de confiance.")).size(12. * crate::theme::scale()).color(muted()));
     }
     fn instrument_view(&mut self, ui: &mut egui::Ui) {
         caption(ui, "GESTIONNAIRE DE RESSOURCES");
-        ui.label("Simulation disponible ; saisir explicitement l'adresse d'un instrument TCP.");
+        ui.label(crate::i18n::t(
+            "Simulation disponible ; saisir explicitement l'adresse d'un instrument TCP.",
+        ));
         ui.add_space(8.);
-        ui.label("Ressource");
+        ui.label(crate::i18n::t("Ressource"));
         ui.add(egui::TextEdit::singleline(&mut self.resource).desired_width(f32::INFINITY));
-        ui.label("Commande SCPI (query)");
+        ui.label(crate::i18n::t("Commande SCPI (query)"));
         ui.add(egui::TextEdit::singleline(&mut self.query).desired_width(f32::INFINITY));
         if ui
             .add_enabled(
                 !self.worker.is_busy(),
-                egui::Button::new("Interroger l'instrument"),
+                egui::Button::new(crate::i18n::t("Interroger l'instrument")),
             )
             .clicked()
         {
@@ -985,35 +1297,40 @@ if open_python{self.view=View::Python;}
         egui::Grid::new("transports")
             .spacing([25., 16.])
             .show(ui, |ui| {
-                ui.strong("Transport");
-                ui.strong("État");
+                ui.strong(crate::i18n::t("Transport"));
+                ui.strong(crate::i18n::t("État"));
                 ui.end_row();
-                ui.label("Simulation SCPI");
-                badge(ui, "Disponible", TEAL);
+                ui.label(crate::i18n::t("Simulation SCPI"));
+                badge(ui, "Disponible", teal());
                 ui.end_row();
-                ui.label("SCPI TCP / SOCKET");
-                badge(ui, "Disponible · timeout 2 s", BLUE);
+                ui.label(crate::i18n::t("SCPI TCP / SOCKET"));
+                badge(ui, "Disponible · timeout 2 s", blue());
                 ui.end_row();
-                ui.label("USB / GPIB / série via VISA");
-                badge(ui, "Adaptateur · runtime constructeur requis", MUTED);
+                ui.label(crate::i18n::t("USB / GPIB / série via VISA"));
+                badge(ui, "Adaptateur · runtime constructeur requis", muted());
                 ui.end_row();
-                ui.label("VXI-11 / HiSLIP");
-                badge(ui, "Via runtime VISA", MUTED);
+                ui.label(crate::i18n::t("VXI-11 / HiSLIP"));
+                badge(ui, "Via runtime VISA", muted());
                 ui.end_row();
             });
         ui.add_space(16.);
-        ui.label(RichText::new("Le pilote d'analyseur initial utilise un profil SCPI générique et une trace ASCII en dBm. Vérifier les commandes dans le manuel du modèle. La découverte réseau automatique et les pilotes constructeur ne sont pas encore intégrés.").color(MUTED));
+        ui.label(RichText::new(crate::i18n::t("Le pilote d'analyseur initial utilise un profil SCPI générique et une trace ASCII en dBm. Vérifier les commandes dans le manuel du modèle. La découverte réseau automatique et les pilotes constructeur ne sont pas encore intégrés.")).color(muted()));
     }
 }
 fn metric(ui: &mut egui::Ui, label: &str, value: &str, color: egui::Color32) {
     egui::Frame::new()
-        .fill(CARD)
+        .fill(card_fill())
         .inner_margin(14.)
         .corner_radius(8.)
         .show(ui, |ui| {
             ui.set_min_width(160.);
             caption(ui, label);
-            ui.label(RichText::new(value).size(24.).strong().color(color));
+            ui.label(
+                RichText::new(value)
+                    .size(24. * crate::theme::scale())
+                    .strong()
+                    .color(color),
+            );
         });
 }
 fn number(ui: &mut egui::Ui, label: &str, value: &mut f64, speed: f64, unit: &str) -> bool {
@@ -1067,33 +1384,74 @@ impl eframe::App for Workbench {
                 }
             }
         }
-        let typing = ctx.wants_keyboard_input();
+        let typing = crate::shortcuts::text_editing(ctx);
+        let native_paste = events.iter().any(|e| matches!(e, egui::Event::Paste(_)));
         for event in &events {
-            if let Some(action) = self.preferences.action(event, typing) {
+            if !typing {
+                match event {
+                    egui::Event::Copy => self.copy_selection(),
+                    egui::Event::Cut => {
+                        self.copy_selection();
+                        self.delete_selection();
+                    }
+                    egui::Event::Paste(text) => self.paste_text(text),
+                    _ => {}
+                }
+            }
+            if let Some(action) = self.preferences.action(event, typing)
+                && !(action == Action::Paste && native_paste)
+            {
                 self.action(action);
             }
         }
+        crate::i18n::set(self.studio.language);
+        let appearance = (
+            self.studio.light,
+            self.studio.high_contrast,
+            self.studio.text_scale,
+            self.studio.language,
+        );
+        if self.appearance != Some(appearance) {
+            crate::theme::apply(ctx, appearance.0, appearance.1, appearance.2);
+            self.appearance = Some(appearance);
+        }
+        self.canvas.auto_route = self.studio.auto_route;
         self.top(ctx);
         self.bottom(ctx);
         self.sidebar(ctx);
-        if matches!(
-            self.view,
-            View::Schematic | View::Acquisition | View::Network | View::Measurements
-        ) {
+        if self.studio.inspector
+            && (self.view.dockable() || self.layout.panes.iter().any(|p| p.view == View::Schematic))
+        {
             self.inspector(ctx);
         }
+        self.docked(ctx);
         self.center(ctx);
+        self.floating(ctx);
+        if self.canvas.routes_dirty && self.routing_job.is_none() {
+            self.canvas.routes_dirty = false;
+            self.start_routing(false, true, false);
+        }
+        if self.view.dockable() {
+            self.layout.primary = self.view;
+        }
+        if let Some(kind) = self.canvas.help_request.take() {
+            self.help_kind = Some(kind);
+            self.view = View::Help;
+        }
         self.frame_ms = self.frame_ms * 0.9 + start.elapsed().as_secs_f64() * 1000. * 0.1;
         self.last_frame = Instant::now();
         if self.capture_path.is_some() {
             self.capture_frames += 1;
-            if self.capture_frames >= 5 && !self.capture_requested {
+            let ready = self.routing_job.is_none()
+                && (!self.worker.is_busy()
+                    || self.debug_snapshot.as_ref().is_some_and(|s| s.paused));
+            if self.capture_frames >= 5 && !self.capture_requested && ready {
                 self.capture_requested = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
             }
             ctx.request_repaint_after(Duration::from_millis(30));
         }
-        if self.worker.is_busy() {
+        if self.worker.is_busy() || self.routing_job.is_some() {
             ctx.request_repaint_after(Duration::from_millis(16));
         }
     }

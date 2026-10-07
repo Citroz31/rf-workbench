@@ -1,4 +1,28 @@
-# Validation 0.2.0
+# Validation 0.3.0
+
+Vérifications locales sur Windows x64, Rust 1.90.0 et Python 3.12.14, le 7 octobre 2026. Le binaire fourni est compilé en release depuis les sources 0.3.
+
+| Vérification | Résultat |
+| --- | --- |
+| Tests Rust du workspace | 60 réussis : graphe/annotations, transports, modèles RF, debug, éditeur, analyses et persistance |
+| Tests Rust/Python avec un vrai processus Python | 5 réussis, lancés explicitement après la suite Rust |
+| Tests Python | 9 réussis ; couverture lignes et branches de la passerelle à 100 % |
+| Formatage Rust et Clippy tous les targets avec `-D warnings` | Réussis |
+| Ruff, format Python, ty et basedpyright | Réussis ; zéro erreur/avertissement |
+| Compilation Windows release | Réussie |
+| `--self-test` | 14 contrôles intégrés réussis |
+| `--python-smoke` | IPC, SCPI et compensation : PASS |
+| Rendu natif 1600 × 1000 | Graphe/spectre/debug, galerie, constellation, Smith, waterfall, œil, chronogramme, aide et thème clair anglais inspectés |
+
+La suite de 74 tests (60 Rust + 5 Rust/Python + 9 Python) vérifie notamment : pause avant le premier bloc, pas unique, arrêt sur breakpoint, poursuite jusqu'à la fin, annulation en pause et refus de toute ressource physique en debug ; limites/provenance des buffers ; réflexion et impédance complexes, refus de S21, compatibilité I/Q, repliement temporel, changement de grille et borne de la waterfall ; restauration de la persistance et defaults des projets 0.2.
+
+Les tests egui injectent des événements réels de pointeur pour la sélection Shift+clic et le déplacement groupé, puis vérifient une seule annulation. Les événements clavier Tab/Entrée créent une connexion par ports nommés en présence d'un bouton de barre d'outils ; le focus des champs de texte suspend les raccourcis. Un test conserve et annule 150 éditions, au-delà de l'ancienne limite de 100. Le routage est vérifié contre un obstacle et dans son thread, avec conservation des parcours manuels et de l'instantané initial. Les tests ne constituent pas une campagne utilisateur de toutes les opérations graphiques.
+
+La capture waterfall contient huit acquisitions effectivement reçues. La constellation provient des buffers AWG I/Q ; l'œil est un repliement de cette forme d'onde, sans source numérique ni synchronisation ajoutée. Le Smith utilise le S11 du modèle PNA-X. La capture debug montre la pause réelle avant AWG, et la capture de Studio montre l'inspection des buffers après une exécution. Les captures sont produites par le framebuffer natif de l'application, pas par une maquette web.
+
+Les contrôles locaux portent sur un DPI et une résolution. Les lecteurs d'écran, périphériques tactiles, profils de 100/1000 blocs, latence pointeur→écran, instruments physiques et temps réel restent non validés. Les calculs d'analyse sont des outils de prototype, sans qualification métrologique. L'historique de session consomme de la mémoire et n'est pas persistant. Les résultats de la matrice CI du commit 0.3 sont consultables dans [GitHub Actions](https://github.com/Citroz31/rf-workbench/actions) ; les versions précédentes disposent de builds Windows/Linux/macOS.
+
+# Historique : validation 0.2.0
 
 Vérifications locales sur Windows x64, Rust 1.90.0 et Python 3.12.14, le 7 octobre 2026. Le paquet Windows est compilé depuis ces sources.
 

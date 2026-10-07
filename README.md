@@ -4,7 +4,9 @@ Première base de laboratoire graphique RF et hyperfréquence en **Rust**, avec 
 
 ![Interface Windows du banc RF](docs/UI.png)
 
-**Version 0.2 :** 18 blocs illustrés, dont PNA/PNA-X, AWG, modulateur I/Q, DAC/CAN, capteurs et thermique. Barre d'outils, câblage `W` avec parcours personnalisés, raccourcis configurables, catalogue DUT et vues paramètres S / formes d'onde. Voir le [guide 0.2](docs/V0.2.md), ses modèles et ses limites matérielles.
+**Version 0.3 :** éditeur avec sélection multiple, recherche floue/favoris/récents, alignements, routage autour des blocs, copier/coller et annotations. Graphe et analyses dockables : spectre, waterfall, constellation, Smith, eye diagram et chronogramme. Debug par bloc avec sondes et breakpoints, layouts et espaces sauvegardables, thème clair/contraste/FR-EN, aide globale et 18 fiches de blocs. Voir le [guide Studio 0.3](docs/V0.3.md) et le [rapport de validation](docs/VALIDATION.md).
+
+Les 18 blocs illustrés de la [version 0.2](docs/V0.2.md), dont PNA/PNA-X, AWG, modulateur I/Q, DAC/CAN, capteurs et thermique, restent disponibles avec leurs ports typés et leurs modèles simulés.
 
 ## Essayer sous Windows
 
@@ -16,6 +18,8 @@ La livraison locale contient `dist/windows/rf-workbench.exe`. Ouvrir `dist/windo
 4. **Tests → Lancer les autotests** vérifie le logiciel ; **Tester le banc** exécute les contrôles de limites du schéma. **Projet** propose aussi des démonstrations PNA-X, I/Q et thermique/puissance.
 5. Ajouter des blocs dans **Blocs** ou la palette. W active le câblage : cliquer une sortie puis une entrée ; cliquer le fond avant la destination pour ajouter des coudes. Échap annule. Déplacer un bloc par glisser-déposer en sélection (V), zoomer avec la molette, déplacer le canevas (H), ajuster le cadrage (F). Clic droit sur un bloc ou un câble pour le retirer. Annuler/rétablir : Ctrl+Z / Ctrl+Y. Supprimer : Suppr. Exécuter : F5. **Raccourcis** (Ctrl+K) permet plusieurs combinaisons par action.
 6. L'inspecteur permet de modifier les paramètres ; **Projet** contient les chemins de sauvegarde. Le projet JSON conserve les blocs, leurs paramètres, leurs positions, les câbles, leurs parcours et les scripts. Les entrées requises non reliées peuvent être sauvegardées, mais empêchent l'exécution.
+7. **Disposition** place chaque analyse à droite, en bas ou dans une fenêtre flottante. **Espaces de travail → Enregistrer Studio** conserve les projets, layouts, cadrages et préférences ; les résultats et historiques restent en mémoire pendant la session. Ce panneau propose également thème clair, contraste, taille du texte et langue.
+8. **F6** démarre le debug simulé, **F10** exécute un bloc, **F8** continue. Breakpoints, sondes et commentaires sont dans l'inspecteur. **F1** ouvre le guide, **F2** la fiche du bloc. Le debug refuse les ressources physiques et n'effectue pas de pas à pas dans les lignes Python.
 
 À l'ouverture, la courbe est explicitement un **aperçu simulé**. Aucun résultat de test n'est présenté comme acquis avant exécution. En continu, le worker réexécute un instantané du schéma ; les modifications prennent effet au démarrage suivant.
 

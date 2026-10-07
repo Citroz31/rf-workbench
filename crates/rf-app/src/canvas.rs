@@ -1,8 +1,9 @@
 use crate::{theme::*, visuals};
-use eframe::egui::{self, Align2, FontId, Id, Pos2, Rect, Sense, Stroke, StrokeKind, Vec2};
+use eframe::egui::{self, Align2, Id, Pos2, Rect, Sense, Stroke, StrokeKind, Vec2};
 use rf_core::{Graph, Kind, Node};
+use std::collections::BTreeSet;
 pub const NODE_SIZE: Vec2 = egui::vec2(240., 208.);
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct History {
     undo: Vec<Graph>,
     redo: Vec<Graph>,
@@ -10,9 +11,6 @@ pub struct History {
 impl History {
     pub fn record(&mut self, before: Graph) {
         self.undo.push(before);
-        if self.undo.len() > 100 {
-            self.undo.remove(0);
-        }
         self.redo.clear();
     }
     pub fn undo(&mut self, g: &mut Graph) {
@@ -43,6 +41,15 @@ pub struct Canvas {
     pub zoom: f32,
     pub pan: Vec2,
     pub selected: Option<u64>,
+    pub selected_ids: BTreeSet<u64>,
+    pub annotation: Option<u64>,
+    pub help_request: Option<Kind>,
+    pub active_node: Option<u64>,
+    pub auto_route: bool,
+    pub routes_dirty: bool,
+    marquee: Option<Pos2>,
+    focus_port: Option<(bool, usize)>,
+    keyboard_active: bool,
     pub wiring: Option<(u64, usize)>,
     pub tool: Tool,
     pub snap: bool,
@@ -51,6 +58,8 @@ pub struct Canvas {
     waypoints: Vec<[f32; 2]>,
     drag_before: Option<Graph>,
     fit: bool,
+    auto_fit: bool,
+    last_size: Option<Vec2>,
 }
 impl Default for Canvas {
     fn default() -> Self {
@@ -58,6 +67,15 @@ impl Default for Canvas {
             zoom: 1.,
             pan: egui::vec2(12., -24.),
             selected: Some(3),
+            selected_ids: [3].into_iter().collect(),
+            annotation: None,
+            help_request: None,
+            active_node: None,
+            auto_route: true,
+            routes_dirty: false,
+            marquee: None,
+            focus_port: None,
+            keyboard_active: true,
             wiring: None,
             tool: Tool::Select,
             snap: true,
@@ -66,6 +84,8 @@ impl Default for Canvas {
             waypoints: Vec::new(),
             drag_before: None,
             fit: true,
+            auto_fit: true,
+            last_size: None,
         }
     }
 }
@@ -77,8 +97,36 @@ impl Canvas {
             ..Default::default()
         }
     }
+    pub fn select_only(&mut self, id: u64) {
+        self.selected = Some(id);
+        self.selected_ids = [id].into_iter().collect();
+        self.annotation = None;
+        self.focus_port = None;
+    }
+    pub fn select(&mut self, id: u64, toggle: bool) {
+        if toggle {
+            if !self.selected_ids.remove(&id) {
+                self.selected_ids.insert(id);
+            }
+            self.selected = if self.selected_ids.contains(&id) {
+                Some(id)
+            } else {
+                self.selected_ids.iter().next().copied()
+            };
+            self.annotation = None;
+        } else {
+            self.select_only(id);
+        }
+    }
     pub fn fit(&mut self) {
         self.fit = true;
+        self.auto_fit = true;
+    }
+    pub fn restore_view(&mut self, pan: [f32; 2], zoom: f32) {
+        self.pan = Vec2::from(pan);
+        self.zoom = zoom;
+        self.fit = false;
+        self.auto_fit = false;
     }
     pub fn set_tool(&mut self, tool: Tool) {
         self.cancel_wire();
@@ -104,7 +152,20 @@ impl Canvas {
         let before = g.clone();
         g.connect_ports(from, from_port, to, to_port)
             .map_err(|e| e.to_string())?;
-        g.edges.last_mut().expect("new cable").waypoints = std::mem::take(&mut self.waypoints);
+        let automatic = self.auto_route && self.orthogonal && self.waypoints.is_empty();
+        let points = if automatic {
+            match crate::editor::route_edge(g, g.edges.len() - 1) {
+                Ok(points) => points,
+                Err(e) => {
+                    g.edges.pop();
+                    return Err(e);
+                }
+            }
+        } else {
+            std::mem::take(&mut self.waypoints)
+        };
+        g.edges.last_mut().expect("new cable").waypoints = points;
+        g.edges.last_mut().unwrap().auto_routed = automatic;
         h.record(before);
         self.wiring = None;
         Ok(())
@@ -119,6 +180,12 @@ impl Canvas {
         if self.wiring.is_some_and(|(id, _)| g.node(id).is_none()) {
             self.cancel_wire();
         }
+        self.selected_ids.retain(|id| g.node(*id).is_some());
+        if self.selected_ids.len() <= 1
+            && let Some(id) = self.selected.filter(|id| g.node(*id).is_some())
+        {
+            self.selected_ids.insert(id);
+        }
         if self.selected.is_some_and(|id| g.node(id).is_none()) {
             self.selected = None;
         }
@@ -126,8 +193,20 @@ impl Canvas {
             egui::vec2(ui.available_width(), height),
             Sense::click_and_drag(),
         );
+        if ui.input(|i| i.pointer.any_pressed()) {
+            self.keyboard_active = ui
+                .input(|i| i.pointer.interact_pos())
+                .is_some_and(|p| rect.contains(p));
+            if self.keyboard_active {
+                response.request_focus();
+            }
+        }
+        if self.last_size.is_some_and(|size| size != rect.size()) && self.auto_fit {
+            self.fit = true;
+        }
+        self.last_size = Some(rect.size());
         let painter = ui.painter_at(rect);
-        painter.rect_filled(rect, 8., BG);
+        painter.rect_filled(rect, 8., bg());
         if self.fit && !g.nodes.is_empty() {
             let min_x = g
                 .nodes
@@ -173,7 +252,7 @@ impl Canvas {
                     painter.circle_filled(
                         rect.min + offset + egui::vec2(x as f32 * spacing, y as f32 * spacing),
                         1.,
-                        BORDER.gamma_multiply(0.75),
+                        border().gamma_multiply(0.75),
                     );
                 }
             }
@@ -183,6 +262,7 @@ impl Canvas {
             if scroll != 0.
                 && let Some(mouse) = ui.input(|i| i.pointer.hover_pos())
             {
+                self.auto_fit = false;
                 let old = self.zoom;
                 self.zoom = (old * (scroll * 0.002).exp()).clamp(0.2, 2.);
                 self.pan = (mouse - rect.min) - (mouse - rect.min - self.pan) * (self.zoom / old);
@@ -227,11 +307,14 @@ impl Canvas {
                         a.kind.outputs()[e.from_port].name
                     ))
                     .context_menu(|ui| {
-                        if ui.button("Retirer le câble").clicked() {
+                        if ui.button(crate::i18n::t("Retirer le câble")).clicked() {
                             disconnect = Some((index, true));
                             ui.close();
                         }
-                        if ui.button("Réinitialiser le parcours").clicked() {
+                        if ui
+                            .button(crate::i18n::t("Réinitialiser le parcours"))
+                            .clicked()
+                        {
                             disconnect = Some((index, false));
                             ui.close();
                         }
@@ -262,7 +345,7 @@ impl Canvas {
                 Stroke::new(2., port(n.kind.outputs()[index].port)),
             ));
             for p in waypoints {
-                painter.circle_filled(p, 3., TEXT);
+                painter.circle_filled(p, 3., text_color());
             }
         }
         let mut clicked_input = None;
@@ -272,6 +355,74 @@ impl Canvas {
         let mut hovered_node = false;
         let mut hovered_port = false;
         let mut remove = None;
+        let mut debug_change = None;
+        if self.keyboard_active && !crate::shortcuts::text_editing(ui.ctx()) {
+            if ui.input(|i| i.key_pressed(egui::Key::Tab)) && !g.nodes.is_empty() {
+                ui.input_mut(|i| {
+                    i.consume_key(egui::Modifiers::NONE, egui::Key::Tab);
+                    i.consume_key(egui::Modifiers::SHIFT, egui::Key::Tab);
+                });
+                response.request_focus();
+                let current = g
+                    .nodes
+                    .iter()
+                    .position(|n| Some(n.id) == self.selected)
+                    .unwrap_or(if ui.input(|i| i.modifiers.shift) {
+                        0
+                    } else {
+                        g.nodes.len() - 1
+                    });
+                let next = if ui.input(|i| i.modifiers.shift) {
+                    (current + g.nodes.len() - 1) % g.nodes.len()
+                } else {
+                    (current + 1) % g.nodes.len()
+                };
+                self.select_only(g.nodes[next].id);
+                self.focus_port = Some((self.wiring.is_none(), 0));
+            }
+            if let Some(n) = self.selected.and_then(|id| g.node(id)) {
+                let ports: Vec<_> = n
+                    .kind
+                    .inputs()
+                    .iter()
+                    .enumerate()
+                    .map(|(i, _)| (false, i))
+                    .chain(n.kind.outputs().iter().enumerate().map(|(i, _)| (true, i)))
+                    .collect();
+                if !ports.is_empty()
+                    && ui.input(|i| {
+                        i.key_pressed(egui::Key::ArrowRight) || i.key_pressed(egui::Key::ArrowLeft)
+                    })
+                {
+                    let old = ports
+                        .iter()
+                        .position(|p| Some(*p) == self.focus_port)
+                        .unwrap_or(0);
+                    let next = if ui.input(|i| i.key_pressed(egui::Key::ArrowLeft)) {
+                        (old + ports.len() - 1) % ports.len()
+                    } else {
+                        (old + 1) % ports.len()
+                    };
+                    self.focus_port = Some(ports[next]);
+                    ui.input_mut(|i| {
+                        i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowLeft);
+                        i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowRight);
+                    });
+                }
+                if ui.input(|i| i.key_pressed(egui::Key::Enter))
+                    && let Some((output, p)) = self.focus_port
+                {
+                    ui.input_mut(|i| {
+                        i.consume_key(egui::Modifiers::NONE, egui::Key::Enter);
+                    });
+                    if output {
+                        clicked_output = Some((n.id, p));
+                    } else {
+                        clicked_input = Some((n.id, p));
+                    }
+                }
+            }
+        }
         for node in &g.nodes {
             let top = self.screen(rect.min, node.position);
             let card = Rect::from_min_size(top, NODE_SIZE * self.zoom);
@@ -279,22 +430,46 @@ impl Canvas {
                 continue;
             }
             let color = kind(node.kind);
-            let selected = self.selected == Some(node.id);
+            let selected = self.selected_ids.contains(&node.id);
             painter.rect_filled(
                 card.translate(egui::vec2(3., 5.)),
                 9.,
                 egui::Color32::BLACK.gamma_multiply(0.22),
             );
-            painter.rect_filled(card, 8., CARD);
+            painter.rect_filled(card, 8., card_fill());
             painter.rect_stroke(
                 card,
                 8.,
                 Stroke::new(
                     if selected { 2. } else { 1. },
-                    if selected { color } else { BORDER },
+                    if selected { color } else { border() },
                 ),
                 StrokeKind::Inside,
             );
+            if self.active_node == Some(node.id) {
+                painter.rect_stroke(
+                    card.expand(5.),
+                    8.,
+                    Stroke::new(3., gold()),
+                    StrokeKind::Outside,
+                );
+            }
+            if node.breakpoint {
+                painter.circle_filled(
+                    top + egui::vec2(221., 18.) * self.zoom,
+                    6. * self.zoom,
+                    red(),
+                );
+            }
+            if node.probe {
+                painter.text(
+                    top + egui::vec2(211., 187.) * self.zoom,
+                    Align2::CENTER_CENTER,
+                    "P",
+                    crate::theme::font(13. * self.zoom),
+                    purple(),
+                );
+            }
             painter.rect_filled(
                 Rect::from_min_size(top, egui::vec2(NODE_SIZE.x, 4.) * self.zoom),
                 2.,
@@ -303,8 +478,8 @@ impl Canvas {
             painter.text(
                 top + egui::vec2(13., 13.) * self.zoom,
                 Align2::LEFT_TOP,
-                node.kind.tag(),
-                FontId::proportional(10. * self.zoom),
+                crate::i18n::t(node.kind.tag()),
+                crate::theme::font(10. * self.zoom),
                 color,
             );
             let title = if node.title.chars().count() > 28 {
@@ -315,9 +490,9 @@ impl Canvas {
             painter.text(
                 top + egui::vec2(13., 30.) * self.zoom,
                 Align2::LEFT_TOP,
-                title,
-                FontId::proportional(14. * self.zoom),
-                TEXT,
+                crate::i18n::t(&title),
+                crate::theme::font(14. * self.zoom),
+                text_color(),
             );
             visuals::symbol(
                 &painter,
@@ -331,8 +506,8 @@ impl Canvas {
                 top + egui::vec2(13., 150.) * self.zoom,
                 Align2::LEFT_TOP,
                 summary(node),
-                FontId::proportional(11. * self.zoom),
-                MUTED,
+                crate::theme::font(11. * self.zoom),
+                muted(),
             );
             let done = self.completed.contains(&node.id);
             let state = if done {
@@ -347,14 +522,14 @@ impl Canvas {
             painter.circle_filled(
                 top + egui::vec2(16., 185.) * self.zoom,
                 3. * self.zoom,
-                if done { TEAL } else { MUTED },
+                if done { teal() } else { muted() },
             );
             painter.text(
                 top + egui::vec2(25., 185.) * self.zoom,
                 Align2::LEFT_CENTER,
-                state,
-                FontId::proportional(10. * self.zoom),
-                if done { TEAL } else { MUTED },
+                crate::i18n::t(state),
+                crate::theme::font(10. * self.zoom),
+                if done { teal() } else { muted() },
             );
             let hit = ui.interact(
                 card.shrink(12. * self.zoom),
@@ -367,7 +542,10 @@ impl Canvas {
             );
             hovered_node |= hit.hovered();
             if hit.clicked() {
-                self.selected = Some(node.id);
+                self.select(
+                    node.id,
+                    ui.input(|i| i.modifiers.shift || i.modifiers.command),
+                );
                 if self.tool == Tool::Wire {
                     if let Some((source, source_port)) = self.wiring {
                         if let Some(a) = g.node(source) {
@@ -399,7 +577,9 @@ impl Canvas {
                 }
             }
             if hit.drag_started() {
-                self.selected = Some(node.id);
+                if !self.selected_ids.contains(&node.id) {
+                    self.select_only(node.id);
+                }
                 self.drag_before = Some(g.clone());
             }
             if hit.dragged() {
@@ -408,8 +588,37 @@ impl Canvas {
             if hit.drag_stopped() {
                 stopped = Some(node.id);
             }
+            if !node.comment.is_empty() {
+                hit.clone().on_hover_text(&node.comment);
+            }
             hit.context_menu(|ui| {
-                if ui.button("Supprimer le bloc").clicked() {
+                if ui.button(crate::i18n::t("Aide du bloc")).clicked() {
+                    self.help_request = Some(node.kind);
+                    ui.close();
+                }
+                if ui
+                    .button(if node.breakpoint {
+                        "Retirer le breakpoint"
+                    } else {
+                        "Ajouter un breakpoint"
+                    })
+                    .clicked()
+                {
+                    debug_change = Some((node.id, true));
+                    ui.close();
+                }
+                if ui
+                    .button(if node.probe {
+                        "Retirer la sonde"
+                    } else {
+                        "Ajouter une sonde"
+                    })
+                    .clicked()
+                {
+                    debug_change = Some((node.id, false));
+                    ui.close();
+                }
+                if ui.button(crate::i18n::t("Supprimer le bloc")).clicked() {
                     remove = Some(node.id);
                     ui.close();
                 }
@@ -431,8 +640,15 @@ impl Canvas {
                             .edges
                             .iter()
                             .any(|e| e.to == node.id && e.to_port == index);
+                    if self.selected == Some(node.id) && self.focus_port == Some((output, index)) {
+                        painter.circle_stroke(
+                            position,
+                            12. * self.zoom,
+                            Stroke::new(2., text_color()),
+                        );
+                    }
                     if compatible {
-                        painter.circle_stroke(position, 9. * self.zoom, Stroke::new(1.5, TEAL));
+                        painter.circle_stroke(position, 9. * self.zoom, Stroke::new(1.5, teal()));
                     }
                     painter.circle_filled(position, 5. * self.zoom, port(terminal.port));
                     painter.text(
@@ -443,7 +659,7 @@ impl Canvas {
                             Align2::LEFT_BOTTOM
                         },
                         terminal.name,
-                        FontId::proportional(9. * self.zoom),
+                        crate::theme::font(9. * self.zoom),
                         port(terminal.port),
                     );
                     let terminal_hit = ui.interact(
@@ -478,21 +694,104 @@ impl Canvas {
         {
             error = Some(e);
         }
-        if let Some((id, d)) = delta
-            && let Some(n) = g.nodes.iter_mut().find(|n| n.id == id)
-        {
-            n.position[0] = (n.position[0] + d.x).clamp(-1e6, 1e6);
-            n.position[1] = (n.position[1] + d.y).clamp(-1e6, 1e6);
+        if let Some((_, d)) = delta {
+            for n in g
+                .nodes
+                .iter_mut()
+                .filter(|n| self.selected_ids.contains(&n.id))
+            {
+                n.position[0] = (n.position[0] + d.x).clamp(-1e6, 1e6);
+                n.position[1] = (n.position[1] + d.y).clamp(-1e6, 1e6);
+            }
         }
-        if let Some(id) = stopped
+        if stopped.is_some()
             && let Some(old) = self.drag_before.take()
         {
-            if self.snap
-                && let Some(n) = g.nodes.iter_mut().find(|n| n.id == id)
-            {
-                n.position = n.position.map(|v| (v / 24.).round() * 24.);
+            if self.snap {
+                for n in g
+                    .nodes
+                    .iter_mut()
+                    .filter(|n| self.selected_ids.contains(&n.id))
+                {
+                    n.position = n.position.map(|v| (v / 24.).round() * 24.);
+                }
             }
-            history.record(old);
+            if old != *g {
+                history.record(old);
+                self.routes_dirty = self.auto_route && g.edges.iter().any(|e| e.auto_routed);
+            }
+        }
+        if let Some((id, breakpoint)) = debug_change {
+            history.record(g.clone());
+            let n = g.nodes.iter_mut().find(|n| n.id == id).unwrap();
+            if breakpoint {
+                n.breakpoint = !n.breakpoint;
+            } else {
+                n.probe = !n.probe;
+            }
+        }
+        let mut annotation_move = None;
+        let mut annotation_remove = None;
+        for note in &g.annotations {
+            let top = self.screen(rect.min, note.position);
+            let card = Rect::from_min_size(top, egui::vec2(240., 84.) * self.zoom);
+            if !rect.intersects(card) {
+                continue;
+            }
+            painter.rect_filled(card, 5., gold().gamma_multiply(0.18));
+            painter.rect_stroke(card, 5., Stroke::new(1., gold()), StrokeKind::Inside);
+            let short = note.text.chars().take(95).collect::<String>();
+            painter.text(
+                card.min + egui::vec2(10., 10.) * self.zoom,
+                Align2::LEFT_TOP,
+                short,
+                crate::theme::font(12. * self.zoom),
+                text_color(),
+            );
+            let hit = ui.interact(
+                card,
+                Id::new(("annotation", note.id)),
+                Sense::click_and_drag(),
+            );
+            hovered_node |= hit.hovered();
+            if hit.clicked() {
+                self.annotation = Some(note.id);
+                self.selected = None;
+                self.selected_ids.clear();
+            }
+            if hit.drag_started() {
+                self.drag_before = Some(g.clone());
+            }
+            if hit.dragged() {
+                annotation_move = Some((note.id, ui.input(|i| i.pointer.delta()) / self.zoom));
+            }
+            if hit.drag_stopped()
+                && let Some(old) = self.drag_before.take()
+            {
+                history.record(old);
+            }
+            hit.context_menu(|ui| {
+                if ui
+                    .button(crate::i18n::t("Supprimer l'annotation"))
+                    .clicked()
+                {
+                    annotation_remove = Some(note.id);
+                    ui.close();
+                }
+            });
+        }
+        if let Some((id, d)) = annotation_move
+            && let Some(n) = g.annotations.iter_mut().find(|n| n.id == id)
+        {
+            n.position = [
+                (n.position[0] + d.x).clamp(-1e6, 1e6),
+                (n.position[1] + d.y).clamp(-1e6, 1e6),
+            ];
+        }
+        if let Some(id) = annotation_remove {
+            history.record(g.clone());
+            g.annotations.retain(|a| a.id != id);
+            self.annotation = None;
         }
         if let Some(id) = remove {
             history.record(g.clone());
@@ -500,17 +799,58 @@ impl Canvas {
             self.selected = None;
             self.cancel_wire();
         }
-        if response.dragged_by(egui::PointerButton::Middle)
-            || (response.dragged()
-                && !hovered_port
-                && ((self.tool == Tool::Pan)
-                    || (!hovered_node && self.drag_before.is_none() && self.wiring.is_none())))
+        if response.drag_started()
+            && self.tool == Tool::Select
+            && !hovered_node
+            && !hovered_port
+            && self.wiring.is_none()
         {
+            self.marquee = ui.input(|i| i.pointer.press_origin());
+        }
+        if let Some(start) = self.marquee
+            && let Some(end) = ui.input(|i| i.pointer.interact_pos())
+        {
+            let selection = Rect::from_two_pos(start, end).intersect(rect);
+            painter.rect_filled(selection, 0., blue().gamma_multiply(0.08));
+            painter.rect_stroke(selection, 0., Stroke::new(1., blue()), StrokeKind::Inside);
+            if response.drag_stopped() {
+                if !ui.input(|i| i.modifiers.shift || i.modifiers.command) {
+                    self.selected_ids.clear();
+                }
+                for n in &g.nodes {
+                    if selection.intersects(Rect::from_min_size(
+                        self.screen(rect.min, n.position),
+                        NODE_SIZE * self.zoom,
+                    )) {
+                        self.selected_ids.insert(n.id);
+                    }
+                }
+                self.selected = self.selected_ids.iter().next().copied();
+                self.marquee = None;
+            }
+        }
+        if response.dragged_by(egui::PointerButton::Middle)
+            || (response.dragged() && self.tool == Tool::Pan && !hovered_port)
+        {
+            self.auto_fit = false;
             self.pan += ui.input(|i| i.pointer.delta());
+        }
+        if response.clicked()
+            && ui.input(|i| i.pointer.primary_clicked())
+            && self.tool == Tool::Select
+            && !hovered_node
+            && !hovered_port
+            && !cable_hover
+            && !ui.input(|i| i.modifiers.shift)
+        {
+            self.selected = None;
+            self.selected_ids.clear();
+            self.annotation = None;
         }
         if self.tool == Tool::Wire
             && self.wiring.is_some()
             && response.clicked()
+            && ui.input(|i| i.pointer.primary_clicked())
             && !hovered_node
             && !hovered_port
             && !cable_hover
@@ -521,7 +861,8 @@ impl Canvas {
             self.waypoints.push([p.x, p.y]);
         }
         if response.secondary_clicked()
-            || (!ui.ctx().wants_keyboard_input() && ui.input(|i| i.key_pressed(egui::Key::Escape)))
+            || (!crate::shortcuts::text_editing(ui.ctx())
+                && ui.input(|i| i.key_pressed(egui::Key::Escape)))
         {
             self.cancel_wire();
         }
@@ -540,8 +881,8 @@ impl Canvas {
             } else {
                 "Molette : zoom · Glisser : déplacer · W : câblage · H : déplacement"
             },
-            FontId::proportional(10.),
-            MUTED,
+            crate::theme::font(10.),
+            muted(),
         );
         error
     }
@@ -575,7 +916,7 @@ fn summary(n: &Node) -> String {
         Kind::Limit => format!("[{:.1}, {:.1}] dBm", c.lower_dbm, c.upper_dbm),
     }
 }
-fn port_offset(n: &Node, output: bool, index: usize) -> Vec2 {
+pub(crate) fn port_offset(n: &Node, output: bool, index: usize) -> Vec2 {
     let count = if output {
         n.kind.outputs().len()
     } else {
@@ -649,6 +990,160 @@ fn segment_distance(p: Pos2, a: Pos2, b: Pos2) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn keyboard_navigation_connects_named_ports_with_canvas_focus() {
+        let ctx = egui::Context::default();
+        let mut graph = Graph::default();
+        let a = graph.add(Kind::Generator, [0., 0.]);
+        let b = graph.add(Kind::Analyzer, [420., 0.]);
+        let mut canvas = Canvas {
+            selected: None,
+            selected_ids: BTreeSet::new(),
+            ..Default::default()
+        };
+        let mut history = History::default();
+        let mut draw = |key: Option<egui::Key>| {
+            let events = key
+                .into_iter()
+                .flat_map(|key| {
+                    [true, false].map(|pressed| egui::Event::Key {
+                        key,
+                        physical_key: Some(key),
+                        pressed,
+                        repeat: false,
+                        modifiers: egui::Modifiers::NONE,
+                    })
+                })
+                .collect();
+            let _ = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(900., 600.))),
+                    events,
+                    ..Default::default()
+                },
+                |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        let _ = ui.button("Toolbar button");
+                        let error = canvas.show(ui, &mut graph, &mut history, 450.);
+                        assert!(error.is_none(), "{error:?}");
+                    });
+                },
+            );
+        };
+        draw(None);
+        draw(Some(egui::Key::Tab));
+        draw(Some(egui::Key::Enter));
+        draw(Some(egui::Key::Tab));
+        draw(Some(egui::Key::Enter));
+        assert_eq!(graph.edges.len(), 1);
+        assert_eq!((graph.edges[0].from, graph.edges[0].to), (a, b));
+        assert!(canvas.wiring.is_none());
+        history.undo(&mut graph);
+        assert!(graph.edges.is_empty());
+    }
+    #[test]
+    fn history_keeps_edits_beyond_the_old_hundred_step_limit() {
+        let mut g = Graph::default();
+        g.add(Kind::Generator, [0., 0.]);
+        let original = g.clone();
+        let mut h = History::default();
+        for i in 1..=150 {
+            h.record(g.clone());
+            g.nodes[0].config.power_dbm = -(i as f64);
+        }
+        for _ in 0..150 {
+            h.undo(&mut g);
+        }
+        assert_eq!(g, original);
+        for _ in 0..150 {
+            h.redo(&mut g);
+        }
+        assert_eq!(g.nodes[0].config.power_dbm, -150.);
+    }
+    #[test]
+    fn shift_click_and_group_drag_use_real_hit_regions_and_one_undo() {
+        let ctx = egui::Context::default();
+        let mut g = Graph::default();
+        let a = g.add(Kind::Generator, [0., 0.]);
+        let b = g.add(Kind::Generator, [330., 0.]);
+        let original = g.clone();
+        let mut canvas = Canvas {
+            fit: false,
+            auto_fit: false,
+            pan: Vec2::ZERO,
+            snap: false,
+            ..Default::default()
+        };
+        let mut h = History::default();
+        let mut draw = |events: Vec<egui::Event>, modifiers: egui::Modifiers| {
+            let mut origin = Pos2::ZERO;
+            let _ = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(900., 600.))),
+                    events,
+                    modifiers,
+                    ..Default::default()
+                },
+                |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        origin = ui.available_rect_before_wrap().min;
+                        canvas.show(ui, &mut g, &mut h, 450.);
+                    });
+                },
+            );
+            origin
+        };
+        let origin = draw(vec![], egui::Modifiers::NONE);
+        draw(vec![], egui::Modifiers::NONE);
+        for (pos, modifiers) in [
+            (origin + egui::vec2(100., 80.), egui::Modifiers::NONE),
+            (origin + egui::vec2(430., 80.), egui::Modifiers::SHIFT),
+        ] {
+            for pressed in [true, false] {
+                draw(
+                    vec![
+                        egui::Event::PointerMoved(pos),
+                        egui::Event::PointerButton {
+                            pos,
+                            button: egui::PointerButton::Primary,
+                            pressed,
+                            modifiers,
+                        },
+                    ],
+                    modifiers,
+                );
+            }
+        }
+        let start = origin + egui::vec2(100., 80.);
+        let end = start + egui::vec2(40., 20.);
+        draw(
+            vec![
+                egui::Event::PointerMoved(start),
+                egui::Event::PointerButton {
+                    pos: start,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+            egui::Modifiers::NONE,
+        );
+        draw(vec![egui::Event::PointerMoved(end)], egui::Modifiers::NONE);
+        draw(
+            vec![egui::Event::PointerButton {
+                pos: end,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+            egui::Modifiers::NONE,
+        );
+        assert_eq!(canvas.selected_ids, [a, b].into_iter().collect());
+        assert_eq!(g.nodes[0].position, [40., 20.]);
+        assert_eq!(g.nodes[1].position, [370., 20.]);
+        h.undo(&mut g);
+        assert_eq!(g, original);
+    }
     #[test]
     fn pointer_events_create_custom_wire_through_real_egui_hit_regions() {
         let ctx = egui::Context::default();

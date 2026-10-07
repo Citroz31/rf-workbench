@@ -418,6 +418,18 @@ pub struct Node {
     pub kind: Kind,
     pub position: [f32; 2],
     pub config: Config,
+    #[serde(default)]
+    pub comment: String,
+    #[serde(default)]
+    pub breakpoint: bool,
+    #[serde(default)]
+    pub probe: bool,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct Annotation {
+    pub id: u64,
+    pub text: String,
+    pub position: [f32; 2],
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Edge {
@@ -429,11 +441,15 @@ pub struct Edge {
     pub to_port: usize,
     #[serde(default)]
     pub waypoints: Vec<[f32; 2]>,
+    #[serde(default)]
+    pub auto_routed: bool,
 }
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct Graph {
     pub nodes: Vec<Node>,
     pub edges: Vec<Edge>,
+    #[serde(default)]
+    pub annotations: Vec<Annotation>,
 }
 
 impl Graph {
@@ -445,6 +461,9 @@ impl Graph {
             kind,
             position,
             config: Config::default(),
+            comment: String::new(),
+            breakpoint: false,
+            probe: false,
         });
         id
     }
@@ -493,6 +512,7 @@ impl Graph {
             from_port,
             to_port,
             waypoints: Vec::new(),
+            auto_routed: false,
         });
         if let Err(e) = self.order() {
             self.edges.pop();
@@ -501,6 +521,20 @@ impl Graph {
         Ok(())
     }
     pub fn order(&self) -> Result<Vec<u64>> {
+        let mut annotation_ids = BTreeSet::new();
+        if self.annotations.len() > 1000
+            || self.annotations.iter().any(|a| {
+                a.id == u64::MAX
+                    || !annotation_ids.insert(a.id)
+                    || a.text.len() > 8192
+                    || a.position.iter().any(|p| !p.is_finite() || p.abs() > 1e6)
+            })
+            || self.nodes.iter().any(|n| n.comment.len() > 8192)
+        {
+            return Err(Error::Invalid(
+                "Annotations invalides ou trop volumineuses".into(),
+            ));
+        }
         let mut degrees: BTreeMap<_, usize> = self.nodes.iter().map(|n| (n.id, 0)).collect();
         if degrees.len() != self.nodes.len() {
             return Err(Error::Invalid("Identifiants de blocs dupliqués".into()));
@@ -860,6 +894,55 @@ mod extension_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn legacy_editor_metadata_defaults_and_new_metadata_roundtrips() {
+        let mut json = serde_json::to_value(Project::default()).unwrap();
+        json["graph"].as_object_mut().unwrap().remove("annotations");
+        for n in json["graph"]["nodes"].as_array_mut().unwrap() {
+            for field in ["comment", "breakpoint", "probe"] {
+                n.as_object_mut().unwrap().remove(field);
+            }
+        }
+        for e in json["graph"]["edges"].as_array_mut().unwrap() {
+            e.as_object_mut().unwrap().remove("auto_routed");
+        }
+        let mut p = Project::from_json(&json.to_string()).unwrap();
+        assert!(p.graph.annotations.is_empty());
+        assert!(
+            p.graph
+                .nodes
+                .iter()
+                .all(|n| !n.probe && !n.breakpoint && n.comment.is_empty())
+        );
+        p.graph.nodes[0].comment = "Référence de calibration".into();
+        p.graph.nodes[0].breakpoint = true;
+        p.graph.nodes[0].probe = true;
+        p.graph.annotations.push(Annotation {
+            id: 1,
+            text: "DUT".into(),
+            position: [0., 250.],
+        });
+        p.graph.edges[0].auto_routed = true;
+        assert_eq!(Project::from_json(&p.to_json().unwrap()).unwrap(), p);
+    }
+    #[test]
+    fn annotation_ids_and_positions_are_validated() {
+        let mut g = Graph::default();
+        g.annotations.push(Annotation {
+            id: 1,
+            text: "Note".into(),
+            position: [0., 0.],
+        });
+        g.order().unwrap();
+        g.annotations.push(g.annotations[0].clone());
+        assert!(g.order().is_err());
+        g.annotations.pop();
+        g.annotations[0].id = u64::MAX;
+        assert!(g.order().is_err());
+        g.annotations[0].id = 1;
+        g.annotations[0].position[0] = f32::NAN;
+        assert!(g.order().is_err());
+    }
     #[test]
     fn integrated_suite_passes() {
         for r in self_tests() {

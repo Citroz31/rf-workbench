@@ -1,8 +1,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+mod analysis;
 mod app;
 mod canvas;
+mod editor;
+mod help;
+mod i18n;
 mod plot;
 mod shortcuts;
+mod studio;
 mod theme;
 mod visuals;
 

@@ -1,4 +1,5 @@
 //! Worker-owned sessions, ordered graph execution and supervised Python IPC.
+pub mod debug;
 pub mod python;
 mod simulation;
 use rf_core::{Graph, Kind, Measurement, NetworkTrace, TestResult, Trace, Waveform};
@@ -14,6 +15,7 @@ use std::time::{Duration, Instant};
 pub type Result<T> = std::result::Result<T, String>;
 #[derive(Clone, Debug)]
 pub struct RunResult {
+    pub buffers: Vec<debug::Buffer>,
     pub trace: Option<Trace>,
     pub network: Option<NetworkTrace>,
     pub waveform: Option<Waveform>,
@@ -31,7 +33,7 @@ pub(crate) enum Value {
         simulated: bool,
     },
     Trace(Trace),
-    Scalar(f64),
+    Scalar(f64, bool),
     Analog(Waveform),
     Digital(Waveform),
     Dut {
@@ -99,6 +101,24 @@ impl Engine {
         hardware: bool,
         cancelled: &AtomicBool,
     ) -> Result<RunResult> {
+        self.execute_observed(
+            graph,
+            sequence,
+            python_path,
+            hardware,
+            cancelled,
+            |_, _, _| Ok(()),
+        )
+    }
+    pub fn execute_observed(
+        &mut self,
+        graph: &Graph,
+        sequence: u64,
+        python_path: &str,
+        hardware: bool,
+        cancelled: &AtomicBool,
+        mut observe: impl FnMut(debug::Phase, &rf_core::Node, &RunResult) -> Result<()>,
+    ) -> Result<RunResult> {
         graph.validate().map_err(|e| e.to_string())?;
         for n in graph.nodes.iter().filter(|n| n.kind.is_extended()) {
             if Resource::parse(&n.config.resource).map_err(|e| e.to_string())? != Resource::Sim {
@@ -108,6 +128,7 @@ impl Engine {
         let start = Instant::now();
         let mut values = BTreeMap::new();
         let mut result = RunResult {
+            buffers: Vec::new(),
             trace: None,
             network: None,
             waveform: None,
@@ -122,6 +143,7 @@ impl Engine {
                 return Err("Exécution arrêtée".into());
             }
             let node = graph.node(id).expect("validated node");
+            observe(debug::Phase::Before, node, &result)?;
             let c = &node.config;
             let inputs: BTreeMap<usize, Value> = graph
                 .edges
@@ -140,6 +162,8 @@ impl Engine {
                     values.insert((id, port), value);
                 }
                 result.completed.push(id);
+                capture(&mut result, node, &values);
+                observe(debug::Phase::After, node, &result)?;
                 continue;
             }
             let input = inputs.get(&0).cloned();
@@ -266,9 +290,9 @@ impl Engine {
                     Value::Trace(transformed)
                 }
                 (Kind::Peak, Some(Value::Trace(t))) => {
-                    Value::Scalar(t.peak().map_err(|e| e.to_string())?.1)
+                    Value::Scalar(t.peak().map_err(|e| e.to_string())?.1, t.simulated)
                 }
-                (Kind::Limit, Some(Value::Scalar(v))) => {
+                (Kind::Limit, Some(Value::Scalar(v, simulated))) => {
                     result.tests.push(TestResult {
                         name: node.title.clone(),
                         passed: (c.lower_dbm..=c.upper_dbm).contains(&v),
@@ -277,15 +301,33 @@ impl Engine {
                             c.lower_dbm, c.upper_dbm
                         ),
                     });
-                    Value::Scalar(v)
+                    Value::Scalar(v, simulated)
                 }
                 _ => return Err(format!("{} : donnée d'entrée incompatible", node.title)),
             };
             values.insert((id, 0), value);
             result.completed.push(id);
+            capture(&mut result, node, &values);
+            observe(debug::Phase::After, node, &result)?;
         }
         result.elapsed_ms = start.elapsed().as_secs_f64() * 1000.;
         Ok(result)
+    }
+}
+
+fn capture(result: &mut RunResult, node: &rf_core::Node, values: &BTreeMap<(u64, usize), Value>) {
+    for port in 0..node.kind.outputs().len() {
+        if let Some(v) = values.get(&(node.id, port)) {
+            let buffer = debug::Buffer::capture(node, port, v, result);
+            if result.buffers.len() >= 512 {
+                if let Some(i) = result.buffers.iter().position(|b| !b.probe) {
+                    result.buffers.remove(i);
+                } else {
+                    continue;
+                }
+            }
+            result.buffers.push(buffer);
+        }
     }
 }
 
@@ -326,6 +368,10 @@ pub fn self_tests() -> Vec<TestResult> {
 }
 
 pub enum Command {
+    Debug {
+        graph: Graph,
+        python_path: String,
+    },
     Run {
         graph: Graph,
         continuous: bool,
@@ -359,6 +405,8 @@ pub struct Worker {
     tx: mpsc::SyncSender<Command>,
     pub events: mpsc::Receiver<Event>,
     latest: Arc<Mutex<Option<RunResult>>>,
+    debug_latest: Arc<Mutex<Option<debug::Snapshot>>>,
+    debug_control: Arc<std::sync::atomic::AtomicU8>,
     cancel: Arc<AtomicBool>,
     busy: Arc<AtomicBool>,
 }
@@ -369,6 +417,9 @@ impl Worker {
         let latest = Arc::new(Mutex::new(None));
         let cancel = Arc::new(AtomicBool::new(false));
         let busy = Arc::new(AtomicBool::new(false));
+        let debug_latest = Arc::new(Mutex::new(None));
+        let debug_control = Arc::new(std::sync::atomic::AtomicU8::new(0));
+        let (debug_slot, control) = (debug_latest.clone(), debug_control.clone());
         let (c, l, b) = (cancel.clone(), latest.clone(), busy.clone());
         std::thread::spawn(move || {
             let mut engine = Engine::default();
@@ -378,6 +429,67 @@ impl Worker {
                 // an immediate Stop must also cancel a queued command.
                 let mut shutdown = true;
                 match command {
+                    Command::Debug { graph, python_path } => {
+                        let mut single_step = true;
+                        let valid = graph.nodes.iter().all(|n| {
+                            Resource::parse(&n.config.resource).ok() == Some(Resource::Sim)
+                        });
+                        let result = if !valid {
+                            Err("Le débogage pas à pas est réservé à un banc simulé".into())
+                        } else {
+                            engine.execute_observed(
+                                &graph,
+                                sequence,
+                                &python_path,
+                                false,
+                                &c,
+                                |phase, node, result| {
+                                    let paused = phase == debug::Phase::Before
+                                        && (single_step || node.breakpoint);
+                                    if let Ok(mut slot) = debug_slot.lock() {
+                                        *slot = Some(debug::Snapshot {
+                                            node: node.id,
+                                            title: node.title.clone(),
+                                            paused,
+                                            completed: result.completed.clone(),
+                                            buffers: result.buffers.clone(),
+                                        });
+                                    }
+                                    wake();
+                                    if paused {
+                                        loop {
+                                            if c.load(Ordering::Acquire) {
+                                                return Err("Débogage arrêté".into());
+                                            }
+                                            match control.swap(0, Ordering::AcqRel) {
+                                                1 => {
+                                                    single_step = false;
+                                                    break;
+                                                }
+                                                2 => {
+                                                    single_step = true;
+                                                    break;
+                                                }
+                                                _ => std::thread::sleep(Duration::from_millis(10)),
+                                            }
+                                        }
+                                    }
+                                    Ok(())
+                                },
+                            )
+                        };
+                        match result {
+                            Ok(result) => {
+                                sequence += 1;
+                                if let Ok(mut slot) = l.lock() {
+                                    *slot = Some(result);
+                                }
+                            }
+                            Err(e) => {
+                                let _ = etx.try_send(Event::Error(e));
+                            }
+                        }
+                    }
                     Command::Run {
                         graph,
                         continuous,
@@ -449,6 +561,7 @@ impl Worker {
                             Ok(trace) => {
                                 let _ = etx.try_send(Event::Done(Box::new(RunResult {
                                     trace: Some(trace),
+                                    buffers: Vec::new(),
                                     network: None,
                                     waveform: None,
                                     measurements: Vec::new(),
@@ -479,6 +592,8 @@ impl Worker {
             tx,
             events,
             latest,
+            debug_latest,
+            debug_control,
             cancel,
             busy,
         }
@@ -492,11 +607,24 @@ impl Worker {
             return Err("Une tâche est déjà en cours".into());
         }
         self.cancel.store(false, Ordering::Relaxed);
+        self.debug_control.store(0, Ordering::Release);
+        if let Ok(mut slot) = self.debug_latest.lock() {
+            *slot = None;
+        }
         if let Err(e) = self.tx.try_send(command) {
             self.busy.store(false, Ordering::Release);
             return Err(e.to_string());
         }
         Ok(())
+    }
+    pub fn debug_continue(&self) {
+        self.debug_control.store(1, Ordering::Release);
+    }
+    pub fn debug_step(&self) {
+        self.debug_control.store(2, Ordering::Release);
+    }
+    pub fn take_debug(&self) -> Option<debug::Snapshot> {
+        self.debug_latest.lock().ok()?.take()
     }
     pub fn stop(&self) {
         self.cancel.store(true, Ordering::Relaxed);
