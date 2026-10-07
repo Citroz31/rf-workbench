@@ -52,6 +52,7 @@ jobs:
             "ref=refs/heads/${{ github.event.repository.default_branch }}" >> $env:GITHUB_OUTPUT
             'missing=true' >> $env:GITHUB_OUTPUT
           }
+          exit 0
       - uses: actions/checkout@v4
         with:
           ref: ${{ steps.source.outputs.ref }}
