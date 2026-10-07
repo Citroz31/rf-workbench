@@ -12,10 +12,10 @@ La livraison locale contient `dist/windows/rf-workbench.exe`. Ouvrir `dist/windo
 
 1. Ouvrir l'onglet **Python**, puis choisir le chemin de `python.exe` (Python 3.10 ou ultérieur). Le lanceur local sélectionne l'interpréteur disponible sur cette machine.
 2. Dans **Schéma du banc**, cliquer **Exécuter**. La chaîne par défaut produit une porteuse à 2,45 GHz, avec -10 dBm à la source et 3 dB de perte DUT. Le pic simulé doit être -13 dBm.
-3. **Acquisitions** affiche la trace, son pic et son nombre de points. Le survol donne fréquence et amplitude. **Exporter CSV** conserve l'indication `simulated`.
+3. **Spectre** affiche la trace, son pic et son nombre de points. Le survol donne fréquence et amplitude. L'export CSV, accessible dans **Projet** ou avec Ctrl+E, conserve l'indication `simulated`.
 4. **Tests → Lancer les autotests** vérifie le logiciel ; **Tester le banc** exécute les contrôles de limites du schéma. **Projet** propose aussi des démonstrations PNA-X, I/Q et thermique/puissance.
-5. Ajouter des blocs dans la bibliothèque. Cliquer une sortie puis une entrée pour les relier. Déplacer un bloc par glisser-déposer, zoomer avec la molette, déplacer le fond, ajuster le cadrage. Clic droit sur un bloc ou au milieu d'un câble pour le retirer. Annuler/rétablir : Ctrl+Z / Ctrl+Y. Supprimer : Suppr. Exécuter : F5.
-6. L'inspecteur permet de modifier les paramètres et les chemins de sauvegarde. Le projet JSON conserve les blocs, leurs paramètres, leurs positions, les câbles et les scripts. Les entrées non reliées peuvent être sauvegardées, mais empêchent l'exécution.
+5. Ajouter des blocs dans **Blocs** ou la palette. W active le câblage : cliquer une sortie puis une entrée ; cliquer le fond avant la destination pour ajouter des coudes. Échap annule. Déplacer un bloc par glisser-déposer en sélection (V), zoomer avec la molette, déplacer le canevas (H), ajuster le cadrage (F). Clic droit sur un bloc ou un câble pour le retirer. Annuler/rétablir : Ctrl+Z / Ctrl+Y. Supprimer : Suppr. Exécuter : F5. **Raccourcis** (Ctrl+K) permet plusieurs combinaisons par action.
+6. L'inspecteur permet de modifier les paramètres ; **Projet** contient les chemins de sauvegarde. Le projet JSON conserve les blocs, leurs paramètres, leurs positions, les câbles, leurs parcours et les scripts. Les entrées requises non reliées peuvent être sauvegardées, mais empêchent l'exécution.
 
 À l'ouverture, la courbe est explicitement un **aperçu simulé**. Aucun résultat de test n'est présenté comme acquis avant exécution. En continu, le worker réexécute un instantané du schéma ; les modifications prennent effet au démarrage suivant.
 
@@ -76,7 +76,7 @@ uv run ty check
 uv run basedpyright
 ```
 
-`scripts/check.ps1 -Build` regroupe les contrôles sur Windows ; le Makefile expose les commandes sur les environnements disposant de Make. Le fichier `Cargo.lock` et `python/uv.lock` figent les dépendances. La CI prépare Windows, Linux et macOS, sans prétendre que ces trois jobs ont déjà été exécutés à distance.
+`scripts/check.ps1 -Build` regroupe les contrôles sur Windows ; le Makefile expose les commandes sur les environnements disposant de Make. Le fichier `Cargo.lock` et `python/uv.lock` figent les dépendances. La CI compile et teste Windows, Linux et macOS ; consulter [GitHub Actions](https://github.com/Citroz31/rf-workbench/actions) pour le résultat de chaque commit.
 
 L'exécutable propose `--self-test`, `--headless-run`, `--benchmark` (1 000 cycles simulés sans Python) et `--python-smoke --python chemin/python.exe`. Les mesures de performance de cette livraison sont consignées dans `docs/VALIDATION.md`.
 
