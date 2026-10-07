@@ -417,3 +417,21 @@ fn explicit_full_scale_calibration_enables_power_measurement() {
     let power = quantity(p.process(3, Op::Power, &c, &[calibrated], 0).unwrap());
     assert!((power - 13.01029995664).abs() < 1e-9);
 }
+#[test]
+fn generated_sdr_samples_have_explicit_full_scale_units() {
+    let c = Settings {
+        source_unit: Unit::Fs,
+        amplitude: 0.5,
+        ..settings()
+    };
+    let generated = iq(Processor::default()
+        .process(1, Op::IqSource, &c, &[], 0)
+        .unwrap());
+    assert_eq!(generated.unit, Unit::Fs);
+    assert!(generated.samples.iter().all(|z| z.norm2() <= 1.));
+    let modulated = modem::modulate(&bits(1024), &c).unwrap();
+    assert_eq!(modulated.unit, Unit::Fs);
+    assert!(modulated.samples.iter().all(|z| z.norm2() <= 1.));
+    let s = rf_dsp::psd(&modulated, &c, false).unwrap();
+    assert_eq!(s.unit, Unit::DbFs2PerHz);
+}

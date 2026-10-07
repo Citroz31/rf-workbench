@@ -110,7 +110,7 @@ pub fn modulate(bits: &BitFrame, c: &Settings) -> Result<IqFrame> {
         samples,
         sample_rate: c.rate,
         center_hz: c.center_hz,
-        unit: Unit::Volt,
+        unit: c.source_unit,
         simulated: bits.simulated,
         time: TimeTag::default(),
     };

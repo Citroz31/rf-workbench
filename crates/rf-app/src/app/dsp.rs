@@ -77,6 +77,28 @@ pub(super) fn settings_ui(
             .changed();
         changed |= super::number(ui, "Fréquence centrale", &mut c.center_hz, 1e6, " Hz");
     }
+    if matches!(op, Op::IqSource | Op::DigitalMod) {
+        caption(ui, "Amplitude / unité de source");
+        egui::ComboBox::from_id_salt("source-unit")
+            .selected_text(c.source_unit.label())
+            .show_ui(ui, |ui| {
+                for unit in [rf_core::dsp::Unit::Volt, rf_core::dsp::Unit::Fs] {
+                    changed |= ui
+                        .selectable_value(&mut c.source_unit, unit, unit.label())
+                        .changed();
+                }
+            });
+        changed |= super::number(
+            ui,
+            "Amplitude",
+            &mut c.amplitude,
+            0.01,
+            c.source_unit.label(),
+        );
+        if c.source_unit == rf_core::dsp::Unit::Fs {
+            ui.label("Sortie SDR/audio : |I+jQ| <= 1. En QAM, réduire A (ex. 0.5) pour laisser de la marge.");
+        }
+    }
     if matches!(op, Op::Psd | Op::Fft | Op::Spectrogram | Op::PhaseNoise) {
         caption(ui, "Taille FFT (puissance de 2)");
         changed |= ui

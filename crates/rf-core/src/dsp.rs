@@ -631,6 +631,7 @@ pub struct Settings {
     pub samples: usize,
     pub tone_hz: f64,
     pub amplitude: f64,
+    pub source_unit: Unit,
     pub factor: usize,
     pub taps: Vec<f64>,
     pub denominator: Vec<f64>,
@@ -683,6 +684,7 @@ impl Default for Settings {
             samples: 1024,
             tone_hz: 3000.,
             amplitude: 1.,
+            source_unit: Unit::Volt,
             factor: 2,
             taps: vec![0.25, 0.5, 0.25],
             denominator: vec![1., -0.5],
@@ -762,6 +764,7 @@ impl Settings {
             || self.tx_scale <= 0.
             || self.rate <= 0.
             || self.center_hz < 0.
+            || !matches!(self.source_unit, Unit::Volt | Unit::Fs)
             || self.amplitude <= 0.
             || self.volts_per_fs.is_some_and(|v| !v.is_finite() || v <= 0.)
             || self.nonlinearity < 0.

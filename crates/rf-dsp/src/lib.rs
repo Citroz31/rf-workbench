@@ -90,7 +90,7 @@ impl Processor {
                         .collect(),
                     sample_rate: c.rate,
                     center_hz: c.center_hz,
-                    unit: Unit::Volt,
+                    unit: c.source_unit,
                     simulated: true,
                     time: TimeTag {
                         first_sample: first,

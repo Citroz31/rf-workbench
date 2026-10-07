@@ -89,9 +89,13 @@ pub struct Reader {
 }
 impl Reader {
     pub fn open(path: &Path) -> Result<Self> {
-        let json =
-            std::fs::read(sidecar(path)).map_err(|e| format!("Métadonnées I/Q requises : {e}"))?;
-        if json.len() > 32 * 1024 * 1024 {
+        let mut json = Vec::new();
+        File::open(sidecar(path))
+            .map_err(|e| format!("Métadonnées I/Q requises : {e}"))?
+            .take(64 * 1024 * 1024 + 1)
+            .read_to_end(&mut json)
+            .map_err(|e| e.to_string())?;
+        if json.len() > 64 * 1024 * 1024 {
             return Err("Index trop volumineux".into());
         }
         let index: Index = serde_json::from_slice(&json).map_err(|e| e.to_string())?;

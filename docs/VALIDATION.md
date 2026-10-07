@@ -4,7 +4,7 @@ Vérifications locales sur Windows x64, Rust 1.90.0 et Python 3.12.14, le 7 octo
 
 | Vérification | Résultat |
 | --- | --- |
-| Tests Rust workspace | 89 réussis : 17 tests DSP numériques, 8 HAL, 4 graphes DSP, plus 60 tests existants |
+| Tests Rust workspace | 90 réussis : 18 tests DSP numériques, 8 HAL, 4 graphes DSP, plus 60 tests existants |
 | Intégration Rust/Python | 5 réussis avec un vrai interpréteur : commandes, compensation, erreurs, annulation et timeout |
 | Tests Python de la passerelle | 9 réussis ; couverture lignes/branches 100 % de rfworkbench/runner.py |
 | Adaptateurs Python optionnels localement | 1 test réussi, 5 ignorés faute de h5py/pyarrow/pyzmq ; la CI installe ces dépendances et exécute les 6 tests |
@@ -24,7 +24,7 @@ Les tests HAL utilisent des fichiers et sockets locaux réels : index/provenance
 
 La découverte VISA est compilée, mais aucun runtime VISA n'est installé sur cet environnement et aucun instrument physique n'a été contacté. GPIB/USB, SDK SDR, audio, horloges externes, triggers, PTP/GPSDO/MIMO et budgets d'incertitude restent à valider/compléter sur matériel. La [matrice 0.4](V0.4.md) distingue implémentations natives, adaptateurs optionnels, profils de recherche et points d'extension.
 
-La CI 0.3 a réussi sur Windows, Linux, macOS et Python. La CI 0.4 et les six tests HDF5/Parquet/ZMQ sont consultables dans [GitHub Actions](https://github.com/Citroz31/rf-workbench/actions). La configuration de la CI seule ne prouve pas sa réussite.
+La CI 0.3 a réussi sur Windows, Linux, macOS et Python. Les six tests HDF5/Parquet/ZMQ de la première publication 0.4 ont réussi en CI, ainsi que macOS et Python. La CI du commit final est consultable dans [GitHub Actions](https://github.com/Citroz31/rf-workbench/actions). La configuration de la CI seule ne prouve pas sa réussite.
 
 # Historique : validation 0.3.0
 
