@@ -1,0 +1,125 @@
+name: Publish portable Windows release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing version tag to build and publish (for example v0.5.1)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      RUSTFLAGS: '-C target-feature=+crt-static'
+    steps:
+      - name: Check version tag
+        run: |
+          if ($env:RELEASE_TAG -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$') {
+            throw 'Use a version tag such as v0.5.1.'
+          }
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.tag || github.ref_name }}
+      - name: Check project version
+        run: |
+          $versionLine = Get-Content -LiteralPath Cargo.toml | Where-Object { $_ -match '^version\s*=\s*"([^"]+)"' } | Select-Object -First 1
+          if (-not $versionLine -or $versionLine -notmatch '^version\s*=\s*"([^"]+)"') { throw 'Cargo version missing.' }
+          if ($env:RELEASE_TAG -cne "v$($Matches[1])") { throw 'Tag must match the Cargo workspace version.' }
+      - uses: dtolnay/rust-toolchain@1.90.0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: Swatinem/rust-cache@v2
+      - name: Test Rust workspace
+        run: |
+          cargo test --workspace --locked
+          if ($LASTEXITCODE -ne 0) { throw 'Rust tests failed.' }
+      - name: Build Windows x64
+        run: |
+          cargo build --release -p rf-workbench --locked
+          if ($LASTEXITCODE -ne 0) { throw 'Windows build failed.' }
+      - name: Check built-in tests and standalone DSP simulation
+        run: |
+          $binary = (Resolve-Path -LiteralPath 'target/release/rf-workbench.exe').Path
+          if ((Get-Item -LiteralPath $binary).Length -le 0) { throw 'Empty Windows EXE.' }
+          $tests = Start-Process -FilePath $binary -ArgumentList '--self-test' -WindowStyle Hidden -Wait -PassThru
+          if ($tests.ExitCode -ne 0) { throw 'Executable self-tests failed.' }
+          $simulation = Start-Process -FilePath $binary -ArgumentList '--headless-run','--demo-dsp' -WindowStyle Hidden -Wait -PassThru
+          if ($simulation.ExitCode -ne 0) { throw 'Standalone DSP simulation failed.' }
+      - name: Package and verify EXE at ZIP root
+        run: |
+          ./scripts/package-windows.ps1 -BinaryPath target/release/rf-workbench.exe -OutputDirectory dist/portable -Version $env:RELEASE_TAG
+          foreach ($name in @('rf-workbench.exe','RF-Workbench-Windows-x64-portable.zip','rf-workbench.exe.sha256','SHA256SUMS.txt')) {
+            $file = Get-Item -LiteralPath "dist/portable/$name" -ErrorAction Stop
+            if ($file.Length -le 0) { throw "Missing or empty release asset: $name" }
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rf-workbench-windows-portable
+          path: |
+            dist/portable/rf-workbench.exe
+            dist/portable/RF-Workbench-Windows-x64-portable.zip
+            dist/portable/rf-workbench.exe.sha256
+            dist/portable/SHA256SUMS.txt
+          if-no-files-found: error
+      - name: Publish GitHub release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $notes = @'
+          Windows x64 portable : téléchargez **RF-Workbench-Windows-x64-portable.zip**, extrayez-le entièrement dans un dossier utilisateur, puis double-cliquez sur **rf-workbench.exe**, directement à sa racine. LISEZ-MOI.txt, le guide PDF et trois projets exemples sont inclus. L'EXE seul est aussi disponible ci-dessous.
+
+          La simulation fonctionne localement sans installation, sans Python, sans VISA, sans compte ni connexion Internet après téléchargement. L'application ne demande pas d'élévation administrateur. Elle n'est pas signée numériquement : les règles de votre entreprise peuvent nécessiter une validation IT, même pour une application portable.
+
+          Python est optionnel pour les scripts. Les instruments GPIB/USB et LAN VISA INSTR demandent un runtime VISA x64 autorisé. Aucun instrument physique n'est validé ici. SHA256SUMS.txt permet de vérifier l'EXE et le ZIP.
+          '@
+          $notes | Set-Content -LiteralPath dist/portable/release-notes.md -Encoding utf8
+          $existingReleaseJson = gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --json tagName,isDraft 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --verify-tag --draft --title "RF Workbench $env:RELEASE_TAG - Windows portable" --notes-file dist/portable/release-notes.md
+            if ($LASTEXITCODE -ne 0) { throw 'Release creation failed.' }
+          } else {
+            $existingRelease = $existingReleaseJson | ConvertFrom-Json
+            if (-not $existingRelease.isDraft) { throw 'This release is already public. Publish a new version instead of replacing its assets.' }
+          }
+          gh release upload $env:RELEASE_TAG dist/portable/rf-workbench.exe dist/portable/RF-Workbench-Windows-x64-portable.zip dist/portable/rf-workbench.exe.sha256 dist/portable/SHA256SUMS.txt --repo $env:GITHUB_REPOSITORY --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Release asset upload failed.' }
+          $published = gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --json assets | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot verify published release.' }
+          foreach ($name in @('rf-workbench.exe','RF-Workbench-Windows-x64-portable.zip','rf-workbench.exe.sha256','SHA256SUMS.txt')) {
+            $asset = @($published.assets | Where-Object { $_.name -eq $name })
+            $localSize = (Get-Item -LiteralPath "dist/portable/$name").Length
+            if ($asset.Count -ne 1 -or $asset[0].size -ne $localSize) { throw "Published asset absent or incorrect size: $name" }
+          }
+          gh release edit $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --draft=false
+          if ($LASTEXITCODE -ne 0) { throw 'Release publication failed.' }
+      - name: Verify public downloads without authentication
+        run: |
+          $publicDownloadsVerified = $false
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            python scripts/verify-public-release.py --tag $env:RELEASE_TAG --output dist/public-verification
+            if ($LASTEXITCODE -eq 0) {
+              $publicDownloadsVerified = $true
+              break
+            }
+            if ($attempt -lt 3) { Start-Sleep -Seconds 10 }
+          }
+          if (-not $publicDownloadsVerified) { throw 'Public release downloads could not be verified.' }
