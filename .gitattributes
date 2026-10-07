@@ -9,3 +9,4 @@
 *.pdf binary
 *.rfbench text eol=lf
 *.csv text eol=lf
+*.cmd text eol=crlf
