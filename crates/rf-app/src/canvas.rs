@@ -890,6 +890,7 @@ impl Canvas {
 fn summary(n: &Node) -> String {
     let c = &n.config;
     match n.kind {
+        Kind::Dsp(_) => format!("{:.1} kS/s · {} pts", c.dsp.rate / 1000., c.dsp.samples),
         Kind::Generator => format!("{:.3} GHz / {:.1} dBm", c.frequency_hz / 1e9, c.power_dbm),
         Kind::Dut => format!("Perte {:.1} dB · NF {:.1} dB", c.loss_db, c.noise_figure_db),
         Kind::Analyzer => format!(

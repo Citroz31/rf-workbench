@@ -16,6 +16,7 @@ fn main() -> eframe::Result<()> {
     if args.iter().any(|a| a == "--self-test") {
         let mut tests = rf_core::self_tests();
         tests.extend(rf_instruments::self_tests());
+        tests.extend(rf_dsp::self_tests());
         tests.extend(rf_runtime::self_tests());
         let passed = tests.iter().all(|t| t.passed);
         println!("{}", serde_json::to_string_pretty(&tests).unwrap());
@@ -28,6 +29,9 @@ fn main() -> eframe::Result<()> {
         let mut graph = rf_core::Graph::demo();
         graph.remove(4);
         graph.connect(3, 5).unwrap();
+        if args.iter().any(|a| a == "--demo-dsp") {
+            graph = rf_runtime::dsp_demo();
+        }
         let iterations = if args.iter().any(|a| a == "--benchmark") {
             1000
         } else {
@@ -48,7 +52,7 @@ fn main() -> eframe::Result<()> {
         let last = last.unwrap();
         println!(
             "{}",
-            serde_json::json!({"iterations":iterations,"total_ms":start.elapsed().as_secs_f64()*1000.,"last_run_ms":last.elapsed_ms,"peak":last.trace.unwrap().peak().unwrap(),"tests":last.tests,"completed":last.completed})
+            serde_json::json!({"iterations":iterations,"total_ms":start.elapsed().as_secs_f64()*1000.,"last_run_ms":last.elapsed_ms,"peak":last.trace.and_then(|t|t.peak().ok()),"measurements":last.measurements.iter().map(|m|serde_json::json!({"name":m.name,"value":m.value,"unit":m.unit,"simulated":m.simulated})).collect::<Vec<_>>(),"tests":last.tests,"completed":last.completed})
         );
         return Ok(());
     }

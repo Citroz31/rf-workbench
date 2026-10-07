@@ -2236,16 +2236,23 @@ checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
 
 [[package]]
 name = "rf-core"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "rf-dsp"
+version = "0.4.0"
+dependencies = [
+ "rf-core",
 ]
 
 [[package]]
 name = "rf-dut-library"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -2253,8 +2260,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rf-hal"
+version = "0.4.0"
+dependencies = [
+ "rf-core",
+ "rf-instruments",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "rf-instruments"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "libloading",
  "rf-core",
@@ -2263,9 +2280,11 @@ dependencies = [
 
 [[package]]
 name = "rf-runtime"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "rf-core",
+ "rf-dsp",
+ "rf-hal",
  "rf-instruments",
  "serde_json",
  "thiserror 2.0.21",
@@ -2273,12 +2292,14 @@ dependencies = [
 
 [[package]]
 name = "rf-workbench"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "eframe",
  "image",
  "rf-core",
+ "rf-dsp",
  "rf-dut-library",
+ "rf-hal",
  "rf-instruments",
  "rf-runtime",
  "serde",

@@ -21,6 +21,8 @@ flowchart LR
 | --- | --- | --- |
 | `rf-core` | Unités, trace, graphe DAG, ports typés, format de projet, résultats de test | Serde / thiserror |
 | `rf-instruments` | ResourceManager, sessions, SCPI TCP, simulateur, VISA dynamique, blocs IEEE 488.2 | rf-core / libloading |
+| `rf-dsp` | Processeurs complexes/LLR, filtres avec état, modems/FEC, mesures et calibration ; aucun I/O | rf-core |
+| `rf-hal` | Profils/capacités, acquisition réseau/VISA/SDK, queue SPSC, fichiers RAW et helper optionnel | rf-core / rf-instruments / serde |
 | `rf-runtime` | Worker, exécution, annulation, contrôle des sorties, supervision Python | rf-core / rf-instruments |
 | `rf-dut-library` | Catalogue DUT versionné, validation, recherche et provenance des fiches | Serde / thiserror |
 | `rf-workbench` | Schéma, navigation, inspecteur, historique, analyses dockables, Studio, aide/i18n, fichiers | Tous les composants précédents / eframe |
@@ -62,3 +64,15 @@ Pour Android/iOS, partager d'abord `rf-core` et les composants de rendu, puis cr
 ## Limites du prototype
 
 Le moteur est séquentiel ; il n'inclut pas de boucles de programme, sous-schémas, branchements conditionnels ou scheduler temps réel. Les sessions VISA sont implementées mais non éprouvées sur le runtime constructeur de cette machine. Les drivers SCPI restent génériques. Le système ne fournit pas de budget d'incertitude, certificat de calibration, traçabilité ISO/IEC 17025 ni validation de conformité RF. L'historique contient le graphe et ses paramètres ; les résultats restent en mémoire et peuvent être exportés en CSV.
+
+## Extension RF/DSP 0.4
+
+`rf_core::dsp::Data` distingue I/Q complexes, bits avec LLR, spectres et quantités avec unité. `TimeTag` transporte indices, epoch optionnelle, domaine d'horloge et discontinuité. Le moteur transmet les valeurs DSP par Arc et publie des previews bornées ; les paramètres sont sérialisés dans `Config.dsp`, avec defaults pour les anciens projets.
+
+`rf-dsp::Processor` ne connaît aucun transport ni vue. Ses états persistent pour les trames contiguës d'un banc ; changements de configuration, gaps et arrêt réinitialisent les historiques. Les opérations nécessitant une référence ont des ports REF obligatoires. Un résultat non fini est rejeté. Les acquisitions de plusieurs VNA sont attachées à chaque sortie ; le VSWR n'utilise pas un résultat global partagé.
+
+`rf-hal` possède les sessions et les frontières d'I/O. L'acquisition réseau/SDR/audio/ZMQ peut tourner séparément du graphe ; queue SPSC à 4 trames, drop-newest avec compte et gap exposés. Les fichiers et VISA sont lus à la demande. La publication UI conserve le dernier résultat complet ; son historique de spectres reste borné à 64 lignes et est remis à zéro lors d'un changement d'espace.
+
+Les adaptateurs SDK isolés dans `python/adapters/` ne sont pas la passerelle de scripts utilisateur `rfworkbench/runner.py`. Ils ont des tests de stockage/réseau séparés dans la CI et ne nécessitent pas leurs dépendances pour compiler Rust. La supervision possède les pipes sur un thread, borne les messages JSON et interrompt/récolte le helper lors d'un délai. Une fermeture normale finalise les formats nécessitant un footer ; une interruption forcée peut perdre cette finalisation.
+
+Les capacités sont des déclarations de pilotes, pas des capacités inventées à partir du nom d'un appareil. Horloges, triggers, PTP/GPSDO/MIMO non supportés sont refusés. Seule l'identification peut reconnecter et être rejouée automatiquement. La matrice complète, les conventions de puissance/PSD et les limites figurent dans [V0.4](V0.4.md).

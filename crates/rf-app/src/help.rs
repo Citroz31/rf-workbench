@@ -11,7 +11,16 @@ pub struct Doc {
     pub limits: &'static str,
 }
 pub fn document(kind: Kind) -> Doc {
+    if let Kind::Dsp(op) = kind {
+        return dsp_document(op);
+    }
     let (purpose, formula, example, limits) = match kind {
+        Kind::Dsp(op) => (
+            op.label(),
+            "Voir paramètres typés et guide RF/DSP 0.4",
+            "Projet → Démo DSP / Modem",
+            "Profil de recherche ; paramètres, références et unités explicites. Validation matérielle requise.",
+        ),
         Kind::Generator => (
             pair(
                 "Source RF réglable en fréquence et puissance. Sa sortie transporte un niveau RF, pas une forme d'onde temporelle.",
@@ -272,6 +281,182 @@ pub fn document(kind: Kind) -> Doc {
         purpose: purpose.into(),
         formula,
         example,
+        limits,
+    }
+}
+fn dsp_document(op: rf_core::dsp::Op) -> Doc {
+    use rf_core::dsp::Op::*;
+    let (purpose, formula, limits) = match op {
+        IqSource => (
+            "Porteuse complexe continue, amplitude RMS et cadence explicites.",
+            "x[n] = A exp(j 2π f n/Fs)",
+            "Fréquence sous Nyquist ; données simulées en V.",
+        ),
+        BitSource => (
+            "Bits déterministes avec seed, renouvelés à chaque acquisition.",
+            "SplitMix64(seed + sequence) & 1",
+            "Source simulée ; nombre de bits compatible avec le code/modem requis.",
+        ),
+        IoSource | IoSink => (
+            "Acquisition ou sortie via HAL. Choisir backend, endpoint et timeout.",
+            "I/Q + Fs + fc + unité + TimeTag",
+            "RAW natif indexé ; VISA cf32 LE ; SDK externes requis pour SDR/audio/ZMQ/HDF5/Parquet. Sorties physiques FS <= 1.",
+        ),
+        Fir => (
+            "Filtre complexe à réponse impulsionnelle finie, état conservé entre trames contiguës.",
+            "y[n] = Σ taps[k] x[n-k]",
+            "Taps fournis par l'utilisateur ; reset en cas de gap ou changement de paramètres.",
+        ),
+        Iir => (
+            "Filtre rationnel B/A en forme directe, avec historique entre trames.",
+            "a0 y[n] = Σ b[k] x[n-k] - Σ a[k] y[n-k]",
+            "La stabilité dépend des coefficients ; résultats non finis refusés.",
+        ),
+        Decimate | Interpolate => (
+            "Changement entier de cadence avec filtre FIR configuré.",
+            "decimation : Fs/L ; interpolation : Fs*L avec insertion de zéros",
+            "Concevoir les taps anti-alias/anti-images pour le facteur demandé. Aucun filtre optimal implicite.",
+        ),
+        Fft => (
+            "FFT radix 2 centrée, niveaux par bin référencés à 1 V ou 1 FS.",
+            "20 log10(|FFT(x w)/N|)",
+            "dBV/dBFS, jamais dBm sans impédance/calibration ; moyenne des segments disponibles.",
+        ),
+        Window => (
+            "Fenêtrage Hann, Hamming, Blackman ou Rectangular.",
+            "y[n] = w[n] x[n]",
+            "Gain et ENBW varient selon la fenêtre ; PSD normalise son énergie.",
+        ),
+        Agc => (
+            "Contrôle de gain vers amplitude RMS cible.",
+            "P = (1-b)P + b|x|² ; gain = A/sqrt(P)",
+            "Gain borné ; démarrage transitoire, sans attaque/relâchement séparés.",
+        ),
+        Pll | Costas => (
+            "Boucle de phase du second ordre : porteuse PLL ou Costas BPSK/QPSK.",
+            "ω += b² e ; phase += ω + 2b e",
+            "Costas : ordre 2/4. Ambiguïtés de phase et capture non garanties pour toute modulation.",
+        ),
+        SymbolTiming => (
+            "Récupération Gardner avec interpolation linéaire et cadence symbole déclarée.",
+            "e = Re((early-late) conj(mid))",
+            "Prototype par trame, sps >= 2 ; continuité du timing fractionnaire intertrame à développer.",
+        ),
+        FrameSync => (
+            "Recherche exacte du préambule, correction d'inversion et extraction d'un paquet.",
+            "preamble match → packet_bits bits",
+            "Ni CRC ni synchronisation glissante de préambule entre deux trames.",
+        ),
+        DigitalMod | DigitalDemod => (
+            "ASK/PSK/QAM Gray, FSK par corrélation de tons, OFDM avec CP N/8.",
+            "LLR max-log = (d1²-d0²)/variance ; positif=bit 0",
+            "Pulses rectangulaires, synchronisation connue. OFDM : tous les bins, sans pilotes/égaliseur. FSK fournit des décisions dures avec LLR de confiance fixe.",
+        ),
+        AnalogMod | AnalogDemod => (
+            "AM, FM ou PM sur composante I réelle.",
+            "AM=1+A m ; PM=exp(j A m) ; FM phase+=2π Δf m/Fs",
+            "AM sans surmodulation ; FM sans saut de phase >= π ; pas de stéréo FM.",
+        ),
+        ConvEncode | ConvDecode => (
+            "Convolutionnel K=3 (7,5), rate 1/2 ; Viterbi souple terminé à zéro.",
+            "2 bits de terminaison ; treillis 4 états",
+            "Profil de recherche, sans puncturing ni équivalence implicite à K=7.",
+        ),
+        RsEncode | RsDecode => (
+            "RS systématique GF(256), polynôme 0x11d, racines α^0...α^(p-1).",
+            "RS(255,255-p) ; t=floor(p/2)",
+            "Octets MSB-first, blocs complets. Pas d'erasures ; au-delà de t, une erreur peut rester indétectée.",
+        ),
+        LdpcEncode | LdpcDecode => (
+            "LDPC systématique de référence (128,64), décodage min-sum normalisé.",
+            "H=[A|I] ; A[r]={r,r+7,r+23} mod 64",
+            "Profil propre au projet, pas DVB/5G. Non-convergence explicitement signalée.",
+        ),
+        TurboEncode | TurboDecode => (
+            "Deux RSC à 4 états, rate 1/3 ; décodage max-log BCJR itératif.",
+            "LLR extrinsèques ; interleaver par inversion d'ordre",
+            "Prototype non terminé, interleaver de recherche ; aucun profil 3GPP, limite 8192 bits.",
+        ),
+        Power => (
+            "Puissance issue de l'amplitude RMS complexe calibrée et de l'impédance.",
+            "P=mean(|x|²)/R ; dBm=10 log10(P/1mW)",
+            "V requis ; FS est refusé. Convention RMS complexe explicite, aucune conversion RF peak/RMS implicite.",
+        ),
+        Snr | Evm => (
+            "Erreur par rapport à une référence I/Q alignée.",
+            "SNR=10 log10(Σ|ref|²/Σ|x-ref|²) ; EVM=100 sqrt(error/signal)",
+            "Même Fs/fc/unité/indices/horloge/epoch. Aucune correction implicite de gain, phase ou retard.",
+        ),
+        Thd => (
+            "THD par projection cohérente de la fondamentale et des harmoniques 2 à 10.",
+            "THD%=100 sqrt(Σ|harm|²/|fund|²)",
+            "Acquisition cohérente requise ; harmoniques au-delà de Nyquist omises, pas THD+N.",
+        ),
+        Ber | Per => (
+            "Taux d'erreur de bits ou de paquets par comparaison à une référence.",
+            "BER=bits erronés/N ; PER=paquets erronés/Npaquets",
+            "Longueurs identiques ; PER requiert des paquets complets, sans CRC implicite.",
+        ),
+        PhaseNoise => (
+            "Déroulement de phase, retrait de pente porteuse et PSD des fluctuations.",
+            "L(f) ≈ Sφ,one-sided(f)/2 = Sφ,two-sided(f)",
+            "Approximation petites phases, offsets positifs en dBc/Hz ; pas de qualification métrologique ni cross-correlation.",
+        ),
+        Vswr => (
+            "VSWR maximal sur une acquisition de réflexion VNA.",
+            "VSWR=(1+|Γ|)/(1-|Γ|)",
+            "S11 ou S22 uniquement, |Γ| < 1. Le buffer du VNA connecté est utilisé.",
+        ),
+        Psd | Spectrogram => (
+            "Welch 50 % d'overlap et waterfall sur les acquisitions exécutées.",
+            "PSD=mean(|FFT(xw)|²)/(Fs Σw²)",
+            "Spectre complexe deux côtés en V²/Hz ou FS²/Hz. Historique UI limité à 64 lignes.",
+        ),
+        SpectralPeak => (
+            "Fréquence du bin spectral de niveau maximal.",
+            "f[argmax(levels)]",
+            "Pic discret unique, sans interpolation ni liste de pics.",
+        ),
+        DcOffset => (
+            "Suppression de la moyenne complexe de la trame.",
+            "y=x-mean(x)",
+            "Retire aussi un signal utile situé exactement à DC.",
+        ),
+        IqBalance => (
+            "Correction affine du DC et du déséquilibre gain/phase I/Q.",
+            "I=Iraw-DCI ; Q=((Qraw-DCQ)/gain - I sinθ)/cosθ",
+            "Paramètres fournis/calibrés ; aucun estimateur aveugle implicite.",
+        ),
+        Cable => (
+            "Correction du gain et de la phase porteuse d'un câble.",
+            "y=x 10^(loss/20) exp(j2π fc delay)",
+            "Approximation bande étroite ; pas de filtre de retard fractionnaire de l'enveloppe.",
+        ),
+        CalibrationTable => (
+            "Interpolation linéaire des corrections gain/phase à la fréquence centrale.",
+            "[Hz,dB,deg] ; volts_per_fs optionnel",
+            "Aucune extrapolation ; volts_per_fs est un facteur RMS fourni explicitement. Pas de réponse en fréquence par bin.",
+        ),
+        Uncertainty => (
+            "Incertitude élargie à partir de composantes standard indépendantes.",
+            "U=k sqrt(Σuᵢ²)",
+            "Même unité que l'entrée ; pas de covariance, degrés de liberté ou propagation automatique du graphe.",
+        ),
+        Convert => (
+            "Conversions dimensionnelles et logarithmiques avec impédance déclarée.",
+            "dBm↔W↔Vrms↔Arms ; ratio↔dB ; %↔ratio",
+            "Conversions incompatibles refusées. dB s'applique à un rapport de puissances ; FS exige une calibration.",
+        ),
+        Channel => (
+            "Canal simulé avec AWGN, block fading Rayleigh, FIR multipath, Doppler et compression.",
+            "y=fading*(h*x)/(1+α|h*x|²) exp(j2π Δf t)+AWGN",
+            "Bruit défini par la puissance d'entrée ; fading constant par trame, sans modèle normalisé 3GPP.",
+        ),
+    };
+    Doc {
+        purpose: purpose.into(),
+        formula,
+        example: "RF / DSP → Charger QAM16 / AWGN / Viterbi → Exécuter. Ajouter ce bloc depuis la palette et configurer ses paramètres dans l'inspecteur.",
         limits,
     }
 }

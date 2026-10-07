@@ -1,4 +1,5 @@
 //! Platform-independent RF data, typed acyclic graphs and versioned bench files.
+pub mod dsp;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use thiserror::Error;
@@ -77,10 +78,18 @@ pub enum Port {
     Temperature,
     Resistance,
     NoiseFigure,
+    ComplexIq,
+    Bits,
+    Spectrum,
+    Quantity,
 }
 impl Port {
     pub fn label(self) -> &'static str {
         match self {
+            Self::ComplexIq => "I/Q",
+            Self::Bits => "bits/LLR",
+            Self::Spectrum => "PSD/FFT",
+            Self::Quantity => "valeur/unité",
             Self::Signal => "RF",
             Self::Trace => "Trace",
             Self::Scalar => "dBm",
@@ -121,9 +130,10 @@ pub enum Kind {
     PowerMeter,
     PowerSensor,
     Thermostream,
+    Dsp(dsp::Op),
 }
 impl Kind {
-    pub const ALL: [Self; 18] = [
+    pub const BASE: [Self; 18] = [
         Self::Generator,
         Self::Analyzer,
         Self::Pna,
@@ -143,8 +153,23 @@ impl Kind {
         Self::Peak,
         Self::Limit,
     ];
+    pub const ALL: [Self; 18 + dsp::Op::ALL.len()] = {
+        let mut a = [Self::Generator; 18 + dsp::Op::ALL.len()];
+        let mut i = 0;
+        while i < 18 {
+            a[i] = Self::BASE[i];
+            i += 1;
+        }
+        let mut j = 0;
+        while j < dsp::Op::ALL.len() {
+            a[18 + j] = Self::Dsp(dsp::Op::ALL[j]);
+            j += 1;
+        }
+        a
+    };
     pub fn label(self) -> &'static str {
         match self {
+            Self::Dsp(op) => op.label(),
             Self::Generator => "Générateur RF",
             Self::Dut => "DUT",
             Self::Analyzer => "Analyseur de spectre",
@@ -167,6 +192,7 @@ impl Kind {
     }
     pub fn category(self) -> &'static str {
         match self {
+            Self::Dsp(op) => op.category(),
             Self::Generator
             | Self::Analyzer
             | Self::Pna
@@ -185,6 +211,7 @@ impl Kind {
     }
     pub fn tag(self) -> &'static str {
         match self {
+            Self::Dsp(_) => "DSP",
             Self::Generator | Self::Awg => "SOURCE",
             Self::Dut => "DUT",
             Self::Analyzer => "SPECTRE",
@@ -203,6 +230,7 @@ impl Kind {
     pub fn inputs(self) -> &'static [Terminal] {
         use Port::*;
         match self {
+            Self::Dsp(op) => op.inputs(),
             Self::Generator | Self::Awg | Self::VariableResistor | Self::Thermostream => &[],
             Self::Dut => &[Terminal {
                 name: "RF IN",
@@ -266,6 +294,7 @@ impl Kind {
     pub fn outputs(self) -> &'static [Terminal] {
         use Port::*;
         match self {
+            Self::Dsp(op) => op.outputs(),
             Self::Generator | Self::IqModulator => &[Terminal {
                 name: "RF OUT",
                 port: Signal,
@@ -347,7 +376,13 @@ impl Kind {
     pub fn is_extended(self) -> bool {
         !matches!(
             self,
-            Self::Generator | Self::Dut | Self::Analyzer | Self::Python | Self::Peak | Self::Limit
+            Self::Generator
+                | Self::Dut
+                | Self::Analyzer
+                | Self::Python
+                | Self::Peak
+                | Self::Limit
+                | Self::Dsp(_)
         )
     }
 }
@@ -379,6 +414,7 @@ pub struct Measurement {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct Config {
+    pub dsp: dsp::Settings,
     pub resource: String,
     pub frequency_hz: f64,
     pub power_dbm: f64,
@@ -403,7 +439,7 @@ pub struct Config {
 }
 impl Default for Config {
     fn default() -> Self {
-        Self { resource: "SIM::RF::INSTR".into(), frequency_hz: 2.45e9, power_dbm: -10.0,
+        Self { dsp: dsp::Settings::default(), resource: "SIM::RF::INSTR".into(), frequency_hz: 2.45e9, power_dbm: -10.0,
             loss_db: 3.0, start_hz: 2.40e9, stop_hz: 2.50e9, points: 401,
             lower_dbm: -15.0, upper_dbm: -11.0, trace_query: ":TRAC:DATA? TRACE1".into(),
             sample_rate_hz: 100e6, tone_hz: 1e6, samples: 1024, resolution_bits: 14, voltage_v: 1.0, temperature_c: 25., resistance_ohm: 50., noise_figure_db: 2.5, s_parameter: "S21".into(), dut_id: None,
@@ -465,6 +501,14 @@ impl Graph {
             breakpoint: false,
             probe: false,
         });
+        if let Kind::Dsp(op) = kind {
+            let c = &mut self.nodes.last_mut().expect("added node").config.dsp;
+            match op {
+                dsp::Op::AnalogMod | dsp::Op::AnalogDemod => c.modulation = "AM".into(),
+                dsp::Op::Costas => c.order = 4,
+                _ => {}
+            }
+        }
         id
     }
     pub fn remove(&mut self, id: u64) {
@@ -613,6 +657,7 @@ impl Graph {
                 )));
             }
             let valid = match node.kind {
+                Kind::Dsp(_) => c.dsp.validate().is_ok(),
                 Kind::Generator => {
                     c.frequency_hz.is_finite()
                         && c.frequency_hz > 0.0

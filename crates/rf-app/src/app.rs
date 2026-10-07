@@ -11,6 +11,7 @@ use rf_dut_library::{Catalog, Component};
 use rf_runtime::{Command, Event, RunResult, Worker};
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
+mod dsp;
 mod professional;
 mod workspace;
 use crate::{
@@ -41,9 +42,10 @@ pub(crate) enum View {
     Debug,
     Studio,
     Help,
+    Dsp,
 }
 impl View {
-    pub const DOCKS: [Self; 10] = [
+    pub const DOCKS: [Self; 11] = [
         Self::Schematic,
         Self::Acquisition,
         Self::Network,
@@ -54,6 +56,7 @@ impl View {
         Self::Eye,
         Self::Timing,
         Self::Debug,
+        Self::Dsp,
     ];
     pub fn dockable(self) -> bool {
         Self::DOCKS.contains(&self)
@@ -79,6 +82,7 @@ impl View {
             Self::Settings => "Raccourcis",
             Self::Studio => "Espaces de travail",
             Self::Help => "Aide",
+            Self::Dsp => "RF / DSP",
         })
     }
 }
@@ -139,6 +143,12 @@ pub struct Workbench {
     logs: VecDeque<(String, bool)>,
     python_path: String,
     script: String,
+    resources: Vec<String>,
+    dsp_draft: dsp::Draft,
+    dsp_iq: Option<u64>,
+    dsp_spectrum: Option<u64>,
+    dsp_history: dsp::History,
+    dsp_tab: u8,
     resource: String,
     query: String,
     project_path: String,
@@ -231,6 +241,10 @@ impl Workbench {
             project.graph = rf_core::Graph::iq_demo();
             project.name = "Chaîne I/Q · AWG, DAC & conversion RF".into();
         }
+        if args.iter().any(|a| a == "--demo-dsp") {
+            project.graph = rf_runtime::dsp_demo();
+            project.name = "RF / DSP · QAM16 & canal".into();
+        }
         let view = if args.iter().any(|a| a == "--gallery") {
             View::Library
         } else if args.iter().any(|a| a == "--settings") {
@@ -290,6 +304,16 @@ impl Workbench {
             catalog,
             catalog_path,
             catalog_search: String::new(),
+            resources: vec![],
+            dsp_draft: dsp::Draft::default(),
+            dsp_iq: None,
+            dsp_spectrum: None,
+            dsp_history: dsp::History::default(),
+            dsp_tab: if args.iter().any(|a| a == "--dsp-spectrum") {
+                1
+            } else {
+                0
+            },
             component_draft: Component {
                 id: String::new(),
                 manufacturer: "Local".into(),
@@ -357,6 +381,7 @@ impl Workbench {
             bench.studio.language = crate::studio::Language::English;
         }
         for (flag, view) in [
+            ("--dsp", View::Dsp),
             ("--waterfall", View::Waterfall),
             ("--constellation", View::Constellation),
             ("--smith", View::Smith),
@@ -410,7 +435,9 @@ impl Workbench {
                     )
                 })
             {
-                bench.view = if args.iter().any(|a| a == "--demo-pna") {
+                bench.view = if args.iter().any(|a| a == "--demo-dsp") {
+                    View::Dsp
+                } else if args.iter().any(|a| a == "--demo-pna") {
                     View::Network
                 } else {
                     View::Measurements
@@ -452,6 +479,13 @@ impl Workbench {
         } else {
             TraceDisplay::Unavailable
         };
+        if r.overflows > 0 {
+            self.log(
+                format!("Streaming : {} trames perdues (queue pleine)", r.overflows),
+                true,
+            );
+        }
+        self.dsp_history.push(&r.buffers);
         self.buffers = r.buffers;
         self.debug_snapshot = None;
         self.canvas.active_node = None;
@@ -496,6 +530,10 @@ impl Workbench {
                         passed != t.len(),
                     );
                     self.tests = t;
+                }
+                Event::Resources(v) => {
+                    self.log(format!("{} ressources VISA découvertes", v.len()), false);
+                    self.resources = v;
                 }
                 Event::Message(s) => self.log(s, false),
                 Event::Error(e) => self.log(e, true),
@@ -688,7 +726,7 @@ impl Workbench {
                         .color(muted()),
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    badge(ui, "v0.3 · WINDOWS", muted());
+                    badge(ui, "v0.4 · WINDOWS", muted());
                     badge(
                         ui,
                         if self.hardware {
@@ -708,6 +746,7 @@ impl Workbench {
                     (View::Acquisition, Icon::Wave, "Spectre"),
                     (View::Network, Icon::Network, "Paramètres S"),
                     (View::Measurements, Icon::Wave, "Mesures"),
+                    (View::Dsp, Icon::Network, "RF / DSP"),
                     (View::Tests, Icon::Test, "Tests"),
                     (View::Python, Icon::Python, "Python"),
                     (View::Instruments, Icon::Instrument, "SCPI"),
@@ -908,6 +947,12 @@ impl Workbench {
                             "Thermique",
                             "Composants DUT",
                             "Analyse & automatisation",
+                            "Sources / HAL",
+                            "DSP / canal",
+                            "Modulation / synchronisation",
+                            "Codage canal",
+                            "Mesures DSP",
+                            "Calibration / unités",
                         ] {
                             egui::CollapsingHeader::new(t(category))
                                 .default_open(true)
@@ -939,6 +984,7 @@ impl Workbench {
                 old=Some(n.clone());badge(ui,n.kind.tag(),crate::theme::kind(n.kind));changed|=ui.text_edit_singleline(&mut n.title).changed();
                 let (r,_)=ui.allocate_exact_size(egui::vec2(ui.available_width(),90.),egui::Sense::hover());visuals::symbol(ui.painter(),r.shrink(8.),n.kind);ui.separator();let c=&mut n.config;
                 match n.kind {
+                    Kind::Dsp(op)=>{changed|=dsp::settings_ui(ui,op,&mut c.dsp,id,&mut self.dsp_draft);},
                     Kind::Generator=>{changed|=number(ui,"FRÉQUENCE",&mut c.frequency_hz,1e6," Hz");changed|=number(ui,"PUISSANCE",&mut c.power_dbm,0.1," dBm");},
                     Kind::Dut=>{changed|=number(ui,"PERTE D'INSERTION",&mut c.loss_db,0.1," dB");changed|=number(ui,"FACTEUR DE BRUIT",&mut c.noise_figure_db,0.1," dB");ui.label(c.dut_id.as_deref().unwrap_or("DUT générique · modèle local"));if ui.button(crate::i18n::t("Ouvrir le catalogue DUT")).clicked(){self.view=View::DutCatalog;}ui.label(RichText::new(crate::i18n::t("MODEL fournit un modèle au PNA/NF Meter. RF IN/OUT représente la chaîne de signal.")).size(11. * crate::theme::scale()).color(muted()));},
                     Kind::Analyzer|Kind::Pna|Kind::PnaX=>{changed|=number(ui,"DÉBUT BALAYAGE",&mut c.start_hz,1e6," Hz");changed|=number(ui,"FIN BALAYAGE",&mut c.stop_hz,1e6," Hz");caption(ui,"POINTS");changed|=ui.add(egui::DragValue::new(&mut c.points).range(2..=rf_core::MAX_POINTS)).changed();if n.kind==Kind::Analyzer{caption(ui,"REQUÊTE TRACE ASCII");changed|=ui.text_edit_singleline(&mut c.trace_query).changed();}else{caption(ui,"PARAMÈTRE S");egui::ComboBox::from_id_salt("s-param").selected_text(&c.s_parameter).show_ui(ui,|ui|{for p in ["S11","S21","S12","S22"]{changed|=ui.selectable_value(&mut c.s_parameter,p.into(),p).changed();}});}},
@@ -1143,6 +1189,7 @@ if open_python{self.view=View::Python;}
             View::Debug => self.debug_view(ui),
             View::Studio => self.studio_view(ui),
             View::Help => self.help_view(ui),
+            View::Dsp => self.dsp_view(ui),
         }
     }
     fn trace_header(&mut self, ui: &mut egui::Ui) {

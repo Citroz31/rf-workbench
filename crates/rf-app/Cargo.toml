@@ -5,6 +5,8 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+rf-dsp.workspace = true
+rf-hal.workspace = true
 rf-core.workspace = true
 rf-instruments.workspace = true
 rf-runtime.workspace = true

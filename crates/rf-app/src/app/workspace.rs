@@ -100,7 +100,7 @@ impl Workbench {
             ui.label(RichText::new(crate::i18n::t("Les températures, résistances, facteurs de bruit et puissances apparaîtront ici après exécution.")).color(muted()));
         }
     }
-    fn replace_demo(&mut self, graph: rf_core::Graph, name: &str) {
+    pub(super) fn replace_demo(&mut self, graph: rf_core::Graph, name: &str) {
         self.history.record(self.project.graph.clone());
         self.project.graph = graph;
         self.project.name = name.into();

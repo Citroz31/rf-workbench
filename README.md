@@ -4,6 +4,12 @@ Première base de laboratoire graphique RF et hyperfréquence en **Rust**, avec 
 
 ![Interface Windows du banc RF](docs/UI.png)
 
+**Version 0.4 :** 45 nouvelles opérations RF/DSP/HAL, soit 63 types de blocs. Vue dockable RF/DSP avec I/Q, constellation, PSD, waterfall et mesures ; banc QAM16/AWGN/Viterbi/BER ; filtres, synchronisation, modems, codes canal, calibration et unités. HAL priorisant VISA GPIB/USB, découverte, profils typés, RAW/TCP/UDP natifs, streaming SPSC et adaptateurs Python optionnels SDR/audio/ZMQ/HDF5/Parquet. Voir le [guide et la matrice de capacités 0.4](docs/V0.4.md) et le [rapport de validation](docs/VALIDATION.md).
+
+![RF/DSP Windows](docs/DSP.png)
+
+Pour l'essayer : **RF / DSP → Charger QAM16 / AWGN / Viterbi → Exécuter**. La simulation fonctionne sans SDK. Les algorithmes sont des profils de recherche ; les pilotes nécessitent les runtimes correspondants. PTP/GPSDO/MIMO complet, haut débit sans perte et validation sur instruments physiques restent à développer/valider.
+
 **Version 0.3 :** éditeur avec sélection multiple, recherche floue/favoris/récents, alignements, routage autour des blocs, copier/coller et annotations. Graphe et analyses dockables : spectre, waterfall, constellation, Smith, eye diagram et chronogramme. Debug par bloc avec sondes et breakpoints, layouts et espaces sauvegardables, thème clair/contraste/FR-EN, aide globale et 18 fiches de blocs. Voir le [guide Studio 0.3](docs/V0.3.md) et le [rapport de validation](docs/VALIDATION.md).
 
 Les 18 blocs illustrés de la [version 0.2](docs/V0.2.md), dont PNA/PNA-X, AWG, modulateur I/Q, DAC/CAN, capteurs et thermique, restent disponibles avec leurs ports typés et leurs modèles simulés.

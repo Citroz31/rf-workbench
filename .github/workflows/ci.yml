@@ -46,3 +46,14 @@ jobs:
         run: uv run ty check && uv run basedpyright
       - working-directory: python
         run: uv run pytest --cov --cov-branch
+
+  hal-adapters:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install numpy h5py pyarrow pyzmq pytest
+      - working-directory: python
+        run: python -m pytest adapters/test_hal.py -v

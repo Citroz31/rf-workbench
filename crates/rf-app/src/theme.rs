@@ -55,6 +55,7 @@ pub fn font(size: f32) -> FontId {
 pub fn kind(kind: rf_core::Kind) -> Color32 {
     use rf_core::Kind::*;
     match kind {
+        Dsp(_) => purple(),
         Generator | Awg | IqModulator => teal(),
         Dut | VariableResistor => gold(),
         Analyzer | Pna | PnaX | Adc | Dac => blue(),
@@ -67,6 +68,7 @@ pub fn kind(kind: rf_core::Kind) -> Color32 {
 pub fn port(p: rf_core::Port) -> Color32 {
     use rf_core::Port::*;
     match p {
+        ComplexIq | Bits | Spectrum | Quantity => purple(),
         Signal | DutModel => gold(),
         Trace | SParameters => blue(),
         Scalar | Analog => teal(),

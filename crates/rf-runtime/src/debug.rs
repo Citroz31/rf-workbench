@@ -4,6 +4,7 @@ use rf_core::{NetworkTrace, Node, Trace, Waveform};
 pub const PREVIEW_SAMPLES: usize = 4096;
 #[derive(Clone, Debug)]
 pub enum BufferData {
+    Dsp(rf_core::dsp::Data),
     Signal {
         frequency_hz: f64,
         level_dbm: f64,
@@ -45,9 +46,30 @@ pub struct Snapshot {
     pub buffers: Vec<Buffer>,
 }
 impl Buffer {
-    pub(crate) fn capture(node: &Node, port: usize, value: &Value, result: &RunResult) -> Self {
+    pub(crate) fn capture(node: &Node, port: usize, value: &Value, _result: &RunResult) -> Self {
         let mut total_samples = 1;
         let data = match value {
+            Value::Dsp(d) => {
+                let mut d = d.as_ref().clone();
+                match &mut d {
+                    rf_core::dsp::Data::Iq(f) => {
+                        total_samples = f.samples.len();
+                        f.samples.truncate(PREVIEW_SAMPLES);
+                    }
+                    rf_core::dsp::Data::Bits(f) => {
+                        total_samples = f.bits.len();
+                        f.bits.truncate(PREVIEW_SAMPLES);
+                        f.llr.truncate(PREVIEW_SAMPLES);
+                    }
+                    rf_core::dsp::Data::Spectrum(f) => {
+                        total_samples = f.levels.len();
+                        f.levels.truncate(PREVIEW_SAMPLES);
+                        f.frequency_hz.truncate(PREVIEW_SAMPLES);
+                    }
+                    _ => {}
+                }
+                BufferData::Dsp(d)
+            }
             Value::Signal {
                 frequency,
                 level,
@@ -85,8 +107,8 @@ impl Buffer {
                     simulated: w.simulated,
                 })
             }
-            Value::Network => {
-                let mut t = result.network.clone().expect("network output");
+            Value::Network(trace) => {
+                let mut t = trace.clone();
                 total_samples = t.frequency_hz.len();
                 t.frequency_hz.truncate(PREVIEW_SAMPLES);
                 t.magnitude_db.truncate(PREVIEW_SAMPLES);

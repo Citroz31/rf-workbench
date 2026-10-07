@@ -24,6 +24,7 @@ pub struct RunResult {
     pub completed: Vec<u64>,
     pub elapsed_ms: f64,
     pub sequence: u64,
+    pub overflows: usize,
 }
 #[derive(Clone)]
 pub(crate) enum Value {
@@ -40,12 +41,16 @@ pub(crate) enum Value {
         loss: f64,
         noise: f64,
     },
-    Network,
+    Network(NetworkTrace),
+    Dsp(Arc<rf_core::dsp::Data>),
 }
 #[derive(Default)]
 pub struct Engine {
     sessions: BTreeMap<String, Box<dyn Session>>,
     armed: BTreeSet<String>,
+    dsp: rf_dsp::Processor,
+    io: BTreeMap<u64, rf_hal::transport::Io>,
+    sources: BTreeMap<u64, rf_hal::streaming::Source>,
 }
 impl Engine {
     pub fn query(&mut self, resource: &str, command: &str, hardware: bool) -> Result<String> {
@@ -91,6 +96,9 @@ impl Engine {
         }
         self.armed.clear();
         self.sessions.clear();
+        self.io.clear();
+        self.sources.clear();
+        self.dsp.reset();
         errors
     }
     pub fn execute(
@@ -120,6 +128,23 @@ impl Engine {
         mut observe: impl FnMut(debug::Phase, &rf_core::Node, &RunResult) -> Result<()>,
     ) -> Result<RunResult> {
         graph.validate().map_err(|e| e.to_string())?;
+        if sequence == 0 {
+            self.dsp.reset();
+            self.io.clear();
+            self.sources.clear();
+        }
+        for n in &graph.nodes {
+            if let Kind::Dsp(op) = n.kind
+                && matches!(op, rf_core::dsp::Op::IoSource | rf_core::dsp::Op::IoSink)
+                && !matches!(n.config.dsp.io_backend.as_str(), "RAW" | "HDF5" | "PARQUET")
+                && !hardware
+            {
+                return Err(format!(
+                    "{} : activer le matériel pour ce backend HAL",
+                    n.title
+                ));
+            }
+        }
         for n in graph.nodes.iter().filter(|n| n.kind.is_extended()) {
             if Resource::parse(&n.config.resource).map_err(|e| e.to_string())? != Resource::Sim {
                 return Err(format!("{} : profil matériel non implémenté", n.title));
@@ -137,6 +162,7 @@ impl Engine {
             completed: Vec::new(),
             elapsed_ms: 0.,
             sequence,
+            overflows: 0,
         };
         for id in graph.order().map_err(|e| e.to_string())? {
             if cancelled.load(Ordering::Relaxed) {
@@ -156,6 +182,88 @@ impl Engine {
                         .map(|v| (e.to_port, v))
                 })
                 .collect();
+            if let Kind::Dsp(op) = node.kind {
+                use rf_core::dsp::{Data, Op, Unit};
+                let data = if matches!(op, Op::IoSource | Op::IoSink) {
+                    let mut settings = c.dsp.clone();
+                    if settings.python_executable == "python" {
+                        settings.python_executable = python_path.into();
+                    }
+                    if op == Op::IoSource {
+                        if let std::collections::btree_map::Entry::Vacant(entry) =
+                            self.sources.entry(id)
+                        {
+                            entry.insert(rf_hal::streaming::Source::open(&settings)?);
+                        }
+                        let source = self.sources.get_mut(&id).expect("opened source");
+                        let frame = source.read()?;
+                        result.overflows += source.overflows();
+                        Data::Iq(frame)
+                    } else {
+                        if let std::collections::btree_map::Entry::Vacant(entry) = self.io.entry(id)
+                        {
+                            entry.insert(rf_hal::transport::Io::open(&settings, false)?);
+                        }
+                        let io = self.io.get_mut(&id).expect("opened sink");
+                        let Some(Value::Dsp(d)) = inputs.get(&0) else {
+                            return Err("Sortie HAL : I/Q requis".into());
+                        };
+                        let Data::Iq(f) = d.as_ref() else {
+                            return Err("Sortie HAL : I/Q requis".into());
+                        };
+                        io.write(f)?;
+                        Data::Iq(f.clone())
+                    }
+                } else if op == Op::Vswr {
+                    let Some(Value::Network(t)) = inputs.get(&0) else {
+                        return Err("VSWR : réflexion S11/S22 requise".into());
+                    };
+                    if !matches!(t.parameter.as_str(), "S11" | "S22") {
+                        return Err("VSWR ne s'applique pas à S21/S12".into());
+                    }
+                    let rho = t
+                        .magnitude_db
+                        .iter()
+                        .map(|x| 10f64.powf(x / 20.))
+                        .fold(0., f64::max);
+                    if rho >= 1. {
+                        return Err("VSWR indéfini : |réflexion| >= 1".into());
+                    }
+                    Data::Quantity {
+                        value: (1. + rho) / (1. - rho),
+                        unit: Unit::Ratio,
+                        simulated: t.simulated,
+                    }
+                } else {
+                    let data: Vec<Data> = inputs
+                        .values()
+                        .map(|v| match v {
+                            Value::Dsp(d) => Ok(d.as_ref().clone()),
+                            _ => Err("Port DSP incompatible".to_string()),
+                        })
+                        .collect::<Result<_>>()?;
+                    self.dsp.process(id, op, &c.dsp, &data, sequence)?
+                };
+                data.validate()?;
+                if let Data::Quantity {
+                    value,
+                    unit,
+                    simulated,
+                } = &data
+                {
+                    result.measurements.push(Measurement {
+                        name: node.title.clone(),
+                        value: *value,
+                        unit: unit.label().into(),
+                        simulated: *simulated,
+                    });
+                }
+                values.insert((id, 0), Value::Dsp(Arc::new(data)));
+                result.completed.push(id);
+                capture(&mut result, node, &values);
+                observe(debug::Phase::After, node, &result)?;
+                continue;
+            }
             if node.kind.is_extended() {
                 let output = simulation::execute(node, &inputs, &mut result)?;
                 for (port, value) in output.into_iter().enumerate() {
@@ -331,6 +439,43 @@ fn capture(result: &mut RunResult, node: &rf_core::Node, values: &BTreeMap<(u64,
     }
 }
 
+pub fn dsp_demo() -> Graph {
+    use rf_core::dsp::Op;
+    let mut g = Graph::default();
+    for (op, pos) in [
+        (Op::BitSource, [20., 30.]),
+        (Op::ConvEncode, [310., 30.]),
+        (Op::DigitalMod, [600., 30.]),
+        (Op::Channel, [890., 30.]),
+        (Op::DigitalDemod, [1180., 30.]),
+        (Op::ConvDecode, [1470., 30.]),
+        (Op::Ber, [1760., 30.]),
+        (Op::Psd, [890., 310.]),
+        (Op::Evm, [1180., 310.]),
+        (Op::Snr, [1470., 310.]),
+        (Op::Power, [600., 310.]),
+    ] {
+        g.add(Kind::Dsp(op), pos);
+    }
+    for (f, fp, t, tp) in [
+        (1, 0, 2, 0),
+        (2, 0, 3, 0),
+        (3, 0, 4, 0),
+        (4, 0, 5, 0),
+        (5, 0, 6, 0),
+        (6, 0, 7, 0),
+        (1, 0, 7, 1),
+        (4, 0, 8, 0),
+        (4, 0, 9, 0),
+        (3, 0, 9, 1),
+        (4, 0, 10, 0),
+        (3, 0, 10, 1),
+        (4, 0, 11, 0),
+    ] {
+        g.connect_ports(f, fp, t, tp).expect("DSP demo");
+    }
+    g
+}
 pub fn measurement_demo() -> Graph {
     let mut g = Graph::default();
     let rf = g.add(Kind::Generator, [30., 30.]);
@@ -351,6 +496,7 @@ pub fn self_tests() -> Vec<TestResult> {
         ("Chaîne I/Q multiports", Graph::iq_demo()),
         ("PNA-X / paramètres S", Graph::network_demo()),
         ("Capteurs et unités", measurement_demo()),
+        ("QAM16 / AWGN / Viterbi / BER", dsp_demo()),
     ]
     .into_iter()
     .map(|(name, g)| {
@@ -368,6 +514,7 @@ pub fn self_tests() -> Vec<TestResult> {
 }
 
 pub enum Command {
+    Discover,
     Debug {
         graph: Graph,
         python_path: String,
@@ -393,6 +540,7 @@ pub enum Command {
 }
 #[derive(Clone, Debug)]
 pub enum Event {
+    Resources(Vec<String>),
     Done(Box<RunResult>),
     Suite(Vec<TestResult>),
     Message(String),
@@ -429,6 +577,14 @@ impl Worker {
                 // an immediate Stop must also cancel a queued command.
                 let mut shutdown = true;
                 match command {
+                    Command::Discover => match rf_hal::discover_visa() {
+                        Ok(v) => {
+                            let _ = etx.send(Event::Resources(v));
+                        }
+                        Err(e) => {
+                            let _ = etx.send(Event::Error(e));
+                        }
+                    },
                     Command::Debug { graph, python_path } => {
                         let mut single_step = true;
                         let valid = graph.nodes.iter().all(|n| {
@@ -523,6 +679,7 @@ impl Worker {
                     Command::Suite => {
                         let mut tests = rf_core::self_tests();
                         tests.extend(rf_instruments::self_tests());
+                        tests.extend(rf_dsp::self_tests());
                         tests.extend(self_tests());
                         let _ = etx.try_send(Event::Suite(tests));
                     }
@@ -569,6 +726,7 @@ impl Worker {
                                     completed: Vec::new(),
                                     elapsed_ms: 0.,
                                     sequence,
+                                    overflows: 0,
                                 })));
                             }
                             Err(e) => {

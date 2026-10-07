@@ -1,4 +1,32 @@
-# Validation 0.3.0
+# Validation 0.4.0 — RF/DSP et HAL
+
+Vérifications locales sur Windows x64, Rust 1.90.0 et Python 3.12.14, le 7 octobre 2026. L'exécutable Windows est construit à partir de ces sources.
+
+| Vérification | Résultat |
+| --- | --- |
+| Tests Rust workspace | 89 réussis : 17 tests DSP numériques, 8 HAL, 4 graphes DSP, plus 60 tests existants |
+| Intégration Rust/Python | 5 réussis avec un vrai interpréteur : commandes, compensation, erreurs, annulation et timeout |
+| Tests Python de la passerelle | 9 réussis ; couverture lignes/branches 100 % de rfworkbench/runner.py |
+| Adaptateurs Python optionnels localement | 1 test réussi, 5 ignorés faute de h5py/pyarrow/pyzmq ; la CI installe ces dépendances et exécute les 6 tests |
+| Formatage / Clippy tous les targets, warnings refusés | Réussis |
+| Ruff (y compris adapters), ty et basedpyright (passerelle typée) | Réussis ; scripts SDK dynamiques testés séparément |
+| Release Windows GNU | Réussie |
+| Autotests de l'application | 20 réussis |
+| Rendu natif | Vue I/Q, constellation, spectre/waterfall avec 8 acquisitions et schéma des 11 blocs inspectés à 1600 × 1000 |
+| Banc QAM16 AWGN à 30 dB | Premier cycle : BER 0, EVM 3,1792 %, SNR 29,9536 dB ; provenance simulée |
+| Benchmark de 1000 cycles DSP | 492,68 ms au total ; dernière exécution 0,4374 ms |
+
+Le benchmark mesure onze blocs simulés, 1024 bits, convolutionnel K=3, QAM16/AWGN/Viterbi, PSD FFT256 et quatre mesures. Il exclut rendu, I/O physiques et lancement de SDK. Il ne mesure pas la latence pointeur→écran et ne garantit pas une cadence temps réel.
+
+Les tests numériques vérifient FFT/inverse, bin connu, intégrale de PSD, continuité FIR entre trames, cadence de décimation, modems ASK/FSK/PSK/QAM/OFDM, voisinage Gray, AM/FM/PM, THD cohérente, phase noise/axes, frame sync, correction Viterbi, huit erreurs RS, correction souple LDPC/Turbo, AWGN/SNR/EVM, unités/SI, calibration I/Q et conversion explicite FS→V. Ils refusent références nulles, tailles excessives et timestamps débordants. Ils ne constituent pas une qualification métrologique ni une validation statistique complète des modems/codes.
+
+Les tests HAL utilisent des fichiers et sockets locaux réels : index/provenance RAW et fichier tronqué, trames TCP fragmentées/écho, timeout total face à une en-tête envoyée lentement, UDP/métadonnées, file SPSC avec 100000 transferts, overflows/discontinuités du pump et acquisition VNA typée sur serveur SCPI de test. Les graphes vérifient la référence BER/SNR, les 45 types sérialisés, le mode matériel et le VSWR connecté à son propre VNA en présence de plusieurs acquisitions.
+
+La découverte VISA est compilée, mais aucun runtime VISA n'est installé sur cet environnement et aucun instrument physique n'a été contacté. GPIB/USB, SDK SDR, audio, horloges externes, triggers, PTP/GPSDO/MIMO et budgets d'incertitude restent à valider/compléter sur matériel. La [matrice 0.4](V0.4.md) distingue implémentations natives, adaptateurs optionnels, profils de recherche et points d'extension.
+
+La CI 0.3 a réussi sur Windows, Linux, macOS et Python. La CI 0.4 et les six tests HDF5/Parquet/ZMQ sont consultables dans [GitHub Actions](https://github.com/Citroz31/rf-workbench/actions). La configuration de la CI seule ne prouve pas sa réussite.
+
+# Historique : validation 0.3.0
 
 Vérifications locales sur Windows x64, Rust 1.90.0 et Python 3.12.14, le 7 octobre 2026. Le binaire fourni est compilé en release depuis les sources 0.3.
 

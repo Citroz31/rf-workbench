@@ -294,6 +294,8 @@ impl Workbench {
         self.history = w.history;
         self.canvas = Canvas::configured(self.preferences.snap, self.preferences.orthogonal);
         self.canvas.restore_view(w.pan, w.zoom);
+        self.dsp_history = super::dsp::History::default();
+        self.dsp_draft = super::dsp::Draft::default();
         self.buffers = w.buffers;
         self.network = w.network;
         self.waveform = w.waveform;
@@ -867,6 +869,9 @@ if ui.small_button(crate::i18n::t("×")).on_hover_text(pair("Retirer le layout",
             ui.separator();
             ui.strong(&b.name);
             match b.data.as_ref() {
+                BufferData::Dsp(d) => {
+                    super::dsp::inspect(ui, d);
+                }
                 BufferData::Signal {
                     frequency_hz,
                     level_dbm,

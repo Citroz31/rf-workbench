@@ -22,6 +22,135 @@ pub fn symbol(p: &egui::Painter, rect: Rect, kind: Kind) {
     };
     let accent = crate::theme::kind(kind);
     match kind {
+        Kind::Dsp(op) => {
+            use rf_core::dsp::Op;
+            p.rect_stroke(
+                rect.shrink(4.),
+                6.,
+                Stroke::new(2., accent),
+                StrokeKind::Inside,
+            );
+            match op {
+                Op::DigitalMod | Op::DigitalDemod | Op::Evm | Op::IqBalance => {
+                    for x in 0..4 {
+                        for y in 0..4 {
+                            p.circle_filled(
+                                at(0.32 + x as f32 * 0.12, 0.23 + y as f32 * 0.12),
+                                (rect.height() * 0.035).max(1.),
+                                accent,
+                            );
+                        }
+                    }
+                    text(0.5, 0.84, "I / Q", muted());
+                }
+                Op::Fft | Op::Psd | Op::Spectrogram | Op::PhaseNoise | Op::SpectralPeak => {
+                    for i in 0..13 {
+                        let x = 0.2 + i as f32 * 0.05;
+                        let h = 0.18 + 0.45 * (-((i as f32 - 6.) / 2.).powi(2)).exp();
+                        line(
+                            (x, 0.76),
+                            (x, 0.76 - h),
+                            if i == 6 { gold() } else { accent },
+                        );
+                    }
+                    text(0.5, 0.9, "f", muted());
+                }
+                Op::Fir | Op::Iir | Op::Decimate | Op::Interpolate | Op::Window => {
+                    let points = (0..36)
+                        .map(|i| {
+                            let x = i as f32 / 35.;
+                            at(
+                                0.2 + 0.6 * x,
+                                0.25 + 0.45 / (1. + (-15. * (x - 0.55)).exp()),
+                            )
+                        })
+                        .collect();
+                    p.add(egui::Shape::line(points, Stroke::new(2., accent)));
+                    text(
+                        0.5,
+                        0.86,
+                        op.label().split_whitespace().next().unwrap_or("DSP"),
+                        muted(),
+                    );
+                }
+                Op::ConvEncode
+                | Op::ConvDecode
+                | Op::RsEncode
+                | Op::RsDecode
+                | Op::LdpcEncode
+                | Op::LdpcDecode
+                | Op::TurboEncode
+                | Op::TurboDecode
+                | Op::BitSource
+                | Op::FrameSync => {
+                    text(0.5, 0.3, "0101 1100", accent);
+                    for i in 0..5 {
+                        line(
+                            (0.25 + i as f32 * 0.12, 0.46),
+                            (0.25 + i as f32 * 0.12, 0.72),
+                            muted(),
+                        );
+                    }
+                    text(0.5, 0.85, "FEC / BITS", muted());
+                }
+                Op::IoSource | Op::IoSink => {
+                    p.rect_filled(
+                        Rect::from_min_max(at(0.3, 0.22), at(0.7, 0.65)),
+                        4.,
+                        border(),
+                    );
+                    for i in 0..3 {
+                        p.circle_filled(
+                            at(0.39 + i as f32 * 0.11, 0.45),
+                            rect.height() * 0.05,
+                            accent,
+                        );
+                    }
+                    text(0.5, 0.84, "HAL", accent);
+                }
+                Op::Power
+                | Op::Snr
+                | Op::Thd
+                | Op::Ber
+                | Op::Per
+                | Op::Vswr
+                | Op::Uncertainty
+                | Op::Convert => {
+                    p.circle_stroke(
+                        at(0.5, 0.48),
+                        rect.height() * 0.24,
+                        Stroke::new(1.5, accent),
+                    );
+                    line((0.5, 0.48), (0.62, 0.3), gold());
+                    text(
+                        0.5,
+                        0.87,
+                        op.label().split_whitespace().next().unwrap_or("DSP"),
+                        muted(),
+                    );
+                }
+                _ => {
+                    let points = (0..48)
+                        .map(|i| {
+                            let x = i as f32 / 47.;
+                            at(
+                                0.18 + x * 0.64,
+                                0.45 + 0.19 * (x * std::f32::consts::TAU * 2.).sin(),
+                            )
+                        })
+                        .collect();
+                    p.add(egui::Shape::line(points, Stroke::new(2., accent)));
+                    text(
+                        0.5,
+                        0.86,
+                        op.label().split_whitespace().next().unwrap_or("DSP"),
+                        muted(),
+                    );
+                }
+            }
+            line((0., 0.5), (0.08, 0.5), accent);
+            line((0.92, 0.5), (1., 0.5), accent);
+        }
         Kind::Generator
         | Kind::Analyzer
         | Kind::Pna

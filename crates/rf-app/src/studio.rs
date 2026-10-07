@@ -196,7 +196,7 @@ impl Studio {
             || (!self.workspaces.is_empty() && self.active >= self.workspaces.len())
             || !self.text_scale.is_finite()
             || !(0.85..=1.5).contains(&self.text_scale)
-            || self.favorites.len() > 18
+            || self.favorites.len() > Kind::ALL.len()
             || self.recent.len() > 8
             || self.layouts.len() > 20
         {

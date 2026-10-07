@@ -1,9 +1,9 @@
 [workspace]
-members = ["crates/rf-core", "crates/rf-instruments", "crates/rf-runtime", "crates/rf-app", "crates/rf-dut-library"]
+members = ["crates/rf-core", "crates/rf-instruments", "crates/rf-runtime", "crates/rf-app", "crates/rf-dut-library", "crates/rf-dsp", "crates/rf-hal"]
 resolver = "2"
 
 [workspace.package]
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 rust-version = "1.90"
 license = "MIT"
@@ -16,6 +16,9 @@ rf-core = { path = "crates/rf-core" }
 rf-instruments = { path = "crates/rf-instruments" }
 rf-runtime = { path = "crates/rf-runtime" }
 rf-dut-library = { path = "crates/rf-dut-library" }
+
+rf-dsp = { path = "crates/rf-dsp" }
+rf-hal = { path = "crates/rf-hal" }
 
 [profile.release]
 opt-level = 3

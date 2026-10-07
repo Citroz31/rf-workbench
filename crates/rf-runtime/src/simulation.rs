@@ -137,7 +137,7 @@ pub(crate) fn execute(
                 simulated: true,
             };
             result.network = Some(network.clone());
-            vec![Value::Network]
+            vec![Value::Network(network)]
         }
         Kind::VariableResistor => vec![Value::Scalar(c.resistance_ohm, true)],
         Kind::Thermostream => vec![Value::Scalar(c.temperature_c, true)],

@@ -17,6 +17,85 @@ const TERMCHAR: u32 = 0x3FFF0018;
 const TERMCHAR_EN: u32 = 0x3FFF0038;
 const MAX_CNT: i32 = 0x3FFF0006;
 
+/// Enumerate VISA resources without opening or configuring any instrument.
+pub fn discover(pattern: &str) -> Result<Vec<String>> {
+    type Find =
+        unsafe extern "system" fn(u32, *const c_char, *mut u32, *mut u32, *mut c_char) -> i32;
+    type Next = unsafe extern "system" fn(u32, *mut c_char) -> i32;
+    let pattern =
+        CString::new(pattern).map_err(|_| Error::Protocol("Expression VISA invalide".into()))?;
+    // SAFETY: trusted vendor runtime, function signatures from VISA headers.
+    let library = unsafe { Library::new(runtime_name()) }
+        .map_err(|e| Error::Protocol(format!("Runtime VISA indisponible : {e}")))?;
+    let (open, find, next, close) = unsafe {
+        (
+            library.get::<OpenRm>(b"viOpenDefaultRM\0").map(|s| *s),
+            library.get::<Find>(b"viFindRsrc\0").map(|s| *s),
+            library.get::<Next>(b"viFindNext\0").map(|s| *s),
+            library.get::<Close>(b"viClose\0").map(|s| *s),
+        )
+    };
+    let (open, find, next, close) = (
+        open.map_err(|e| Error::Protocol(e.to_string()))?,
+        find.map_err(|e| Error::Protocol(e.to_string()))?,
+        next.map_err(|e| Error::Protocol(e.to_string()))?,
+        close.map_err(|e| Error::Protocol(e.to_string()))?,
+    );
+    let mut rm = 0;
+    let mut list = 0;
+    let mut count = 0;
+    let mut buffer = [0 as c_char; 256];
+    // SAFETY: scalar handles and 256-byte resource descriptor per VISA spec.
+    unsafe {
+        status(open(&mut rm), "viOpenDefaultRM")?;
+    }
+    let result = (|| {
+        let code = unsafe {
+            find(
+                rm,
+                pattern.as_ptr(),
+                &mut list,
+                &mut count,
+                buffer.as_mut_ptr(),
+            )
+        };
+        if code == 0xBFFF0011u32 as i32 {
+            return Ok(vec![]);
+        }
+        status(code, "viFindRsrc")?;
+        if count > 4096 {
+            return Err(Error::Protocol("Trop de ressources VISA".into()));
+        }
+        let mut resources = Vec::new();
+        for i in 0..count {
+            if i > 0 {
+                buffer.fill(0);
+                unsafe {
+                    status(next(list, buffer.as_mut_ptr()), "viFindNext")?;
+                }
+            }
+            let bytes: Vec<u8> = buffer
+                .iter()
+                .take_while(|b| **b != 0)
+                .map(|b| *b as u8)
+                .collect();
+            if bytes.len() == buffer.len() {
+                return Err(Error::Protocol("Descripteur VISA non terminé".into()));
+            }
+            resources.push(String::from_utf8(bytes).map_err(|e| Error::Protocol(e.to_string()))?);
+        }
+        Ok(resources)
+    })();
+    // SAFETY: close only successfully returned handles, before library unload.
+    unsafe {
+        if list != 0 {
+            close(list);
+        }
+        close(rm);
+    }
+    result
+}
+
 pub struct VisaSession {
     // This field retains the library for all function pointer calls and Drop.
     _library: Library,
@@ -41,28 +120,7 @@ fn status(code: i32, operation: &str) -> Result<()> {
 }
 impl VisaSession {
     pub fn open(resource: &str, timeout: Duration) -> Result<Self> {
-        let name = std::env::var_os("RF_WORKBENCH_VISA").unwrap_or_else(|| {
-            #[cfg(windows)]
-            {
-                std::path::PathBuf::from(
-                    std::env::var_os("WINDIR").unwrap_or_else(|| "C:\\Windows".into()),
-                )
-                .join(if cfg!(target_pointer_width = "64") {
-                    "System32/visa64.dll"
-                } else {
-                    "System32/visa32.dll"
-                })
-                .into_os_string()
-            }
-            #[cfg(target_os = "macos")]
-            {
-                "/Library/Frameworks/VISA.framework/VISA".into()
-            }
-            #[cfg(not(any(windows, target_os = "macos")))]
-            {
-                "libvisa.so".into()
-            }
-        });
+        let name = runtime_name();
         // SAFETY: loading is restricted to the system runtime or a user-supplied
         // library. Symbols use standard fixed-width VISA types and system ABI.
         let library=unsafe{Library::new(&name)}.map_err(|e|Error::Protocol(format!("Runtime VISA absent ou incompatible ({}) : {e}. Installer NI-VISA/Keysight VISA ou définir RF_WORKBENCH_VISA.",name.to_string_lossy())))?;
@@ -75,13 +133,25 @@ impl VisaSession {
                 *library
                     .get::<OpenRm>(b"viOpenDefaultRM\0")
                     .map_err(lookup)?,
-                *library.get::<Open>(b"viOpen\0").map_err(lookup)?,
+                library
+                    .get::<Open>(b"viOpen\0")
+                    .map(|s| *s)
+                    .map_err(lookup)?,
                 *library
                     .get::<SetAttr>(b"viSetAttribute\0")
                     .map_err(lookup)?,
-                *library.get::<Write>(b"viWrite\0").map_err(lookup)?,
-                *library.get::<Read>(b"viRead\0").map_err(lookup)?,
-                *library.get::<Close>(b"viClose\0").map_err(lookup)?,
+                library
+                    .get::<Write>(b"viWrite\0")
+                    .map(|s| *s)
+                    .map_err(lookup)?,
+                library
+                    .get::<Read>(b"viRead\0")
+                    .map(|s| *s)
+                    .map_err(lookup)?,
+                library
+                    .get::<Close>(b"viClose\0")
+                    .map(|s| *s)
+                    .map_err(lookup)?,
             )
         };
         let resource = CString::new(resource)
@@ -224,6 +294,31 @@ impl Drop for VisaSession {
         }
     }
 }
+fn runtime_name() -> std::ffi::OsString {
+    std::env::var_os("RF_WORKBENCH_VISA").unwrap_or_else(|| {
+        #[cfg(windows)]
+        {
+            std::path::PathBuf::from(
+                std::env::var_os("WINDIR").unwrap_or_else(|| "C:\\Windows".into()),
+            )
+            .join(if cfg!(target_pointer_width = "64") {
+                "System32/visa64.dll"
+            } else {
+                "System32/visa32.dll"
+            })
+            .into_os_string()
+        }
+        #[cfg(target_os = "macos")]
+        {
+            "/Library/Frameworks/VISA.framework/VISA".into()
+        }
+        #[cfg(not(any(windows, target_os = "macos")))]
+        {
+            "libvisa.so".into()
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
