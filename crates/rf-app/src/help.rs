@@ -58,15 +58,15 @@ pub fn document(kind: Kind) -> Doc {
             ),
             "P_out[dBm] = P_in[dBm] − loss[dB]",
             pair(
-                "RF IN reçoit le générateur. MODEL alimente le PNA ou NF Meter.",
-                "Connect the generator to RF IN. MODEL feeds the PNA or NF meter.",
+                "SIGNAL IN reçoit les données du générateur. MODEL alimente le PNA ou NF Meter ; les broches rondes RF décrivent les liaisons physiques.",
+                "SIGNAL IN receives generator data. MODEL feeds the PNA or NF meter; round RF pins describe physical links.",
             ),
             pair(
-                "Instantané de fiche ; aucun modèle constructeur ni routage coaxial automatique.",
+                "Fiches MACOM sourcées et modèle linéaire de référence ; pas de compression ni solveur de circuit. Les câbles ne commandent pas de commutateur RF.",
                 "Catalogue snapshot; no manufacturer model or automatic coaxial routing.",
             ),
         ),
-        Kind::Pna | Kind::PnaX => (
+        Kind::Pna | Kind::PnaX | Kind::UsbVna => (
             pair(
                 "Balayage réseau avec magnitude et phase. Choisir S11/S22 pour le Smith, S21/S12 pour la transmission.",
                 "Network sweep with magnitude and phase. Select S11/S22 for Smith or S21/S12 for transmission.",
@@ -77,8 +77,23 @@ pub fn document(kind: Kind) -> Doc {
                 "DUT MODEL → PNA; choose S11, Run, open Smith.",
             ),
             pair(
-                "PNA et PNA-X partagent un modèle idéal. Aucun SOLT/TRL, Touchstone ou pilote physique.",
-                "PNA and PNA-X share an ideal model. No SOLT/TRL, Touchstone or physical driver.",
+                "Simulation idéale ; acquisition SDATA binaire sur PNA/PNA-X Keysight et VNA USB Keysight P50xx/P93xx identifié. Aucune calibration SOLT/TRL automatique.",
+                "Ideal simulation; binary SDATA on identified Keysight PNA/PNA-X and P50xx/P93xx USB VNA. No automatic SOLT/TRL calibration.",
+            ),
+        ),
+        Kind::DcSupplyE3631A | Kind::DcSupplyE36313A => (
+            pair(
+                "Alimentation DC à trois sorties : V, limite I, lecture et ON/OFF explicites.",
+                "Three-output DC supply: V, current limit, readback and explicit ON/OFF.",
+            ),
+            "P[W] = V[V] × I[A]",
+            pair(
+                "Configurer le bloc ; Appliquer (OFF), puis ON ; Stop coupe les sorties activées.",
+                "Configure; Apply (OFF), then ON; Stop disables outputs enabled by this session.",
+            ),
+            pair(
+                "E3631A : ON/OFF global. E36313A : mode indépendant FIX. Pas de solveur de charge DC ni de séquence automatique de polarisation.",
+                "E3631A: global ON/OFF. E36313A: independent FIX mode. No DC load solver or automatic bias sequence.",
             ),
         ),
         Kind::Awg => (
@@ -500,7 +515,7 @@ pub fn global(ui: &mut egui::Ui) {
         (
             pair("Éditer et câbler", "Edit and wire"),
             pair(
-                "V : sélection. Shift+clic ajoute ou retire un bloc ; glisser le fond dessine un rectangle de sélection. Ctrl+A sélectionne tout, Ctrl+C copie, Ctrl+V colle avec les connexions internes. Ctrl+D duplique la sélection. L'historique de chaque espace n'a pas de plafond fixe et dure jusqu'à sa fermeture. W : cliquer une sortie puis une entrée ; cliquer le fond ajoute des coudes ; Échap annule. Le routage intelligent cherche un parcours orthogonal autour des blocs ; un message explique les zones trop denses ou obstruées. H ou bouton central : déplacement ; molette : zoom. Édition propose alignements, distribution et organisation topologique.",
+                "V : sélection. Shift+clic ajoute ou retire un bloc ; glisser le fond dessine un rectangle de sélection. Ctrl+A sélectionne tout, Ctrl+C copie, Ctrl+V colle avec les connexions internes. Ctrl+D duplique la sélection. L'historique de chaque espace n'a pas de plafond fixe et dure jusqu'à sa fermeture. W : curseur croix, cliquer la source puis une broche cible compatible avec aimantation légère ; cliquer le fond ajoute des coudes ; Échap annule. Les liaisons RF/DC sont distinctes des dépendances de données. Le routage intelligent cherche un parcours orthogonal autour des blocs ; un message explique les zones trop denses ou obstruées. H ou bouton central : déplacement ; molette : zoom. Édition propose alignements, distribution et organisation topologique.",
                 "V selects. Shift-click adds/removes a block; drag the background to marquee-select. Ctrl+A selects all, Ctrl+C copies, Ctrl+V pastes internal connections, Ctrl+D duplicates the selection. Each workspace has history without a fixed count limit until closed. W connects an output to an input; background clicks add bends; Escape cancels. Smart routing finds orthogonal paths around blocks; dense or blocked regions produce an explicit message. H or middle mouse pans; wheel zooms. Edit offers alignment, distribution and topological layout.",
             ),
         ),

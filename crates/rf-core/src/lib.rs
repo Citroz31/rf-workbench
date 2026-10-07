@@ -1,6 +1,8 @@
 //! Platform-independent RF data, typed acyclic graphs and versioned bench files.
 pub mod dsp;
 pub mod instrument;
+pub mod physical;
+pub use physical::{PhysicalConnection, PhysicalDirection, PhysicalPort, PhysicalPortKind};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use thiserror::Error;
@@ -124,6 +126,9 @@ pub enum Kind {
     Adc,
     Pna,
     PnaX,
+    UsbVna,
+    DcSupplyE3631A,
+    DcSupplyE36313A,
     VariableResistor,
     Thermometer,
     Awg,
@@ -134,11 +139,14 @@ pub enum Kind {
     Dsp(dsp::Op),
 }
 impl Kind {
-    pub const BASE: [Self; 18] = [
+    pub const BASE: [Self; 21] = [
         Self::Generator,
         Self::Analyzer,
         Self::Pna,
         Self::PnaX,
+        Self::UsbVna,
+        Self::DcSupplyE3631A,
+        Self::DcSupplyE36313A,
         Self::Awg,
         Self::NoiseFigureMeter,
         Self::PowerMeter,
@@ -154,16 +162,16 @@ impl Kind {
         Self::Peak,
         Self::Limit,
     ];
-    pub const ALL: [Self; 18 + dsp::Op::ALL.len()] = {
-        let mut a = [Self::Generator; 18 + dsp::Op::ALL.len()];
+    pub const ALL: [Self; 21 + dsp::Op::ALL.len()] = {
+        let mut a = [Self::Generator; 21 + dsp::Op::ALL.len()];
         let mut i = 0;
-        while i < 18 {
+        while i < 21 {
             a[i] = Self::BASE[i];
             i += 1;
         }
         let mut j = 0;
         while j < dsp::Op::ALL.len() {
-            a[18 + j] = Self::Dsp(dsp::Op::ALL[j]);
+            a[21 + j] = Self::Dsp(dsp::Op::ALL[j]);
             j += 1;
         }
         a
@@ -182,6 +190,9 @@ impl Kind {
             Self::Adc => "CAN · A/N",
             Self::Pna => "PNA",
             Self::PnaX => "PNA-X",
+            Self::UsbVna => "VNA USB",
+            Self::DcSupplyE3631A => "Keysight E3631A",
+            Self::DcSupplyE36313A => "Keysight E36313A",
             Self::VariableResistor => "Résistance variable",
             Self::Thermometer => "Thermomètre",
             Self::Awg => "AWG",
@@ -198,10 +209,12 @@ impl Kind {
             | Self::Analyzer
             | Self::Pna
             | Self::PnaX
+            | Self::UsbVna
             | Self::Awg
             | Self::NoiseFigureMeter
             | Self::PowerMeter
             | Self::PowerSensor => "Instruments RF",
+            Self::DcSupplyE3631A | Self::DcSupplyE36313A => "Alimentations DC",
             Self::IqModulator | Self::Dac | Self::Adc | Self::VariableResistor => {
                 "Électronique & conversion"
             }
@@ -216,7 +229,8 @@ impl Kind {
             Self::Generator | Self::Awg => "SOURCE",
             Self::Dut => "DUT",
             Self::Analyzer => "SPECTRE",
-            Self::Pna | Self::PnaX => "RÉSEAU",
+            Self::Pna | Self::PnaX | Self::UsbVna => "RÉSEAU",
+            Self::DcSupplyE3631A | Self::DcSupplyE36313A => "ALIMENTATION",
             Self::Python => "PYTHON",
             Self::Peak => "ANALYSE",
             Self::Limit => "TEST",
@@ -232,9 +246,14 @@ impl Kind {
         use Port::*;
         match self {
             Self::Dsp(op) => op.inputs(),
-            Self::Generator | Self::Awg | Self::VariableResistor | Self::Thermostream => &[],
+            Self::Generator
+            | Self::Awg
+            | Self::VariableResistor
+            | Self::Thermostream
+            | Self::DcSupplyE3631A
+            | Self::DcSupplyE36313A => &[],
             Self::Dut => &[Terminal {
-                name: "RF IN",
+                name: "SIGNAL IN",
                 port: Signal,
                 required: false,
             }],
@@ -280,7 +299,7 @@ impl Kind {
                 port: Analog,
                 required: true,
             }],
-            Self::Pna | Self::PnaX | Self::NoiseFigureMeter => &[Terminal {
+            Self::Pna | Self::PnaX | Self::UsbVna | Self::NoiseFigureMeter => &[Terminal {
                 name: "DUT",
                 port: DutModel,
                 required: false,
@@ -303,7 +322,7 @@ impl Kind {
             }],
             Self::Dut => &[
                 Terminal {
-                    name: "RF OUT",
+                    name: "SIGNAL OUT",
                     port: Signal,
                     required: false,
                 },
@@ -345,7 +364,7 @@ impl Kind {
                 port: Digital,
                 required: false,
             }],
-            Self::Pna | Self::PnaX => &[Terminal {
+            Self::Pna | Self::PnaX | Self::UsbVna => &[Terminal {
                 name: "S-PARAM",
                 port: SParameters,
                 required: false,
@@ -365,6 +384,18 @@ impl Kind {
                 port: NoiseFigure,
                 required: false,
             }],
+            Self::DcSupplyE3631A | Self::DcSupplyE36313A => &[
+                Terminal {
+                    name: "V MES",
+                    port: Quantity,
+                    required: false,
+                },
+                Terminal {
+                    name: "I MES",
+                    port: Quantity,
+                    required: false,
+                },
+            ],
         }
     }
     // First-terminal conveniences retained for existing clients.
@@ -385,6 +416,16 @@ impl Kind {
                 | Self::Limit
                 | Self::Dsp(_)
         )
+    }
+    pub fn max_rf_ports(self) -> Option<u8> {
+        match self {
+            Self::Pna | Self::PnaX => Some(4),
+            Self::UsbVna => Some(2),
+            _ => None,
+        }
+    }
+    pub fn is_dc_supply(self) -> bool {
+        matches!(self, Self::DcSupplyE3631A | Self::DcSupplyE36313A)
     }
 }
 
@@ -438,6 +479,9 @@ pub struct Config {
     pub noise_figure_db: f64,
     pub s_parameter: String,
     pub dut_id: Option<String>,
+    pub dut_mode: String,
+    pub attenuation_db: f64,
+    pub phase_deg: f64,
 }
 impl Default for Config {
     fn default() -> Self {
@@ -445,6 +489,7 @@ impl Default for Config {
             loss_db: 3.0, start_hz: 2.40e9, stop_hz: 2.50e9, points: 401,
             lower_dbm: -15.0, upper_dbm: -11.0, trace_query: ":TRAC:DATA? TRACE1".into(),
             sample_rate_hz: 100e6, tone_hz: 1e6, samples: 1024, resolution_bits: 14, voltage_v: 1.0, temperature_c: 25., resistance_ohm: 50., noise_figure_db: 2.5, s_parameter: "S21".into(), dut_id: None,
+            dut_mode: "RX".into(), attenuation_db: 0., phase_deg: 0.,
             script: "output = trace\n# Exemple : compenser une perte de câble de 0.5 dB\n# output['amplitude_dbm'] = [x + 0.5 for x in trace['amplitude_dbm']]\n".into() }
     }
 }
@@ -487,6 +532,8 @@ pub struct Graph {
     pub nodes: Vec<Node>,
     pub edges: Vec<Edge>,
     #[serde(default)]
+    pub physical_connections: Vec<PhysicalConnection>,
+    #[serde(default)]
     pub annotations: Vec<Annotation>,
 }
 
@@ -516,6 +563,8 @@ impl Graph {
     pub fn remove(&mut self, id: u64) {
         self.nodes.retain(|n| n.id != id);
         self.edges.retain(|e| e.from != id && e.to != id);
+        self.physical_connections
+            .retain(|e| e.from != id && e.to != id);
     }
     pub fn node(&self, id: u64) -> Option<&Node> {
         self.nodes.iter().find(|n| n.id == id)
@@ -567,6 +616,7 @@ impl Graph {
         Ok(())
     }
     pub fn order(&self) -> Result<Vec<u64>> {
+        self.validate_physical()?;
         let mut annotation_ids = BTreeSet::new();
         if self.annotations.len() > 1000
             || self.annotations.iter().any(|a| {
@@ -668,7 +718,12 @@ impl Graph {
                         && (-160.0..=30.0).contains(&c.power_dbm)
                 }
                 Kind::Dut => {
-                    c.loss_db.is_finite()
+                    c.attenuation_db.is_finite()
+                        && (0. ..=160.).contains(&c.attenuation_db)
+                        && c.phase_deg.is_finite()
+                        && (-360. ..=360.).contains(&c.phase_deg)
+                        && matches!(c.dut_mode.as_str(), "RX" | "TX")
+                        && c.loss_db.is_finite()
                         && (-80.0..=160.0).contains(&c.loss_db)
                         && c.noise_figure_db.is_finite()
                         && (0. ..=60.).contains(&c.noise_figure_db)
@@ -689,7 +744,7 @@ impl Graph {
                 }
                 Kind::Python => !c.script.trim().is_empty() && c.script.len() <= 128_000,
                 Kind::Peak => true,
-                Kind::Pna | Kind::PnaX => {
+                Kind::Pna | Kind::PnaX | Kind::UsbVna => {
                     c.loss_db.is_finite()
                         && (-80. ..=160.).contains(&c.loss_db)
                         && c.start_hz.is_finite()
@@ -697,7 +752,10 @@ impl Graph {
                         && c.start_hz > 0.
                         && c.stop_hz > c.start_hz
                         && (2..=MAX_POINTS).contains(&c.points)
-                        && ["S11", "S21", "S12", "S22"].contains(&c.s_parameter.as_str())
+                        && c.instrument.port_count <= node.kind.max_rf_ports().unwrap()
+                        && physical::s_parameter_ports(&c.s_parameter).is_some_and(|(i, j)| {
+                            i <= c.instrument.port_count && j <= c.instrument.port_count
+                        })
                 }
                 Kind::Awg | Kind::Dac | Kind::Adc => {
                     c.sample_rate_hz.is_finite()
@@ -722,6 +780,9 @@ impl Graph {
                     c.noise_figure_db.is_finite() && (0. ..=60.).contains(&c.noise_figure_db)
                 }
                 Kind::PowerMeter | Kind::PowerSensor => true,
+                Kind::DcSupplyE3631A | Kind::DcSupplyE36313A => {
+                    c.instrument.dc.validate(node.kind).is_ok()
+                }
             };
             if !valid {
                 return Err(Error::Invalid(format!(

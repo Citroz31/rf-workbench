@@ -1,8 +1,98 @@
 use crate::{theme::*, visuals};
 use eframe::egui::{self, Align2, Id, Pos2, Rect, Sense, Stroke, StrokeKind, Vec2};
-use rf_core::{Graph, Kind, Node};
+use rf_core::{Graph, Kind, Node, PhysicalPortKind};
+// Approximately 1 mm in egui screen points at the usual 96 logical DPI.
+const PIN_MAGNET_MARGIN: f32 = 96. / 25.4;
 use std::collections::BTreeSet;
 pub const NODE_SIZE: Vec2 = egui::vec2(240., 208.);
+#[derive(Clone, Copy)]
+struct SnapTarget {
+    node: u64,
+    index: usize,
+    physical: bool,
+    position: Pos2,
+}
+fn occupied_physical(g: &Graph, node: u64, index: usize) -> bool {
+    g.physical_connections
+        .iter()
+        .any(|e| e.from == node && e.from_port == index || e.to == node && e.to_port == index)
+}
+fn physical_color(kind: rf_core::PhysicalPortKind) -> egui::Color32 {
+    match kind {
+        rf_core::PhysicalPortKind::Rf => gold(),
+        rf_core::PhysicalPortKind::DcPositive => red(),
+        rf_core::PhysicalPortKind::DcReturn => blue(),
+    }
+}
+pub(crate) fn physical_port_offset(n: &Node, index: usize) -> Vec2 {
+    let ports = n.physical_ports();
+    if n.kind.max_rf_ports().is_some() {
+        return egui::vec2(
+            0.,
+            55. + (index + 1) as f32 / (ports.len() + 1) as f32 * 94.,
+        );
+    }
+    let rf = ports
+        .iter()
+        .take_while(|p| p.kind == rf_core::PhysicalPortKind::Rf)
+        .count();
+    if index < rf {
+        return match index {
+            0 => egui::vec2(0., 90.),
+            1 => egui::vec2(NODE_SIZE.x, 90.),
+            _ => egui::vec2(NODE_SIZE.x, 120.),
+        };
+    }
+    let count = ports.len() - rf;
+    egui::vec2(
+        20. + (index - rf) as f32 * 200. / (count.saturating_sub(1).max(1)) as f32,
+        NODE_SIZE.y,
+    )
+}
+pub(crate) fn physical_port_exit(n: &Node, index: usize) -> Vec2 {
+    let p = physical_port_offset(n, index);
+    if p.y == NODE_SIZE.y {
+        egui::vec2(0., 1.)
+    } else if p.x == 0. {
+        egui::vec2(-1., 0.)
+    } else {
+        egui::vec2(1., 0.)
+    }
+}
+fn physical_route(
+    from: Pos2,
+    to: Pos2,
+    points: &[Pos2],
+    orthogonal: bool,
+    zoom: f32,
+    a: Vec2,
+    b: Vec2,
+) -> Vec<Pos2> {
+    if !orthogonal || !points.is_empty() {
+        return route(from, to, points, orthogonal, zoom);
+    }
+    let start = from + a * 24. * zoom;
+    let end = to + b * 24. * zoom;
+    let middle = if a.y > 0. || b.y > 0. {
+        let y = start.y.max(end.y) + 24. * zoom;
+        vec![Pos2::new(start.x, y), Pos2::new(end.x, y)]
+    } else if a.x == b.x {
+        let x = if a.x < 0. {
+            start.x.min(end.x)
+        } else {
+            start.x.max(end.x)
+        };
+        vec![Pos2::new(x, start.y), Pos2::new(x, end.y)]
+    } else {
+        let x = (start.x + end.x) * 0.5;
+        vec![Pos2::new(x, start.y), Pos2::new(x, end.y)]
+    };
+    std::iter::once(from)
+        .chain(std::iter::once(start))
+        .chain(middle)
+        .chain([end, to])
+        .collect()
+}
 #[derive(Default, Clone)]
 pub struct History {
     undo: Vec<Graph>,
@@ -44,6 +134,8 @@ pub struct Canvas {
     pub selected_ids: BTreeSet<u64>,
     pub annotation: Option<u64>,
     pub help_request: Option<Kind>,
+    pub configure_request: Option<u64>,
+    pub physical_wiring: Option<(u64, usize)>,
     pub active_node: Option<u64>,
     pub auto_route: bool,
     pub routes_dirty: bool,
@@ -70,6 +162,8 @@ impl Default for Canvas {
             selected_ids: [3].into_iter().collect(),
             annotation: None,
             help_request: None,
+            configure_request: None,
+            physical_wiring: None,
             active_node: None,
             auto_route: true,
             routes_dirty: false,
@@ -134,7 +228,86 @@ impl Canvas {
     }
     pub fn cancel_wire(&mut self) {
         self.wiring = None;
+        self.physical_wiring = None;
         self.waypoints.clear();
+    }
+    pub fn is_wiring(&self) -> bool {
+        self.wiring.is_some() || self.physical_wiring.is_some()
+    }
+    pub fn connect_physical_to(
+        &mut self,
+        g: &mut Graph,
+        h: &mut History,
+        to: u64,
+        to_port: usize,
+    ) -> Result<(), String> {
+        let Some((from, from_port)) = self.physical_wiring else {
+            return Ok(());
+        };
+        let before = g.clone();
+        g.connect_physical(from, from_port, to, to_port)
+            .map_err(|e| e.to_string())?;
+        let automatic = self.auto_route && self.orthogonal && self.waypoints.is_empty();
+        let cable = g.physical_connections.last_mut().unwrap();
+        cable.waypoints = std::mem::take(&mut self.waypoints);
+        cable.auto_routed = automatic;
+        h.record(before);
+        self.physical_wiring = None;
+        self.routes_dirty |= automatic;
+        Ok(())
+    }
+    fn nearest_target(&self, g: &Graph, origin: Pos2, mouse: Pos2) -> Option<SnapTarget> {
+        let mut nearest = None;
+        let mut distance = f32::INFINITY;
+        for n in &g.nodes {
+            if let Some((id, index)) = self.physical_wiring {
+                let source = g.node(id)?.physical_ports().get(index)?.clone();
+                for (i, p) in n.physical_ports().iter().enumerate() {
+                    if n.id == id
+                        || p.kind != source.kind
+                        || (p.kind != PhysicalPortKind::Rf && p.direction == source.direction)
+                        || occupied_physical(g, n.id, i)
+                    {
+                        continue;
+                    }
+                    let pos =
+                        self.screen(origin, n.position) + physical_port_offset(n, i) * self.zoom;
+                    let d = pos.distance(mouse);
+                    if d <= 5. * self.zoom.max(0.7) + PIN_MAGNET_MARGIN && d < distance {
+                        distance = d;
+                        nearest = Some(SnapTarget {
+                            node: n.id,
+                            index: i,
+                            physical: true,
+                            position: pos,
+                        });
+                    }
+                }
+            } else if let Some((id, index)) = self.wiring {
+                let p = g.node(id)?.kind.outputs().get(index)?;
+                for (i, target) in n.kind.inputs().iter().enumerate() {
+                    if n.id == id
+                        || target.port != p.port
+                        || g.edges.iter().any(|e| e.to == n.id && e.to_port == i)
+                    {
+                        continue;
+                    }
+                    let pos =
+                        self.screen(origin, n.position) + port_offset(n, false, i) * self.zoom;
+                    let d = pos.distance(mouse);
+                    if d <= 5. * self.zoom.max(0.7) + PIN_MAGNET_MARGIN && d < distance {
+                        distance = d;
+                        nearest = Some(SnapTarget {
+                            node: n.id,
+                            index: i,
+                            physical: false,
+                            position: pos,
+                        });
+                    }
+                }
+            }
+        }
+        nearest
     }
     fn screen(&self, origin: Pos2, p: [f32; 2]) -> Pos2 {
         origin + self.pan + egui::vec2(p[0], p[1]) * self.zoom
@@ -153,17 +326,8 @@ impl Canvas {
         g.connect_ports(from, from_port, to, to_port)
             .map_err(|e| e.to_string())?;
         let automatic = self.auto_route && self.orthogonal && self.waypoints.is_empty();
-        let points = if automatic {
-            match crate::editor::route_edge(g, g.edges.len() - 1) {
-                Ok(points) => points,
-                Err(e) => {
-                    g.edges.pop();
-                    return Err(e);
-                }
-            }
-        } else {
-            std::mem::take(&mut self.waypoints)
-        };
+        let points = std::mem::take(&mut self.waypoints);
+        self.routes_dirty |= automatic;
         g.edges.last_mut().expect("new cable").waypoints = points;
         g.edges.last_mut().unwrap().auto_routed = automatic;
         h.record(before);
@@ -177,7 +341,13 @@ impl Canvas {
         history: &mut History,
         height: f32,
     ) -> Option<String> {
-        if self.wiring.is_some_and(|(id, _)| g.node(id).is_none()) {
+        if self
+            .wiring
+            .is_some_and(|(id, p)| g.node(id).is_none_or(|n| p >= n.kind.outputs().len()))
+            || self
+                .physical_wiring
+                .is_some_and(|(id, p)| g.node(id).is_none_or(|n| p >= n.physical_ports().len()))
+        {
             self.cancel_wire();
         }
         self.selected_ids.retain(|id| g.node(*id).is_some());
@@ -268,6 +438,10 @@ impl Canvas {
                 self.pan = (mouse - rect.min) - (mouse - rect.min - self.pan) * (self.zoom / old);
             }
         }
+        let snap_target = ui
+            .input(|i| i.pointer.hover_pos())
+            .filter(|p| rect.contains(*p))
+            .and_then(|p| self.nearest_target(g, rect.min, p));
         let mut error = None;
         let mut disconnect = None;
         let mut cable_hover = false;
@@ -330,6 +504,100 @@ impl Canvas {
                 g.edges[i].waypoints.clear();
             }
         }
+        let mut physical_disconnect = None;
+        for (index, e) in g.physical_connections.iter().enumerate() {
+            if let (Some(a), Some(b)) = (g.node(e.from), g.node(e.to)) {
+                let from = self.screen(rect.min, a.position)
+                    + physical_port_offset(a, e.from_port) * self.zoom;
+                let to = self.screen(rect.min, b.position)
+                    + physical_port_offset(b, e.to_port) * self.zoom;
+                let points: Vec<_> = e
+                    .waypoints
+                    .iter()
+                    .map(|p| self.screen(rect.min, *p))
+                    .collect();
+                let points = physical_route(
+                    from,
+                    to,
+                    &points,
+                    self.orthogonal,
+                    self.zoom,
+                    physical_port_exit(a, e.from_port),
+                    physical_port_exit(b, e.to_port),
+                );
+                let color = physical_color(a.physical_ports()[e.from_port].kind);
+                painter.add(egui::Shape::line(
+                    points.clone(),
+                    Stroke::new(2.2 * self.zoom.max(0.7), color),
+                ));
+                if let Some(mouse) = ui
+                    .input(|i| i.pointer.hover_pos())
+                    .filter(|p| rect.contains(*p))
+                    && points
+                        .windows(2)
+                        .any(|w| segment_distance(mouse, w[0], w[1]) < 6.)
+                {
+                    cable_hover = true;
+                    ui.interact(
+                        Rect::from_center_size(mouse, egui::vec2(12., 12.)),
+                        Id::new(("physical-cable", index)),
+                        Sense::click(),
+                    )
+                    .on_hover_text(format!("{} ↔ {} · liaison physique", a.title, b.title))
+                    .context_menu(|ui| {
+                        if ui.button("Retirer le câble").clicked() {
+                            physical_disconnect = Some((index, true));
+                            ui.close();
+                        }
+                        if ui.button("Réinitialiser le parcours").clicked() {
+                            physical_disconnect = Some((index, false));
+                            ui.close();
+                        }
+                    });
+                }
+            }
+        }
+        if let Some((i, remove)) = physical_disconnect {
+            history.record(g.clone());
+            if remove {
+                g.remove_physical(i);
+            } else {
+                g.physical_connections[i].waypoints.clear();
+                g.physical_connections[i].auto_routed = true;
+                self.routes_dirty = true;
+            }
+        }
+        if let Some((id, index)) = self.physical_wiring
+            && let Some(n) = g.node(id)
+            && let Some(mouse) = ui.input(|i| i.pointer.hover_pos())
+        {
+            let from =
+                self.screen(rect.min, n.position) + physical_port_offset(n, index) * self.zoom;
+            let to = snap_target.map_or(mouse, |s| s.position);
+            let points: Vec<_> = self
+                .waypoints
+                .iter()
+                .map(|p| self.screen(rect.min, *p))
+                .collect();
+            let exit = snap_target
+                .and_then(|s| g.node(s.node).map(|n| physical_port_exit(n, s.index)))
+                .unwrap_or(egui::vec2(-1., 0.));
+            painter.add(egui::Shape::line(
+                physical_route(
+                    from,
+                    to,
+                    &points,
+                    self.orthogonal,
+                    self.zoom,
+                    physical_port_exit(n, index),
+                    exit,
+                ),
+                Stroke::new(2., physical_color(n.physical_ports()[index].kind)),
+            ));
+        }
+        if let Some(target) = snap_target {
+            painter.circle_stroke(target.position, 9., Stroke::new(2., teal()));
+        }
         if let Some((id, index)) = self.wiring
             && let Some(n) = g.node(id)
             && let Some(mouse) = ui.input(|i| i.pointer.hover_pos())
@@ -341,7 +609,13 @@ impl Canvas {
                 .map(|p| self.screen(rect.min, *p))
                 .collect();
             painter.add(egui::Shape::line(
-                route(from, mouse, &waypoints, self.orthogonal, self.zoom),
+                route(
+                    from,
+                    snap_target.map_or(mouse, |s| s.position),
+                    &waypoints,
+                    self.orthogonal,
+                    self.zoom,
+                ),
                 Stroke::new(2., port(n.kind.outputs()[index].port)),
             ));
             for p in waypoints {
@@ -350,6 +624,16 @@ impl Canvas {
         }
         let mut clicked_input = None;
         let mut clicked_output = None;
+        let mut clicked_physical = None;
+        if ui.input(|i| i.pointer.primary_clicked())
+            && let Some(target) = snap_target
+        {
+            if target.physical {
+                clicked_physical = Some((target.node, target.index));
+            } else {
+                clicked_input = Some((target.node, target.index));
+            }
+        }
         let mut delta = None;
         let mut stopped = None;
         let mut hovered_node = false;
@@ -494,13 +778,14 @@ impl Canvas {
                 crate::theme::font(14. * self.zoom),
                 text_color(),
             );
-            visuals::symbol(
+            visuals::symbol_with_ports(
                 &painter,
                 Rect::from_min_size(
                     top + egui::vec2(33., 55.) * self.zoom,
                     egui::vec2(174., 80.) * self.zoom,
                 ),
                 node.kind,
+                node.config.instrument.port_count,
             );
             painter.text(
                 top + egui::vec2(13., 150.) * self.zoom,
@@ -546,35 +831,9 @@ impl Canvas {
                     node.id,
                     ui.input(|i| i.modifiers.shift || i.modifiers.command),
                 );
-                if self.tool == Tool::Wire {
-                    if let Some((source, source_port)) = self.wiring {
-                        if let Some(a) = g.node(source) {
-                            let matches: Vec<_> = node
-                                .kind
-                                .inputs()
-                                .iter()
-                                .enumerate()
-                                .filter(|(i, p)| {
-                                    p.port == a.kind.outputs()[source_port].port
-                                        && !g
-                                            .edges
-                                            .iter()
-                                            .any(|e| e.to == node.id && e.to_port == *i)
-                                })
-                                .map(|(i, _)| i)
-                                .collect();
-                            if matches.len() == 1 {
-                                clicked_input = Some((node.id, matches[0]));
-                            } else {
-                                error=Some("Choisir le port d'entrée nommé ; plusieurs choix ou aucun port compatible".into());
-                            }
-                        }
-                    } else if node.kind.outputs().len() == 1 {
-                        clicked_output = Some((node.id, 0));
-                    } else {
-                        error = Some("Choisir un port de sortie nommé".into());
-                    }
-                }
+            }
+            if hit.double_clicked() {
+                self.configure_request = Some(node.id);
             }
             if hit.drag_started() {
                 if !self.selected_ids.contains(&node.id) {
@@ -592,6 +851,10 @@ impl Canvas {
                 hit.clone().on_hover_text(&node.comment);
             }
             hit.context_menu(|ui| {
+                if ui.button("Configurer le bloc…").clicked() {
+                    self.configure_request = Some(node.id);
+                    ui.close();
+                }
                 if ui.button(crate::i18n::t("Aide du bloc")).clicked() {
                     self.help_request = Some(node.kind);
                     ui.close();
@@ -623,6 +886,52 @@ impl Canvas {
                     ui.close();
                 }
             });
+            for (index, terminal) in node.physical_ports().iter().enumerate() {
+                let position = top + physical_port_offset(node, index) * self.zoom;
+                let color = physical_color(terminal.kind);
+                painter.circle_filled(position, 5. * self.zoom.max(0.7), color);
+                painter.circle_stroke(position, 5. * self.zoom.max(0.7), Stroke::new(1., bg()));
+                let exit = physical_port_exit(node, index);
+                let (offset, align) = if exit.y > 0. {
+                    (egui::vec2(0., 9.), Align2::CENTER_TOP)
+                } else if exit.x < 0. {
+                    (egui::vec2(8., -8.), Align2::LEFT_BOTTOM)
+                } else {
+                    (egui::vec2(-8., -8.), Align2::RIGHT_BOTTOM)
+                };
+                painter.text(
+                    position + offset * self.zoom,
+                    align,
+                    &terminal.name,
+                    crate::theme::font(9. * self.zoom.max(0.7)),
+                    color,
+                );
+                let hit = ui.interact(
+                    Rect::from_center_size(position, egui::vec2(18., 18.)),
+                    Id::new(("physical-pin", node.id, index)),
+                    Sense::click(),
+                );
+                hovered_port |= hit.hovered();
+                if hit.clicked() && self.tool == Tool::Wire && self.wiring.is_none() {
+                    if self.physical_wiring.is_none()
+                        || snap_target
+                            .is_some_and(|s| s.physical && s.node == node.id && s.index == index)
+                    {
+                        clicked_physical = Some((node.id, index));
+                    } else if self.physical_wiring != Some((node.id, index)) {
+                        error = Some("Broche incompatible ou déjà câblée".into());
+                    }
+                }
+                hit.on_hover_text(format!(
+                    "{} · liaison physique · W pour câbler{}",
+                    terminal.name,
+                    if occupied_physical(g, node.id, index) {
+                        " · occupée"
+                    } else {
+                        ""
+                    }
+                ));
+            }
             for output in [false, true] {
                 let ports = if output {
                     node.kind.outputs()
@@ -650,10 +959,28 @@ impl Canvas {
                     if compatible {
                         painter.circle_stroke(position, 9. * self.zoom, Stroke::new(1.5, teal()));
                     }
-                    painter.circle_filled(position, 5. * self.zoom, port(terminal.port));
+                    if node.physical_ports().is_empty() {
+                        painter.circle_filled(position, 5. * self.zoom, port(terminal.port));
+                    } else {
+                        painter.rect_filled(
+                            Rect::from_center_size(position, egui::vec2(8., 8.) * self.zoom),
+                            1.,
+                            port(terminal.port),
+                        );
+                    }
+                    let physical_block = !node.physical_ports().is_empty();
                     painter.text(
-                        position + egui::vec2(if output { -9. } else { 9. }, -9.) * self.zoom,
-                        if output {
+                        position
+                            + if physical_block {
+                                egui::vec2(if output { 9. } else { -9. }, 0.) * self.zoom
+                            } else {
+                                egui::vec2(if output { -9. } else { 9. }, -9.) * self.zoom
+                            },
+                        if physical_block && output {
+                            Align2::LEFT_CENTER
+                        } else if physical_block {
+                            Align2::RIGHT_CENTER
+                        } else if output {
                             Align2::RIGHT_BOTTOM
                         } else {
                             Align2::LEFT_BOTTOM
@@ -668,7 +995,10 @@ impl Canvas {
                         Sense::click(),
                     );
                     hovered_port |= terminal_hit.hovered();
-                    if terminal_hit.clicked() {
+                    if terminal_hit.clicked()
+                        && self.tool != Tool::Pan
+                        && self.physical_wiring.is_none()
+                    {
                         if output {
                             clicked_output = Some((node.id, index));
                         } else {
@@ -683,6 +1013,18 @@ impl Canvas {
                         if compatible { " · compatible" } else { "" }
                     ));
                 }
+            }
+        }
+        if let Some((id, p)) = clicked_physical {
+            if self.physical_wiring.is_some() {
+                if let Err(e) = self.connect_physical_to(g, history, id, p) {
+                    error = Some(e);
+                }
+            } else if !occupied_physical(g, id, p) {
+                self.cancel_wire();
+                self.physical_wiring = Some((id, p));
+            } else {
+                error = Some("Broche déjà câblée ; retirer son câble par clic droit.".into());
             }
         }
         if let Some(output) = clicked_output {
@@ -718,7 +1060,9 @@ impl Canvas {
             }
             if old != *g {
                 history.record(old);
-                self.routes_dirty = self.auto_route && g.edges.iter().any(|e| e.auto_routed);
+                self.routes_dirty = self.auto_route
+                    && (g.edges.iter().any(|e| e.auto_routed)
+                        || g.physical_connections.iter().any(|e| e.auto_routed));
             }
         }
         if let Some((id, breakpoint)) = debug_change {
@@ -803,7 +1147,7 @@ impl Canvas {
             && self.tool == Tool::Select
             && !hovered_node
             && !hovered_port
-            && self.wiring.is_none()
+            && !self.is_wiring()
         {
             self.marquee = ui.input(|i| i.pointer.press_origin());
         }
@@ -848,12 +1192,13 @@ impl Canvas {
             self.annotation = None;
         }
         if self.tool == Tool::Wire
-            && self.wiring.is_some()
+            && self.is_wiring()
             && response.clicked()
             && ui.input(|i| i.pointer.primary_clicked())
             && !hovered_node
             && !hovered_port
             && !cable_hover
+            && snap_target.is_none()
             && let Some(mouse) = response.interact_pointer_pos()
             && self.waypoints.len() < 64
         {
@@ -873,17 +1218,15 @@ impl Canvas {
                 Tool::Pan => egui::CursorIcon::Grab,
             });
         }
-        painter.text(
-            rect.left_bottom() + egui::vec2(12., -10.),
-            Align2::LEFT_BOTTOM,
-            if self.tool == Tool::Wire {
-                "Câblage : sortie → entrée · Clic fond : coude · Échap : annuler"
-            } else {
-                "Molette : zoom · Glisser : déplacer · W : câblage · H : déplacement"
-            },
-            crate::theme::font(10.),
-            muted(),
-        );
+        if self.tool == Tool::Wire {
+            painter.text(
+                rect.left_bottom() + egui::vec2(12., -10.),
+                Align2::LEFT_BOTTOM,
+                "WIRE · Broche → broche · Aimantation légère · Clic fond : coude · Échap : annuler",
+                crate::theme::font(10.),
+                muted(),
+            );
+        }
         error
     }
 }
@@ -892,18 +1235,26 @@ fn summary(n: &Node) -> String {
     match n.kind {
         Kind::Dsp(_) => format!("{:.1} kS/s · {} pts", c.dsp.rate / 1000., c.dsp.samples),
         Kind::Generator => format!("{:.3} GHz / {:.1} dBm", c.frequency_hz / 1e9, c.power_dbm),
-        Kind::Dut => format!("Perte {:.1} dB · NF {:.1} dB", c.loss_db, c.noise_figure_db),
+        Kind::Dut => format!(
+            "Gain {:.1} dB · NF {:.1} dB",
+            -c.loss_db - c.attenuation_db,
+            c.noise_figure_db
+        ),
         Kind::Analyzer => format!(
             "{:.2}–{:.2} GHz · {} pts",
             c.start_hz / 1e9,
             c.stop_hz / 1e9,
             c.points
         ),
-        Kind::Pna | Kind::PnaX => format!(
+        Kind::Pna | Kind::PnaX | Kind::UsbVna => format!(
             "{} · {:.2}–{:.2} GHz",
             c.s_parameter,
             c.start_hz / 1e9,
             c.stop_hz / 1e9
+        ),
+        Kind::DcSupplyE3631A | Kind::DcSupplyE36313A => format!(
+            "CH{} · {:.2} V · limite {:.3} A",
+            c.instrument.dc.channel, c.instrument.dc.voltage_v, c.instrument.dc.current_limit_a
         ),
         Kind::Awg => format!("I/Q · {:.1} MS/s", c.sample_rate_hz / 1e6),
         Kind::Dac | Kind::Adc => format!("{} bits · ±{:.2} V", c.resolution_bits, c.voltage_v),
@@ -925,7 +1276,11 @@ pub(crate) fn port_offset(n: &Node, output: bool, index: usize) -> Vec2 {
     };
     egui::vec2(
         if output { NODE_SIZE.x } else { 0. },
-        65. + (index + 1) as f32 / (count + 1) as f32 * 105.,
+        if n.physical_ports().is_empty() {
+            65. + (index + 1) as f32 / (count + 1) as f32 * 105.
+        } else {
+            160. + index as f32 * 22.
+        },
     )
 }
 fn route(from: Pos2, to: Pos2, waypoints: &[Pos2], orthogonal: bool, zoom: f32) -> Vec<Pos2> {
@@ -991,6 +1346,122 @@ fn segment_distance(p: Pos2, a: Pos2, b: Pos2) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn physical_frame(
+        ctx: &egui::Context,
+        canvas: &mut Canvas,
+        g: &mut Graph,
+        h: &mut History,
+        events: Vec<egui::Event>,
+    ) -> (Pos2, egui::CursorIcon) {
+        let mut origin = Pos2::ZERO;
+        let output = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(900., 600.))),
+                events,
+                ..Default::default()
+            },
+            |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    origin = ui.available_rect_before_wrap().min;
+                    assert!(canvas.show(ui, g, h, 450.).is_none());
+                });
+            },
+        );
+        (origin, output.platform_output.cursor_icon)
+    }
+    fn physical_click(
+        ctx: &egui::Context,
+        c: &mut Canvas,
+        g: &mut Graph,
+        h: &mut History,
+        pos: Pos2,
+    ) {
+        for pressed in [true, false] {
+            physical_frame(
+                ctx,
+                c,
+                g,
+                h,
+                vec![
+                    egui::Event::PointerMoved(pos),
+                    egui::Event::PointerButton {
+                        pos,
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+            );
+        }
+    }
+    #[test]
+    fn physical_wire_magnet_preview_click_and_undo_use_real_pointer_events() {
+        let ctx = egui::Context::default();
+        let mut g = Graph::default();
+        let v = g.add(Kind::PnaX, [60., 50.]);
+        let d = g.add(Kind::Dut, [450., 50.]);
+        let mut c = Canvas {
+            fit: false,
+            auto_fit: false,
+            pan: Vec2::ZERO,
+            tool: Tool::Wire,
+            selected: None,
+            selected_ids: BTreeSet::new(),
+            ..Default::default()
+        };
+        let mut h = History::default();
+        let origin = physical_frame(&ctx, &mut c, &mut g, &mut h, vec![]).0;
+        physical_frame(&ctx, &mut c, &mut g, &mut h, vec![]);
+        let from = origin
+            + Vec2::from(g.node(v).unwrap().position)
+            + physical_port_offset(g.node(v).unwrap(), 0);
+        physical_click(&ctx, &mut c, &mut g, &mut h, from);
+        assert_eq!(c.physical_wiring, Some((v, 0)));
+        let to = origin
+            + Vec2::from(g.node(d).unwrap().position)
+            + physical_port_offset(g.node(d).unwrap(), 0);
+        let near = to + egui::vec2(-8., 0.);
+        let (_, cursor) = physical_frame(
+            &ctx,
+            &mut c,
+            &mut g,
+            &mut h,
+            vec![egui::Event::PointerMoved(near)],
+        );
+        assert!(g.physical_connections.is_empty());
+        assert_eq!(cursor, egui::CursorIcon::Crosshair);
+        assert_eq!(c.nearest_target(&g, origin, near).unwrap().node, d);
+        physical_click(&ctx, &mut c, &mut g, &mut h, near);
+        assert_eq!(g.physical_connections.len(), 1);
+        assert!(!c.is_wiring());
+        assert!(c.tool == Tool::Wire);
+        h.undo(&mut g);
+        assert!(g.physical_connections.is_empty());
+        h.redo(&mut g);
+        assert_eq!(g.physical_connections.len(), 1);
+        c.physical_wiring = Some((v, 1));
+        assert!(c.nearest_target(&g, origin, to).is_none()); // Occupied RF input.
+        let supply = g.add(Kind::DcSupplyE3631A, [300., 300.]);
+        let dc = origin
+            + Vec2::from(g.node(supply).unwrap().position)
+            + physical_port_offset(g.node(supply).unwrap(), 0);
+        assert!(c.nearest_target(&g, origin, dc).is_none()); // RF never snaps to DC.
+        let out = origin
+            + Vec2::from(g.node(d).unwrap().position)
+            + physical_port_offset(g.node(d).unwrap(), 1);
+        assert!(
+            c.nearest_target(&g, origin, out + egui::vec2(12., 0.))
+                .is_none()
+        );
+        c.zoom = 0.5;
+        let out = origin
+            + Vec2::from(g.node(d).unwrap().position) * c.zoom
+            + physical_port_offset(g.node(d).unwrap(), 1) * c.zoom;
+        assert!(
+            c.nearest_target(&g, origin, out + egui::vec2(6., 0.))
+                .is_some()
+        );
+    }
     #[test]
     fn keyboard_navigation_connects_named_ports_with_canvas_focus() {
         let ctx = egui::Context::default();

@@ -31,6 +31,7 @@ impl Session for Mock {
 fn mock() -> Mock {
     Mock {
         responses: BTreeMap::from([
+            ("SYST:CAP:HARD:PORT:COUN?".into(), "4".into()),
             (
                 "*IDN?".into(),
                 "Keysight Technologies,N5245B,MY123,A.15".into(),
@@ -67,6 +68,41 @@ fn config() -> Config {
     c.instrument.channel = 3;
     c.instrument.measurement = "gain".into();
     c
+}
+#[test]
+fn usb_identity_and_four_port_s_parameters_are_bounded_by_real_hardware() {
+    let mut c = config();
+    c.instrument.port_count = 4;
+    c.s_parameter = "S43".into();
+    let mut s = mock();
+    s.responses
+        .insert("CALC3:PAR:CAT:EXT?".into(), "gain,S43".into());
+    assert_eq!(
+        pna::acquire_vna(&mut s, &c, rf_core::Kind::PnaX)
+            .unwrap()
+            .parameter,
+        "S43"
+    );
+    let mut s = mock();
+    s.responses
+        .insert("SYST:CAP:HARD:PORT:COUN?".into(), "2".into());
+    assert!(
+        pna::acquire_vna(&mut s, &c, rf_core::Kind::PnaX)
+            .unwrap_err()
+            .to_string()
+            .contains("ports configurés")
+    );
+    assert!(!s.commands.iter().any(|s| s.starts_with("CALC3:PAR:SEL")));
+    let c = config();
+    let mut s = mock();
+    s.responses.insert(
+        "*IDN?".into(),
+        "Keysight Technologies,P9374A,MY123,A.15".into(),
+    );
+    assert!(pna::acquire_vna(&mut s, &c, rf_core::Kind::UsbVna).is_ok());
+    let mut s = mock();
+    assert!(pna::acquire_vna(&mut s, &c, rf_core::Kind::UsbVna).is_err());
+    assert_eq!(s.commands, ["*IDN?"]);
 }
 #[test]
 fn catalog_and_license_checks() {

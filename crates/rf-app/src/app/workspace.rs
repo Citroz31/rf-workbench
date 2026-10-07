@@ -272,7 +272,7 @@ impl Workbench {
     }
     pub(super) fn catalog_view(&mut self, ui: &mut egui::Ui) {
         caption(ui, "BIBLIOTHÈQUE DUT / FICHES LOCALES");
-        ui.label(RichText::new(crate::i18n::t("Le catalogue est volontairement vide à l'origine. Les futurs imports constructeur devront conserver les URL, dates de récupération et unités.")).color(muted()));
+        ui.label("Fiches MACOM intégrées avec sources et conditions. Les imports JSON et les fiches locales restent disponibles.");
         ui.label(format!(
             "Fabricants prévus : {}",
             self.catalog.manufacturers.join(", ")
@@ -310,17 +310,17 @@ impl Workbench {
         ui.add_space(10.);
         let mut chosen = None;
         egui::ScrollArea::vertical()
-            .max_height(180.)
+            .max_height((ui.available_height() - 120.).max(180.))
             .show(ui, |ui| {
                 for c in self.catalog.search(&self.catalog_search) {
-                    ui.horizontal(|ui| {
-                        ui.strong(format!("{} / {}", c.manufacturer, c.part_number));
-                        ui.label(&c.category);
-                        ui.label(if c.sources.is_empty() {
-                            "Fiche locale"
-                        } else {
-                            "Source documentée"
-                        });
+                    egui::CollapsingHeader::new(format!(
+                        "{} · {} · {}",
+                        c.manufacturer, c.part_number, c.category
+                    ))
+                    .id_salt(&c.id)
+                    .default_open(false)
+                    .show(ui, |ui| {
+                        super::instrument::component_details(ui, c);
                         if ui.button(crate::i18n::t("Créer un bloc DUT")).clicked() {
                             chosen = Some(c.clone());
                         }
@@ -332,8 +332,15 @@ impl Workbench {
             if let Some(n) = self.project.graph.nodes.last_mut() {
                 n.title = format!("{} {}", c.manufacturer, c.part_number);
                 n.config.dut_id = Some(c.id);
-                n.config.loss_db = c.insertion_loss_db.unwrap_or(0.);
+                n.config.loss_db =
+                    c.rf.as_ref()
+                        .map_or(c.insertion_loss_db.unwrap_or(0.), |r| -r.gain_db.typical);
                 n.config.noise_figure_db = c.noise_figure_db.unwrap_or(0.);
+                if let Some(rf) = &c.rf {
+                    n.config.frequency_hz = rf.reference_frequency_hz;
+                    n.config.start_hz = rf.band_hz[0];
+                    n.config.stop_hz = rf.band_hz[1];
+                }
             }
         }
         ui.separator();
@@ -444,7 +451,7 @@ impl Workbench {
         ui.label(format!(
             "{} blocs / {} câbles",
             self.project.graph.nodes.len(),
-            self.project.graph.edges.len()
+            self.project.graph.edges.len() + self.project.graph.physical_connections.len()
         ));
         match self.project.graph.validate() {
             Ok(()) => {

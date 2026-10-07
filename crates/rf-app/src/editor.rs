@@ -1,5 +1,5 @@
 //! Reusable editing operations and bounded obstacle-aware Manhattan routing.
-use crate::canvas::{NODE_SIZE, port_offset};
+use crate::canvas::{NODE_SIZE, physical_port_exit, physical_port_offset, port_offset};
 use eframe::egui::{Pos2, Rect};
 use rf_core::{Graph, Kind};
 use std::cmp::Reverse;
@@ -74,6 +74,12 @@ pub fn selection(g: &Graph, ids: &BTreeSet<u64>) -> Graph {
             .filter(|e| ids.contains(&e.from) && ids.contains(&e.to))
             .cloned()
             .collect(),
+        physical_connections: g
+            .physical_connections
+            .iter()
+            .filter(|e| ids.contains(&e.from) && ids.contains(&e.to))
+            .cloned()
+            .collect(),
         annotations: Vec::new(),
     }
 }
@@ -110,7 +116,18 @@ pub fn paste(g: &mut Graph, clip: &Graph, offset: [f32; 2]) -> Result<BTreeSet<u
         }
         next.edges.push(e);
     }
+    for old in &clip.physical_connections {
+        let mut e = old.clone();
+        e.from = *ids.get(&old.from).ok_or("Source copiée absente")?;
+        e.to = *ids.get(&old.to).ok_or("Destination copiée absente")?;
+        for p in &mut e.waypoints {
+            p[0] += offset[0];
+            p[1] += offset[1];
+        }
+        next.physical_connections.push(e);
+    }
     next.order().map_err(|e| e.to_string())?;
+    next.validate_physical().map_err(|e| e.to_string())?;
     *g = next;
     Ok(ids.into_values().collect())
 }
@@ -194,15 +211,51 @@ pub fn route_edge(g: &Graph, index: usize) -> Result<Vec<[f32; 2]>, String> {
     let b = g.node(e.to).ok_or("Destination absente")?;
     let from = Pos2::from(a.position) + port_offset(a, true, e.from_port);
     let to = Pos2::from(b.position) + port_offset(b, false, e.to_port);
+    route_terminals(
+        g,
+        a.id,
+        b.id,
+        from,
+        to,
+        eframe::egui::vec2(24., 0.),
+        eframe::egui::vec2(-24., 0.),
+    )
+}
+pub fn route_physical(g: &Graph, index: usize) -> Result<Vec<[f32; 2]>, String> {
+    let e = &g.physical_connections[index];
+    let a = g.node(e.from).ok_or("Source absente")?;
+    let b = g.node(e.to).ok_or("Destination absente")?;
+    let from = Pos2::from(a.position) + physical_port_offset(a, e.from_port);
+    let to = Pos2::from(b.position) + physical_port_offset(b, e.to_port);
+    route_terminals(
+        g,
+        a.id,
+        b.id,
+        from,
+        to,
+        physical_port_exit(a, e.from_port) * 24.,
+        physical_port_exit(b, e.to_port) * 24.,
+    )
+}
+fn route_terminals(
+    g: &Graph,
+    source_id: u64,
+    target_id: u64,
+    from: Pos2,
+    to: Pos2,
+    exit_a: eframe::egui::Vec2,
+    exit_b: eframe::egui::Vec2,
+) -> Result<Vec<[f32; 2]>, String> {
     let obstacles: Vec<_> = g
         .nodes
         .iter()
         .map(|n| Rect::from_min_size(Pos2::from(n.position), NODE_SIZE).expand(14.))
         .collect();
-    let start = from + eframe::egui::vec2(24., 0.);
-    let end = to - eframe::egui::vec2(24., 0.);
+    let start = from + exit_a;
+    let end = to + exit_b;
     if g.nodes.iter().zip(&obstacles).any(|(n, r)| {
-        (n.id != a.id && intersects(from, start, *r)) || (n.id != b.id && intersects(end, to, *r))
+        (n.id != source_id && intersects(from, start, *r))
+            || (n.id != target_id && intersects(end, to, *r))
     }) {
         return Err("Connecteur obstrué : éloigner les blocs".into());
     }
@@ -367,6 +420,18 @@ impl RoutingJob {
                         Err(_) => failed += 1,
                     }
                 }
+                for i in 0..working.physical_connections.len() {
+                    if only_auto && !working.physical_connections[i].auto_routed {
+                        continue;
+                    }
+                    match route_physical(&working, i) {
+                        Ok(points) => {
+                            working.physical_connections[i].waypoints = points;
+                            working.physical_connections[i].auto_routed = true;
+                        }
+                        Err(_) => failed += 1,
+                    }
+                }
                 Ok(RoutingReport {
                     graph: working,
                     failed,
@@ -386,6 +451,35 @@ impl RoutingJob {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn physical_loop_copy_paste_and_routing_preserve_endpoints() {
+        let mut g = Graph::default();
+        let v = g.add(Kind::PnaX, [0., 0.]);
+        let d = g.add(Kind::Dut, [420., 0.]);
+        g.connect_physical(v, 0, d, 0).unwrap();
+        g.connect_physical(d, 1, v, 1).unwrap();
+        let clip = selection(&g, &[v, d].into_iter().collect());
+        let ids = paste(&mut g, &clip, [0., 300.]).unwrap();
+        assert_eq!(ids.len(), 2);
+        assert_eq!(g.physical_connections.len(), 4);
+        g.validate().unwrap();
+        for e in &g.physical_connections[2..] {
+            assert!(ids.contains(&e.from) && ids.contains(&e.to));
+        }
+        let path = route_physical(&g, 0).unwrap();
+        assert!(!path.is_empty());
+        let a = g.node(v).unwrap();
+        let b = g.node(d).unwrap();
+        let points: Vec<_> = std::iter::once(Pos2::from(a.position) + physical_port_offset(a, 0))
+            .chain(path.iter().map(|p| Pos2::from(*p)))
+            .chain(std::iter::once(
+                Pos2::from(b.position) + physical_port_offset(b, 0),
+            ))
+            .collect();
+        for pair in points.windows(2) {
+            assert!(pair[0].x == pair[1].x || pair[0].y == pair[1].y);
+        }
+    }
     #[test]
     fn background_routing_keeps_original_and_manual_routes() {
         let mut graph = Graph::default();

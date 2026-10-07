@@ -120,7 +120,7 @@ impl Buffer {
                 unit: node.kind.outputs()[port].port.label().into(),
                 simulated: *simulated,
             },
-            Value::Dut { loss, noise } => BufferData::Dut {
+            Value::Dut { loss, noise, .. } => BufferData::Dut {
                 loss_db: *loss,
                 noise_figure_db: *noise,
             },

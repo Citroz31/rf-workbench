@@ -40,12 +40,15 @@ pub(crate) enum Value {
     Dut {
         loss: f64,
         noise: f64,
+        phase: f64,
     },
     Network(NetworkTrace),
     Dsp(Arc<rf_core::dsp::Data>),
 }
 #[derive(Default)]
 pub struct Engine {
+    dc_sessions: BTreeMap<String, DcSession>,
+    dc_sim: BTreeMap<String, (rf_core::instrument::DcControls, bool)>,
     sessions: BTreeMap<String, Box<dyn Session>>,
     armed: BTreeSet<String>,
     dsp: rf_dsp::Processor,
@@ -53,7 +56,126 @@ pub struct Engine {
     sources: BTreeMap<u64, rf_hal::streaming::Source>,
     pna_sessions: BTreeMap<u64, (String, u64, Box<dyn Session>)>,
 }
+struct DcSession {
+    kind: Kind,
+    session: Box<dyn Session>,
+    armed: BTreeSet<u8>,
+}
 impl Engine {
+    fn dc_control(
+        &mut self,
+        node: u64,
+        kind: Kind,
+        c: &rf_core::Config,
+        action: rf_instruments::dc::Action,
+        hardware: bool,
+        cancel: &AtomicBool,
+    ) -> Result<rf_instruments::dc::Reading> {
+        use rf_instruments::dc::{Action, Reading};
+        let dc = &c.instrument.dc;
+        if !kind.is_dc_supply() || !(1..=3).contains(&dc.channel) {
+            return Err("Profil/canal DC invalide".into());
+        }
+        if matches!(action, Action::Apply | Action::Enable) {
+            dc.validate(kind)?;
+        }
+        let parsed = Resource::parse(&c.resource).map_err(|e| e.to_string())?;
+        if parsed == Resource::Sim {
+            let prefix = format!("{node}:{}:", rf_instruments::dc::model(kind));
+            let key = format!("{prefix}{}", dc.channel);
+            // E3631A has one global output switch for all three rails.
+            if kind == Kind::DcSupplyE3631A {
+                if matches!(action, Action::Apply | Action::Disable) {
+                    for (k, (_, enabled)) in &mut self.dc_sim {
+                        if k.starts_with(&prefix) {
+                            *enabled = false;
+                        }
+                    }
+                } else if action == Action::Read && !self.dc_sim.contains_key(&key) {
+                    let enabled = self
+                        .dc_sim
+                        .iter()
+                        .any(|(k, (_, on))| k.starts_with(&prefix) && *on);
+                    let initial = rf_core::instrument::DcControls {
+                        channel: dc.channel,
+                        ..Default::default()
+                    };
+                    self.dc_sim.insert(key.clone(), (initial, enabled));
+                }
+            }
+            let entry = self.dc_sim.entry(key).or_default();
+            match action {
+                Action::Apply => {
+                    *entry = (dc.clone(), false);
+                }
+                Action::Enable => {
+                    if cancel.load(Ordering::Acquire) {
+                        return Err("Commande DC arrêtée".into());
+                    }
+                    if entry.0 != *dc {
+                        return Err("Appliquer les consignes simulées avant ON".into());
+                    }
+                    entry.1 = true;
+                }
+                Action::Disable => {
+                    entry.1 = false;
+                }
+                Action::Read => {}
+            }
+            let reading = Reading {
+                voltage_v: if entry.1 { entry.0.voltage_v } else { 0. },
+                current_a: 0.,
+                enabled: entry.1,
+            };
+            if kind == Kind::DcSupplyE3631A && action == Action::Enable {
+                for (k, (_, enabled)) in &mut self.dc_sim {
+                    if k.starts_with(&prefix) {
+                        *enabled = true;
+                    }
+                }
+            }
+            return Ok(reading);
+        }
+        if !hardware {
+            return Err("Activer Matériel pour contrôler l'alimentation".into());
+        }
+        if !self.dc_sessions.contains_key(&c.resource) {
+            let mut session = ResourceManager
+                .open_resource(&c.resource, Duration::from_millis(c.instrument.timeout_ms))
+                .map_err(|e| e.to_string())?;
+            if !rf_instruments::dc::identifies(
+                kind,
+                &session.query("*IDN?").map_err(|e| e.to_string())?,
+            ) {
+                return Err("Alimentation identifiée différente du modèle choisi".into());
+            }
+            self.dc_sessions.insert(
+                c.resource.clone(),
+                DcSession {
+                    kind,
+                    session,
+                    armed: BTreeSet::new(),
+                },
+            );
+        }
+        let s = self.dc_sessions.get_mut(&c.resource).unwrap();
+        if s.kind != kind {
+            return Err("Adresse déjà ouverte avec un autre modèle DC".into());
+        }
+        if action == Action::Enable {
+            s.armed.insert(dc.channel);
+        }
+        let reading = rf_instruments::dc::execute(s.session.as_mut(), kind, c, action, cancel)
+            .map_err(|e| e.to_string())?;
+        if !reading.enabled {
+            if kind == Kind::DcSupplyE3631A {
+                s.armed.clear();
+            } else {
+                s.armed.remove(&dc.channel);
+            }
+        }
+        Ok(reading)
+    }
     pub fn query(&mut self, resource: &str, command: &str, hardware: bool) -> Result<String> {
         self.session(resource, hardware)?
             .query(command)
@@ -87,6 +209,23 @@ impl Engine {
     }
     /// Best-effort RF shutdown on stop, error and completion of a one-shot run.
     pub fn stop_outputs(&mut self) -> Vec<String> {
+        let mut errors = self.stop_rf_outputs();
+        for (name, mut s) in std::mem::take(&mut self.dc_sessions) {
+            for channel in s.armed {
+                if let Err(e) = rf_instruments::dc::disable(s.session.as_mut(), s.kind, channel) {
+                    errors.push(format!("{name}: arrêt DC non confirmé : {e}"));
+                }
+                if s.kind == Kind::DcSupplyE3631A {
+                    break;
+                }
+            }
+        }
+        for (_, enabled) in self.dc_sim.values_mut() {
+            *enabled = false;
+        }
+        errors
+    }
+    fn stop_rf_outputs(&mut self) -> Vec<String> {
         let mut errors = Vec::new();
         for name in &self.armed {
             if let Some(session) = self.sessions.get_mut(name)
@@ -149,7 +288,14 @@ impl Engine {
         }
         for n in graph.nodes.iter().filter(|n| n.kind.is_extended()) {
             if Resource::parse(&n.config.resource).map_err(|e| e.to_string())? != Resource::Sim
-                && !matches!(n.kind, Kind::Pna | Kind::PnaX)
+                && !matches!(
+                    n.kind,
+                    Kind::Pna
+                        | Kind::PnaX
+                        | Kind::UsbVna
+                        | Kind::DcSupplyE3631A
+                        | Kind::DcSupplyE36313A
+                )
             {
                 return Err(format!("{} : profil matériel non implémenté", n.title));
             }
@@ -175,7 +321,7 @@ impl Engine {
             let node = graph.node(id).expect("validated node");
             observe(debug::Phase::Before, node, &result)?;
             let c = &node.config;
-            let inputs: BTreeMap<usize, Value> = graph
+            let mut inputs: BTreeMap<usize, Value> = graph
                 .edges
                 .iter()
                 .filter(|e| e.to == id)
@@ -268,7 +414,9 @@ impl Engine {
                 observe(debug::Phase::After, node, &result)?;
                 continue;
             }
-            if matches!(node.kind, Kind::Pna | Kind::PnaX) && c.resource != "SIM::RF::INSTR" {
+            if matches!(node.kind, Kind::Pna | Kind::PnaX | Kind::UsbVna)
+                && c.resource != "SIM::RF::INSTR"
+            {
                 if !hardware {
                     return Err("PNA : activer le mode Matériel".into());
                 }
@@ -284,14 +432,59 @@ impl Engine {
                         .insert(id, (c.resource.clone(), c.instrument.timeout_ms, session));
                 }
                 let (_, _, s) = self.pna_sessions.get_mut(&id).unwrap();
-                let network =
-                    rf_instruments::pna::acquire(s.as_mut(), c).map_err(|e| e.to_string())?;
+                let network = rf_instruments::pna::acquire_vna(s.as_mut(), c, node.kind)
+                    .map_err(|e| e.to_string())?;
                 result.network = Some(network.clone());
                 values.insert((id, 0), Value::Network(network));
                 result.completed.push(id);
                 capture(&mut result, node, &values);
                 observe(debug::Phase::After, node, &result)?;
                 continue;
+            }
+            if node.kind.is_dc_supply() {
+                let reading = self.dc_control(
+                    id,
+                    node.kind,
+                    c,
+                    rf_instruments::dc::Action::Read,
+                    hardware,
+                    cancelled,
+                )?;
+                for (port, value, unit) in
+                    [(0, reading.voltage_v, "V"), (1, reading.current_a, "A")]
+                {
+                    let simulated = c.resource == "SIM::RF::INSTR";
+                    values.insert((id, port), Value::Scalar(value, simulated));
+                    result.measurements.push(Measurement {
+                        name: format!("{} · {}", node.title, unit),
+                        value,
+                        unit: unit.into(),
+                        simulated,
+                    });
+                }
+                result.completed.push(id);
+                capture(&mut result, node, &values);
+                observe(debug::Phase::After, node, &result)?;
+                continue;
+            }
+            if node.kind.max_rf_ports().is_some()
+                && let Some(dut) = graph
+                    .vna_dut(id, &c.s_parameter)
+                    .map_err(|e| e.to_string())?
+            {
+                if inputs.contains_key(&0) {
+                    return Err(
+                        "VNA : choisir câblage physique ou entrée MODEL, pas les deux".into(),
+                    );
+                }
+                inputs.insert(
+                    0,
+                    Value::Dut {
+                        loss: dut.config.loss_db + dut.config.attenuation_db,
+                        noise: dut.config.noise_figure_db,
+                        phase: dut.config.phase_deg,
+                    },
+                );
             }
             if node.kind.is_extended() {
                 let output = simulation::execute(node, &inputs, &mut result)?;
@@ -308,8 +501,9 @@ impl Engine {
                 values.insert(
                     (id, 1),
                     Value::Dut {
-                        loss: c.loss_db,
+                        loss: c.loss_db + c.attenuation_db,
                         noise: c.noise_figure_db,
+                        phase: c.phase_deg,
                     },
                 );
             }
@@ -334,7 +528,7 @@ impl Engine {
                     }),
                 ) => Value::Signal {
                     frequency,
-                    level: level - c.loss_db,
+                    level: level - c.loss_db - c.attenuation_db,
                     simulated,
                 },
                 (
@@ -405,7 +599,7 @@ impl Engine {
                 }
                 (Kind::Dut, None) => Value::Signal {
                     frequency: c.frequency_hz,
-                    level: c.power_dbm - c.loss_db,
+                    level: c.power_dbm - c.loss_db - c.attenuation_db,
                     simulated: true,
                 },
                 (Kind::Python, Some(Value::Trace(t))) => {
@@ -543,6 +737,14 @@ pub fn self_tests() -> Vec<TestResult> {
 }
 
 pub enum Command {
+    StopOutputs,
+    DcSupply {
+        node: u64,
+        kind: Kind,
+        config: rf_core::Config,
+        action: rf_instruments::dc::Action,
+        hardware: bool,
+    },
     PnaApplication {
         node: u64,
         config: rf_core::Config,
@@ -647,6 +849,49 @@ impl Worker {
                 // an immediate Stop must also cancel a queued command.
                 let mut shutdown = true;
                 match command {
+                    Command::StopOutputs => {
+                        for error in engine.stop_outputs() {
+                            let _ = etx.try_send(Event::Error(error));
+                        }
+                        let _ = etx.try_send(Event::Message(
+                            "Arrêt des sorties RF/DC demandées par cette session.".into(),
+                        ));
+                        shutdown = false;
+                    }
+                    Command::DcSupply {
+                        node,
+                        kind,
+                        config,
+                        action,
+                        hardware,
+                    } => {
+                        let response = engine.dc_control(node, kind, &config, action, hardware, &c);
+                        shutdown = false;
+                        if response.is_err() {
+                            for error in engine.stop_outputs() {
+                                let _ = etx.try_send(Event::Error(error));
+                            }
+                        }
+                        let _ = etx.send(match response {
+                            Ok(r) => Event::InstrumentResponse {
+                                node,
+                                text: format!(
+                                    "{} · CH{} · {:.6} V · {:.6} A · {}{}",
+                                    rf_instruments::dc::model(kind),
+                                    config.instrument.dc.channel,
+                                    r.voltage_v,
+                                    r.current_a,
+                                    if r.enabled { "ON" } else { "OFF" },
+                                    if config.resource == "SIM::RF::INSTR" {
+                                        " · simulation sans charge"
+                                    } else {
+                                        ""
+                                    }
+                                ),
+                            },
+                            Err(e) => Event::Error(e),
+                        });
+                    }
                     Command::PnaApplication {
                         node,
                         config,
@@ -936,6 +1181,11 @@ impl Worker {
                     }
                 }
                 if shutdown {
+                    for error in engine.stop_rf_outputs() {
+                        let _ = etx.try_send(Event::Error(error));
+                    }
+                }
+                if c.load(Ordering::Acquire) {
                     for error in engine.stop_outputs() {
                         let _ = etx.try_send(Event::Error(error));
                     }
@@ -986,6 +1236,9 @@ impl Worker {
     }
     pub fn stop(&self) {
         self.cancel.store(true, Ordering::Relaxed);
+        if !self.is_busy() {
+            let _ = self.submit(Command::StopOutputs);
+        }
     }
     pub fn is_busy(&self) -> bool {
         self.busy.load(Ordering::Acquire)
@@ -1003,6 +1256,145 @@ impl Drop for Worker {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn physical_lna_loop_simulates_gain_and_core_chip_states_without_data_cycle() {
+        let mut g = Graph::default();
+        let v = g.add(Kind::PnaX, [0., 0.]);
+        let d = g.add(Kind::Dut, [400., 0.]);
+        g.nodes[1].config.loss_db = -26.;
+        g.nodes[1].config.noise_figure_db = 1.2;
+        g.connect_physical(v, 0, d, 0).unwrap();
+        g.connect_physical(d, 1, v, 1).unwrap();
+        let cancel = AtomicBool::new(false);
+        let run = |g: &Graph| {
+            Engine::default()
+                .execute(g, 0, "unused", false, &cancel)
+                .unwrap()
+                .network
+                .unwrap()
+        };
+        assert!((run(&g).magnitude_db[0] - 26.).abs() < 1e-10);
+        g.nodes[1].config.dut_id = Some("macom-cgy2170yhv-c1".into());
+        g.nodes[1].config.loss_db = -5.8;
+        g.nodes[1].config.attenuation_db = 31.5;
+        g.nodes[1].config.phase_deg = 354.375;
+        g.physical_connections[1].from_port = 2;
+        let phase0 = run(&g).phase_deg[0];
+        assert!((run(&g).magnitude_db[0] + 25.7).abs() < 1e-10);
+        g.nodes[1].config.phase_deg = 0.;
+        assert!((phase0 - run(&g).phase_deg[0] - 354.375).abs() < 1e-10);
+        g.nodes[1].config.dut_mode = "TX".into();
+        g.physical_connections[0].to_port = 2;
+        g.physical_connections[1].from_port = 1;
+        assert!((run(&g).magnitude_db[0] + 25.7).abs() < 1e-10);
+    }
+    #[test]
+    fn dc_run_never_applies_or_enables_stored_setpoints() {
+        let mut g = Graph::default();
+        g.add(Kind::DcSupplyE36313A, [0., 0.]);
+        g.nodes[0].config.instrument.dc.voltage_v = 5.;
+        let cancel = AtomicBool::new(false);
+        let mut engine = Engine::default();
+        let r = engine.execute(&g, 0, "unused", false, &cancel).unwrap();
+        assert_eq!(r.measurements[0].value, 0.);
+        let c = &g.nodes[0].config;
+        assert!(
+            engine
+                .dc_control(
+                    1,
+                    Kind::DcSupplyE36313A,
+                    c,
+                    rf_instruments::dc::Action::Enable,
+                    false,
+                    &cancel
+                )
+                .is_err()
+        );
+        engine
+            .dc_control(
+                1,
+                Kind::DcSupplyE36313A,
+                c,
+                rf_instruments::dc::Action::Apply,
+                false,
+                &cancel,
+            )
+            .unwrap();
+        assert!(
+            engine
+                .dc_control(
+                    1,
+                    Kind::DcSupplyE36313A,
+                    c,
+                    rf_instruments::dc::Action::Enable,
+                    false,
+                    &cancel
+                )
+                .unwrap()
+                .enabled
+        );
+        let r = engine.execute(&g, 1, "unused", false, &cancel).unwrap();
+        assert_eq!(r.measurements[0].value, 5.);
+        engine.stop_outputs();
+        assert!(
+            !engine
+                .dc_control(
+                    1,
+                    Kind::DcSupplyE36313A,
+                    c,
+                    rf_instruments::dc::Action::Read,
+                    false,
+                    &cancel
+                )
+                .unwrap()
+                .enabled
+        );
+    }
+    #[test]
+    fn e3631a_simulation_preserves_the_global_output_switch() {
+        use rf_instruments::dc::Action;
+        let cancel = AtomicBool::new(false);
+        let mut engine = Engine::default();
+        let kind = Kind::DcSupplyE3631A;
+        let mut c = rf_core::Config::default();
+        c.instrument.dc.channel = 2;
+        c.instrument.dc.voltage_v = 1.5;
+        engine
+            .dc_control(1, kind, &c, Action::Apply, false, &cancel)
+            .unwrap();
+        c.instrument.dc.channel = 3;
+        c.instrument.dc.voltage_v = -1.5;
+        engine
+            .dc_control(1, kind, &c, Action::Apply, false, &cancel)
+            .unwrap();
+        engine
+            .dc_control(1, kind, &c, Action::Enable, false, &cancel)
+            .unwrap();
+        c.instrument.dc.channel = 2;
+        c.instrument.dc.voltage_v = 1.5;
+        let positive = engine
+            .dc_control(1, kind, &c, Action::Read, false, &cancel)
+            .unwrap();
+        assert!(positive.enabled);
+        assert_eq!(positive.voltage_v, 1.5);
+        c.instrument.dc.channel = 1;
+        assert!(
+            engine
+                .dc_control(1, kind, &c, Action::Read, false, &cancel)
+                .unwrap()
+                .enabled
+        );
+        engine
+            .dc_control(1, kind, &c, Action::Disable, false, &cancel)
+            .unwrap();
+        c.instrument.dc.channel = 3;
+        assert!(
+            !engine
+                .dc_control(1, kind, &c, Action::Read, false, &cancel)
+                .unwrap()
+                .enabled
+        );
+    }
     #[test]
     fn invalid_graph_never_opens_hardware() {
         let mut g = Graph::demo();

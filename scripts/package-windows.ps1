@@ -74,7 +74,8 @@ DÉMARRAGE
 3. Double-cliquer sur rf-workbench.exe (type Application si Windows masque .exe).
    Aucun CMD, terminal, VS Code ni installation n'est nécessaire au lancement.
 4. À l'accueil, ouvrir un projet de examples (PNA-X.rfbench, PA-36-38GHz.rfbench,
-   QAM16-AWGN.rfbench), conserver Simulation, puis utiliser Exécuter.
+   QAM16-AWGN.rfbench, LNA-MAAL-FR1245.rfbench, Corechip-CGY2170YHV-C1.rfbench),
+   conserver Simulation, puis utiliser Exécuter.
 
 La simulation intégrée de ces exemples fonctionne sans Rust, Python ni VISA.
 Le programme s'exécute localement. Le téléchargement initial nécessite Internet ;
@@ -100,8 +101,7 @@ FONCTIONS OPTIONNELLES
 
 CONTENU
 rf-workbench.exe            Application Windows x64
-docs\Guide-utilisateur.pdf Guide détaillé (certaines anciennes instructions CMD
-                            sont remplacées par le démarrage direct ci-dessus)
+docs\Guide-utilisateur.pdf Guide détaillé, incluant le démarrage direct
 examples\*.rfbench         Bancs d'exemple
 LICENSE                    Licence MIT
 SHA256SUMS.txt              Empreintes des fichiers contenus dans ce ZIP

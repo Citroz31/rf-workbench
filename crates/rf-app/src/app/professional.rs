@@ -5,6 +5,12 @@ use crate::{
 };
 use rf_runtime::debug::BufferData;
 const CLIPBOARD_PREFIX: &str = "RF_WORKBENCH_GRAPH_V1\n";
+pub(super) struct RenameSetup {
+    pub index: usize,
+    pub name: String,
+    pub focus: bool,
+    pub error: String,
+}
 
 impl Workbench {
     pub(super) fn palette_item(&mut self, ui: &mut egui::Ui, k: Kind) {
@@ -255,6 +261,7 @@ impl Workbench {
     }
     pub(super) fn snapshot_workspace(&mut self) {
         if let Some(w) = self.studio.workspaces.get_mut(self.studio.active) {
+            w.name = self.project.name.clone();
             w.project = self.project.clone();
             w.project_path = self.project_path.clone();
             w.csv_path = self.csv_path.clone();
@@ -326,21 +333,90 @@ impl Workbench {
     }
     pub(super) fn workspace_tabs(&mut self, ui: &mut egui::Ui) {
         let mut switch = None;
+        let mut rename = None;
         for (i, w) in self.studio.workspaces.iter().enumerate() {
-            if ui
+            let tab = ui
                 .add_enabled(
                     !self.worker.is_busy(),
-                    egui::Button::new(format!("{} · {}", i + 1, w.name))
-                        .selected(i == self.studio.active),
+                    egui::Button::new(&w.name).selected(i == self.studio.active),
                 )
-                .clicked()
-            {
+                .on_hover_text(pair(
+                    "Clic droit : renommer le setup",
+                    "Right click: rename setup",
+                ));
+            if tab.clicked() {
                 switch = Some(i);
             }
+            tab.context_menu(|ui| {
+                if ui
+                    .button(pair("Renommer le setup…", "Rename setup…"))
+                    .clicked()
+                {
+                    rename = Some(i);
+                    ui.close();
+                }
+            });
+        }
+        if let Some(index) = rename {
+            self.setup_rename = Some(RenameSetup {
+                index,
+                name: self.studio.workspaces[index].name.clone(),
+                focus: true,
+                error: String::new(),
+            });
         }
         if let Some(i) = switch {
             self.snapshot_workspace();
             self.restore_workspace(i);
+        }
+    }
+    pub(super) fn rename_setup_window(&mut self, ctx: &egui::Context) {
+        let Some(mut draft) = self.setup_rename.take() else {
+            return;
+        };
+        let mut open = true;
+        let mut commit = false;
+        let mut cancel = false;
+        egui::Window::new(pair("Renommer le setup", "Rename setup"))
+            .id(egui::Id::new("rename-setup"))
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+            .show(ctx, |ui| {
+                let edit = ui.add(
+                    egui::TextEdit::singleline(&mut draft.name)
+                        .char_limit(80)
+                        .desired_width(320.),
+                );
+                if draft.focus {
+                    edit.request_focus();
+                    draft.focus = false;
+                }
+                commit |= ui.input(|i| i.key_pressed(egui::Key::Enter));
+                cancel |= ui.input(|i| i.key_pressed(egui::Key::Escape));
+                if !draft.error.is_empty() {
+                    ui.colored_label(red(), &draft.error);
+                }
+                ui.horizontal(|ui| {
+                    commit |= ui.button(pair("Renommer", "Rename")).clicked();
+                    cancel |= ui.button(pair("Annuler", "Cancel")).clicked();
+                });
+            });
+        if commit && let Some(w) = self.studio.workspaces.get_mut(draft.index) {
+            match w.rename(&draft.name) {
+                Ok(()) => {
+                    if draft.index == self.studio.active {
+                        self.project.name = w.name.clone();
+                    }
+                    self.log(pair("Setup renommé ; enregistrer le projet ou Studio pour conserver ce nom.", "Setup renamed; save the project or Studio to keep this name.").into(), false);
+                    open = false;
+                }
+                Err(error) => draft.error = error,
+            }
+        }
+        if open && !cancel {
+            self.setup_rename = Some(draft);
         }
     }
     fn save_studio(&mut self) {
@@ -368,7 +444,7 @@ impl Workbench {
             ui.label(pair("Chaque banc conserve son graphe, sa disposition, ses résultats et son historique de session.","Each bench keeps its graph, layout, results and session history."));
             ui.horizontal(|ui| {if ui.button(t("Enregistrer Studio")).clicked(){self.save_studio();}ui.monospace(&self.studio_path);});
             ui.separator();
-            if let Some(w)=self.studio.workspaces.get_mut(self.studio.active) {ui.label(pair("Nom de l'espace actif","Active workspace name"));ui.add(egui::TextEdit::singleline(&mut w.name).char_limit(80));}
+            if ui.button(pair("Renommer le setup actif…", "Rename active setup…")).clicked() { self.setup_rename=Some(RenameSetup {index:self.studio.active,name:self.project.name.clone(),focus:true,error:String::new()}); }
             ui.horizontal(|ui| {
                 ui.add(egui::TextEdit::singleline(&mut self.workspace_name).char_limit(80));
                 if ui.add_enabled(!self.worker.is_busy()&&self.studio.workspaces.len()<8&&!self.workspace_name.trim().is_empty(),egui::Button::new(t("Nouvel espace"))).clicked() {
@@ -419,6 +495,15 @@ if ui.small_button(crate::i18n::t("×")).on_hover_text(pair("Retirer le layout",
         }
         ui.horizontal(|ui| {
             ui.strong(view.label());
+            if view == View::Schematic {
+                if ui.small_button(t("Ajuster")).clicked() {
+                    self.canvas.fit();
+                }
+                ui.label(format!("{:.0}%", self.canvas.zoom * 100.));
+                if let Err(e) = self.project.graph.validate() {
+                    ui.colored_label(gold(), e.to_string());
+                }
+            }
             ui.menu_button(t("Disposition"), |ui| {
                 for (where_, label) in [
                     (Location::Main, "Vue principale"),

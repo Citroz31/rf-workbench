@@ -1,5 +1,20 @@
 # Validation 0.5.0 - interface, projets et PNA
 
+## Version 0.6 - Windows local, 7 octobre 2026
+
+- `cargo fmt` et `cargo clippy --workspace --all-targets -- -D warnings` réussis.
+- **119 tests Rust** réussis, puis **5 tests d’intégration Python** réellement exécutés (processus, SCPI, erreurs, timeout et Stop). Les suites sans tests ne sont pas comptées.
+- 20 autotests du binaire release réussis avec PATH vide et Python indisponible, depuis `C:/Windows/System32`, données dans un dossier utilisateur.
+- Deux fichiers `.rfbench` effectivement chargés et simulés : MAAL gain 26 dB, CGY gain 5,8 dB, S21 et 401 points, provenance simulée.
+- Test de souris egui : clic source, prévisualisation près du pin, absence de création au survol, clic cible, undo/redo, persistance W ; refus de pin occupé, incompatible ou éloigné, marge conservée avec le zoom.
+- Tests des boucles physiques indépendantes du DAG, réduction de ports, sérialisation historique et copier/coller ; simulation RX/TX, 31,5 dB d’atténuation et 354,375° de phase.
+- Tests SCPI PNA : ports réels insuffisants, trace S43 sur 4 ports, identité USB VNA ; tests DC : identité erronée, couplage, consignes divergentes, OFF avant réglage, ON explicite, annulation et Stop. Le simulateur E3631A conserve un interrupteur global.
+- Cinq captures natives 1600 × 1000 inspectées : schéma, fenêtre PNA, DUT CGY, DC et catalogue. Aucun benchmark pointeur-écran ou essai sur écran tactile/DPI multiple n’est revendiqué.
+
+Aucun instrument physique n’a été connecté. Les réponses contrôlées vérifient le protocole, pas le comportement de chaque firmware ni une qualification métrologique. Les modèles DUT n’incluent ni compression, ni bruit NF généré, ni courbes constructeur mesurées. Les câbles DC ne séquencent pas la polarisation.
+
+La publication Windows MSVC et les téléchargements publics sont vérifiés par le workflow `release.yml` pour le tag livré. Le succès local GNU n’est pas présenté comme une validation Linux/macOS/mobile.
+
 Contrôles locaux sur Windows x64, Rust 1.90.0, Python 3.12.14, le 7 octobre 2026.
 
 | Vérification | Résultat |

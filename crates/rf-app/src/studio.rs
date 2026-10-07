@@ -132,6 +132,19 @@ pub struct Workspace {
     pub waterfall: crate::analysis::Waterfall,
 }
 impl Workspace {
+    pub fn rename(&mut self, name: &str) -> Result<(), String> {
+        let name = name.trim();
+        if name.is_empty()
+            || name.len() > 128
+            || name.chars().count() > 80
+            || name.chars().any(char::is_control)
+        {
+            return Err("Nom requis : 1 à 80 caractères (128 octets maximum).".into());
+        }
+        self.name = name.into();
+        self.project.name = name.into();
+        Ok(())
+    }
     pub fn new(name: String, project: Project) -> Self {
         Self {
             name,
@@ -248,6 +261,20 @@ impl Studio {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn rename_setup_keeps_project_and_saved_tab_in_sync() {
+        let mut w = Workspace::new("Ancien".into(), Project::default());
+        w.rename("  LNA bande Ka  ").unwrap();
+        assert_eq!(w.name, "LNA bande Ka");
+        assert_eq!(w.project.name, w.name);
+        assert!(w.rename("\n").is_err());
+        assert!(w.rename("Deux\nLignes").is_err());
+        assert_eq!(w.name, "LNA bande Ka");
+        let mut studio = Studio::default();
+        studio.workspaces.push(w);
+        let restored = Studio::from_json(&serde_json::to_string(&studio).unwrap()).unwrap();
+        assert_eq!(restored.workspaces[0].project.name, "LNA bande Ka");
+    }
     #[test]
     fn workspace_roundtrip_and_layout_moves_keep_one_pane() {
         let mut s = Studio::default();

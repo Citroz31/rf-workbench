@@ -1,5 +1,40 @@
 {
   "schema_version": 1,
-  "manufacturers": ["Analog Devices", "Qorvo", "Skyworks", "NXP", "Texas Instruments", "Infineon", "STMicroelectronics", "Renesas"],
-  "entries": []
+  "manufacturers": ["MACOM", "Analog Devices", "Qorvo", "Skyworks", "NXP", "Texas Instruments", "Infineon", "STMicroelectronics", "Renesas"],
+  "entries": [
+    {
+      "id": "macom-maal-fr1245", "manufacturer": "MACOM", "part_number": "MAAL-FR1245", "category": "LNA bande Ka",
+      "description": "Amplificateur faible bruit, 27 à 31,5 GHz. Modèle de simulation linéaire à gain constant au point de référence.",
+      "insertion_loss_db": null, "noise_figure_db": 1.2,
+      "sources": [{"url":"https://cdn.macom.com/datasheets/MAAL-FR1245.pdf","retrieved_on":"2026-10-07"}],
+      "attributes": {"package":"PQFN 3 × 3 mm, 14 contacts", "bias":"VD +1,5 V ; VG −1,5 V ; ID typ. 48 mA"},
+      "rf": {
+        "band_hz":[27000000000,31500000000], "reference_frequency_hz":29000000000,
+        "gain_db":{"typical":26,"minimum":23,"maximum":null},
+        "noise_figure_db":{"typical":1.2,"minimum":null,"maximum":1.5},
+        "output_p1db_dbm":{"typical":5,"minimum":null,"maximum":null},
+        "conditions":"29 GHz ; TA +25 °C ; VD +1,5 V ; VG −1,5 V (table électrique, p. 3).",
+        "revision":"V4 — 8 avril 2026", "modes":["RX"],
+        "attenuation_states":1,"attenuation_step_db":0,"phase_states":1,"phase_step_deg":0,
+        "notes":["P1dB est référencé à la sortie. La simulation linéaire ne reproduit ni compression ni variation fréquentielle mesurée.","L'ordre de polarisation est décrit p. 5 ; aucune séquence DC n'est exécutée automatiquement."]
+      }
+    },
+    {
+      "id":"macom-cgy2170yhv-c1", "manufacturer":"MACOM", "part_number":"CGY2170YHV/C1", "category":"Core chip bande X",
+      "description":"Core chip Tx/Rx à trois ports RF, atténuateur et déphaseur de 6 bits ; bande 8 à 12 GHz.",
+      "insertion_loss_db":null,"noise_figure_db":8,
+      "sources":[{"url":"https://cdn.macom.com/datasheets/CGY2170YHV-C1.pdf","retrieved_on":"2026-10-07"}],
+      "attributes":{"package":"QFN 7 × 7 × 0,9 mm", "bias":"VD1/2/3 et VDN +3 V ; VSS/VSN −3 V ; valeurs typiques, état de référence"},
+      "rf":{
+        "band_hz":[8000000000,12000000000],"reference_frequency_hz":10000000000,
+        "gain_db":{"typical":5.8,"minimum":null,"maximum":null},
+        "noise_figure_db":{"typical":8,"minimum":null,"maximum":null},
+        "output_p1db_dbm":{"typical":13,"minimum":null,"maximum":null},
+        "conditions":"10 GHz ; TA +25 °C ; état de référence ; ID1 20 mA, ID2 23 mA, ID3 40 mA, IDN 2,5 mA, ISS 4 mA, ISN 21,5 mA (p. 3).",
+        "revision":"V3", "modes":["RX","TX"],
+        "attenuation_states":64,"attenuation_step_db":0.5,"phase_states":64,"phase_step_deg":5.625,
+        "notes":["P1dB sortie Tx/Rx : table électrique p. 3 = 13 dBm typique ; résumé p. 1 = 12 dBm. Divergence conservée explicitement.","Les 64 codes de phase correspondent aux valeurs nominales de 0 à 354,375° ; ce modèle ne représente pas les erreurs RMS ni l'atténuateur analogique AT1.","Broches du schéma : RX IN, TX OUT et COM. Le modèle de simulation suit uniquement le trajet RX ou TX sélectionné. Les rails DC sont regroupés, ce n'est pas un dessin de brochage PCB."]
+      }
+    }
+  ]
 }

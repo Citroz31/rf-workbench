@@ -69,6 +69,14 @@ fn main() -> eframe::Result<()> {
         if args.iter().any(|a| a == "--demo-dsp") {
             graph = rf_runtime::dsp_demo();
         }
+        if let Some(i) = args.iter().position(|a| a == "--open") {
+            let text = std::fs::read_to_string(args.get(i + 1).expect("--open path"))
+                .expect("read project");
+            graph = bench_file::BenchFile::parse(&text)
+                .expect("valid simulated project")
+                .project
+                .graph;
+        }
         let iterations = if args.iter().any(|a| a == "--benchmark") {
             1000
         } else {
@@ -89,7 +97,7 @@ fn main() -> eframe::Result<()> {
         let last = last.unwrap();
         println!(
             "{}",
-            serde_json::json!({"iterations":iterations,"total_ms":start.elapsed().as_secs_f64()*1000.,"last_run_ms":last.elapsed_ms,"peak":last.trace.and_then(|t|t.peak().ok()),"measurements":last.measurements.iter().map(|m|serde_json::json!({"name":m.name,"value":m.value,"unit":m.unit,"simulated":m.simulated})).collect::<Vec<_>>(),"tests":last.tests,"completed":last.completed})
+            serde_json::json!({"iterations":iterations,"total_ms":start.elapsed().as_secs_f64()*1000.,"last_run_ms":last.elapsed_ms,"peak":last.trace.and_then(|t|t.peak().ok()),"network":last.network.map(|n|serde_json::json!({"parameter":n.parameter,"points":n.frequency_hz.len(),"first_magnitude_db":n.magnitude_db.first(),"first_phase_deg":n.phase_deg.first(),"simulated":n.simulated})),"measurements":last.measurements.iter().map(|m|serde_json::json!({"name":m.name,"value":m.value,"unit":m.unit,"simulated":m.simulated})).collect::<Vec<_>>(),"tests":last.tests,"completed":last.completed})
         );
         return Ok(());
     }

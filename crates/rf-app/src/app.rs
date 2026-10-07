@@ -109,6 +109,7 @@ pub struct Workbench {
     studio_path: String,
     layout_name: String,
     workspace_name: String,
+    setup_rename: Option<professional::RenameSetup>,
     buffers: Vec<Buffer>,
     debug_snapshot: Option<Snapshot>,
     buffer_key: Option<(u64, usize)>,
@@ -204,10 +205,11 @@ impl Workbench {
             .filter(|p| p.validate().is_ok())
             .unwrap_or_default();
         let catalog_path = data_directory.file("dut-catalog.json");
-        let catalog = read_limited(&catalog_path, 4_000_000)
+        let mut catalog = read_limited(&catalog_path, 4_000_000)
             .ok()
             .and_then(|s| Catalog::from_json(&s).ok())
             .unwrap_or_default();
+        catalog.include_bundled();
         let args: Vec<_> = std::env::args().collect();
         let mut project = Project::default();
         for n in &mut project.graph.nodes {
@@ -278,6 +280,7 @@ impl Workbench {
             browse_directory: data_directory.path().to_string_lossy().into_owned(),
             data_directory,
             instrument_dialog: None,
+            setup_rename: None,
             context: cc.egui_ctx.clone(),
             layout: Layout::default(),
             studio,
@@ -339,6 +342,7 @@ impl Workbench {
                 insertion_loss_db: Some(3.),
                 noise_figure_db: Some(2.5),
                 sources: Vec::new(),
+                rf: None,
                 attributes: Default::default(),
             },
             canvas: Canvas::configured(preferences.snap, preferences.orthogonal),
@@ -426,6 +430,32 @@ impl Workbench {
         }
         if args.iter().any(|a| a == "--studio") {
             bench.view = View::Studio;
+        }
+        if args.iter().any(|a| a == "--catalog-ui") {
+            bench.view = View::DutCatalog;
+            bench.welcome = false;
+        }
+        if args.iter().any(|a| a == "--dut-ui" || a == "--dc-ui") {
+            let dc = args.iter().any(|a| a == "--dc-ui");
+            if let Some(id) = bench
+                .project
+                .graph
+                .nodes
+                .iter()
+                .find(|n| {
+                    if dc {
+                        n.kind.is_dc_supply()
+                    } else {
+                        n.kind == Kind::Dut
+                    }
+                })
+                .map(|n| n.id)
+            {
+                bench.open_instrument(id);
+                if let Some(d) = &mut bench.instrument_dialog {
+                    d.tab = 1;
+                }
+            }
         }
         if args.iter().any(|a| a == "--help-ui") {
             bench.view = View::Help;
@@ -811,24 +841,16 @@ impl Workbench {
             s.interaction.resize_grab_radius_corner = 14.;
         });
         egui::TopBottomPanel::top("header").show(ctx, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                if ui.small_button("Accueil / projets").clicked() && !self.worker.is_busy() {
-                    self.snapshot_workspace();
-                    self.welcome = true;
-                }
-                ui.label("↔ Glisser les séparateurs · ↘ fenêtres redimensionnables");
-            });
-            ui.add_space(5.);
             ui.horizontal(|ui| {
                 ui.label(
                     RichText::new(crate::i18n::t("RF"))
-                        .size(24. * crate::theme::scale())
+                        .size(20. * crate::theme::scale())
                         .strong()
                         .color(teal()),
                 );
                 ui.label(
                     RichText::new(crate::i18n::t("WORKBENCH"))
-                        .size(19. * crate::theme::scale())
+                        .size(16. * crate::theme::scale())
                         .strong(),
                 );
                 ui.label(
@@ -837,7 +859,11 @@ impl Workbench {
                         .color(muted()),
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    badge(ui, "v0.5 · WINDOWS", muted());
+                    if ui.small_button("Accueil / projets").clicked() && !self.worker.is_busy() {
+                        self.snapshot_workspace();
+                        self.welcome = true;
+                    }
+                    badge(ui, concat!("v", env!("CARGO_PKG_VERSION")), muted());
                     badge(
                         ui,
                         if self.hardware {
@@ -869,16 +895,7 @@ impl Workbench {
                     if icon_button(ui, icon, name, self.view == view).clicked() {
                         self.view = view;
                     }
-                    if ui
-                        .selectable_label(
-                            self.view == view,
-                            RichText::new(t(name)).size(12. * crate::theme::scale()),
-                        )
-                        .clicked()
-                    {
-                        self.view = view;
-                    }
-                    ui.add_space(6.);
+                    ui.add_space(2.);
                 }
                 ui.menu_button(t("Vues RF"), |ui| {
                     for view in [
@@ -903,7 +920,6 @@ impl Workbench {
                     }
                 }
             });
-            ui.separator();
             ui.horizontal_wrapped(|ui| {
                 for (action, icon, selected) in [
                     (
@@ -948,7 +964,7 @@ impl Workbench {
                     }
                     ui.checkbox(&mut self.continuous, crate::i18n::t("Continu"));
                 });
-                ui.add_enabled_ui(busy, |ui| {
+                ui.add_enabled_ui(true, |ui| {
                     if icon_button(ui, Icon::Stop, &self.preferences.hint(Action::Stop), false)
                         .clicked()
                     {
@@ -1054,6 +1070,7 @@ impl Workbench {
                         }
                         for category in [
                             "Instruments RF",
+                            "Alimentations DC",
                             "Électronique & conversion",
                             "Thermique",
                             "Composants DUT",
@@ -1095,16 +1112,20 @@ impl Workbench {
             let mut old=None;let mut changed=false;let mut remove=None;let mut open_python=false;
             if let Some(id)=self.canvas.selected && let Some(n)=self.project.graph.nodes.iter_mut().find(|n|n.id==id){
                 old=Some(n.clone());badge(ui,n.kind.tag(),crate::theme::kind(n.kind));changed|=ui.text_edit_singleline(&mut n.title).changed();
-                let (r,_)=ui.allocate_exact_size(egui::vec2(ui.available_width(),90.),egui::Sense::hover());visuals::symbol(ui.painter(),r.shrink(8.),n.kind);ui.separator();let c=&mut n.config;
+                let (r,_)=ui.allocate_exact_size(egui::vec2(ui.available_width(),90.),egui::Sense::hover());visuals::symbol_with_ports(ui.painter(),r.shrink(8.),n.kind,n.config.instrument.port_count);ui.separator();let c=&mut n.config;
                 if instrument::supports(n.kind) {
-                    ui.label(&c.resource);ui.label("Réglages et connexion dans une fenêtre redimensionnable.");
-                    if ui.button("Configurer l’instrument…").clicked(){configure=Some(id);}
-                    ui.label(format!("{} · Channel {}",n.kind.label(),c.instrument.channel));
+                    if n.kind!=Kind::Dut {ui.label(&c.resource);}
+                    if n.kind.max_rf_ports().is_some() {ui.label(format!("{} ports RF · {} · Channel {}",c.instrument.port_count,c.s_parameter,c.instrument.channel));}
+                    if n.kind==Kind::Dut {ui.label(format!("Gain {:.1} dB · NF {:.1} dB",-c.loss_db-c.attenuation_db,c.noise_figure_db));}
+                    ui.label("Double-clic sur le bloc pour ouvrir ses réglages.");
+                    if ui.button("Réglages du bloc…").clicked(){configure=Some(id);}
+                    if n.kind.is_dc_supply() {ui.label(format!("CH{} · {:.2} V · limite {:.3} A",c.instrument.dc.channel,c.instrument.dc.voltage_v,c.instrument.dc.current_limit_a));}
                 }else{match n.kind {
                     Kind::Dsp(op)=>{changed|=dsp::settings_ui(ui,op,&mut c.dsp,id,&mut self.dsp_draft);},
                     Kind::Generator=>{changed|=number(ui,"FRÉQUENCE",&mut c.frequency_hz,1e6," Hz");changed|=number(ui,"PUISSANCE",&mut c.power_dbm,0.1," dBm");},
                     Kind::Dut=>{changed|=number(ui,"PERTE D'INSERTION",&mut c.loss_db,0.1," dB");changed|=number(ui,"FACTEUR DE BRUIT",&mut c.noise_figure_db,0.1," dB");ui.label(c.dut_id.as_deref().unwrap_or("DUT générique · modèle local"));if ui.button(crate::i18n::t("Ouvrir le catalogue DUT")).clicked(){self.view=View::DutCatalog;}ui.label(RichText::new(crate::i18n::t("MODEL fournit un modèle au PNA/NF Meter. RF IN/OUT représente la chaîne de signal.")).size(11. * crate::theme::scale()).color(muted()));},
-                    Kind::Analyzer|Kind::Pna|Kind::PnaX=>{changed|=number(ui,"DÉBUT BALAYAGE",&mut c.start_hz,1e6," Hz");changed|=number(ui,"FIN BALAYAGE",&mut c.stop_hz,1e6," Hz");caption(ui,"POINTS");changed|=ui.add(egui::DragValue::new(&mut c.points).range(2..=rf_core::MAX_POINTS)).changed();if n.kind==Kind::Analyzer{caption(ui,"REQUÊTE TRACE ASCII");changed|=ui.text_edit_singleline(&mut c.trace_query).changed();}else{caption(ui,"PARAMÈTRE S");egui::ComboBox::from_id_salt("s-param").selected_text(&c.s_parameter).show_ui(ui,|ui|{for p in ["S11","S21","S12","S22"]{changed|=ui.selectable_value(&mut c.s_parameter,p.into(),p).changed();}});}},
+                    Kind::Analyzer|Kind::Pna|Kind::PnaX|Kind::UsbVna=>{changed|=number(ui,"DÉBUT BALAYAGE",&mut c.start_hz,1e6," Hz");changed|=number(ui,"FIN BALAYAGE",&mut c.stop_hz,1e6," Hz");caption(ui,"POINTS");changed|=ui.add(egui::DragValue::new(&mut c.points).range(2..=rf_core::MAX_POINTS)).changed();},
+                    Kind::DcSupplyE3631A|Kind::DcSupplyE36313A=>{ui.label("Réglages dans la fenêtre du bloc.");},
                     Kind::Awg|Kind::Dac|Kind::Adc=>{changed|=number(ui,"CADENCE AWG",&mut c.sample_rate_hz,1e6," Sa/s");changed|=number(ui,"FRÉQUENCE DE BASE",&mut c.tone_hz,1e4," Hz");caption(ui,"ÉCHANTILLONS AWG");changed|=ui.add(egui::DragValue::new(&mut c.samples).range(2..=65536)).changed();caption(ui,"RÉSOLUTION");changed|=ui.add(egui::DragValue::new(&mut c.resolution_bits).range(2..=24).suffix(" bits")).changed();changed|=number(ui,"PLEINE ÉCHELLE",&mut c.voltage_v,0.05," V");},
                     Kind::IqModulator=>{changed|=number(ui,"PERTE CONVERSION",&mut c.loss_db,0.1," dB");ui.label(crate::i18n::t("Entrées I / Q analogiques et oscillateur LO. Modèle idéal de transposition."));},
                     Kind::VariableResistor=>{changed|=number(ui,"RÉSISTANCE",&mut c.resistance_ohm,1.," Ω");},
@@ -1153,6 +1174,7 @@ if open_python{self.view=View::Python;}
                             "{} blocs  ·  {} câbles",
                             self.project.graph.nodes.len(),
                             self.project.graph.edges.len()
+                                + self.project.graph.physical_connections.len()
                         ))
                         .size(11. * crate::theme::scale())
                         .color(muted()),
@@ -1203,30 +1225,9 @@ if open_python{self.view=View::Python;}
     }
     fn center(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(panel()).inner_margin(18.))
+            .frame(egui::Frame::new().fill(panel()).inner_margin(8.))
             .show(ctx, |ui| {
-                ui.heading(&self.project.name);
-                ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new(crate::i18n::t("Banc RF / Spectre & conformité"))
-                            .size(12. * crate::theme::scale())
-                            .color(muted()),
-                    );
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        badge(
-                            ui,
-                            if self.preview {
-                                "APERÇU SIMULÉ"
-                            } else if self.trace.simulated {
-                                "DONNÉES SIMULÉES"
-                            } else {
-                                "MESURE MATÉRIELLE"
-                            },
-                            if self.trace.simulated { teal() } else { gold() },
-                        );
-                    });
-                });
-                ui.add_space(9.);
+                // The setup name belongs to its tab; keep the canvas unobstructed.
                 self.pane_header(ui, self.view);
                 self.render_view(ui, self.view);
             });
@@ -1234,24 +1235,6 @@ if open_python{self.view=View::Python;}
     fn render_view(&mut self, ui: &mut egui::Ui, view: View) {
         match view {
             View::Schematic => {
-                ui.horizontal(|ui| {
-                    caption(ui, "SCHÉMA DU BANC");
-                    if ui.small_button(crate::i18n::t("Ajuster")).clicked() {
-                        self.canvas.fit();
-                    }
-                    ui.label(
-                        RichText::new(format!("{:.0}%", self.canvas.zoom * 100.))
-                            .size(11. * crate::theme::scale())
-                            .color(muted()),
-                    );
-                    if let Err(e) = self.project.graph.validate() {
-                        ui.label(
-                            RichText::new(e.to_string())
-                                .size(11. * crate::theme::scale())
-                                .color(gold()),
-                        );
-                    }
-                });
                 let height = ui.available_height().max(75.);
                 if let Some(error) =
                     self.canvas
@@ -1556,6 +1539,7 @@ impl eframe::App for Workbench {
         let typing = crate::shortcuts::text_editing(ctx)
             || self.welcome
             || self.instrument_dialog.is_some()
+            || self.setup_rename.is_some()
             || self.project_dialog.is_some();
         let native_paste = events.iter().any(|e| matches!(e, egui::Event::Paste(_)));
         for event in &events {
@@ -1605,6 +1589,7 @@ impl eframe::App for Workbench {
             self.center(ctx);
             self.floating(ctx);
             self.instrument_window(ctx);
+            self.rename_setup_window(ctx);
             self.project_window(ctx);
         }
         if self.canvas.routes_dirty && self.routing_job.is_none() {
@@ -1613,6 +1598,19 @@ impl eframe::App for Workbench {
         }
         if self.view.dockable() {
             self.layout.primary = self.view;
+        }
+        if let Some(id) = self.canvas.configure_request.take() {
+            if self
+                .project
+                .graph
+                .node(id)
+                .is_some_and(|n| instrument::supports(n.kind))
+            {
+                self.open_instrument(id);
+            } else {
+                self.canvas.select_only(id);
+                self.studio.inspector = true;
+            }
         }
         if let Some(kind) = self.canvas.help_request.take() {
             self.help_kind = Some(kind);

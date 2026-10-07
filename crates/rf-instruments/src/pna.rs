@@ -1,11 +1,12 @@
 //! Keysight PNA / PNA-X binary acquisition. No preset, calibration or RF output change.
 //! SCPI reference: helpfiles.keysight.com/csg/NA520xA/Programming/GP-IB_Command_Finder/
 use crate::{Error, ResourceManager, Result, Session};
-use rf_core::{Config, MAX_POINTS, NetworkTrace};
+use rf_core::{Config, Kind, MAX_POINTS, NetworkTrace};
 use std::time::Duration;
 
 #[derive(Clone, Debug, Default)]
 pub struct Capabilities {
+    pub port_count: Option<u8>,
     pub resource: String,
     pub idn: String,
     pub options: String,
@@ -94,6 +95,10 @@ pub fn inspect(resource: &str, channel: u32, timeout: Duration) -> Result<Capabi
         channel,
         ..Default::default()
     };
+    match query(resource, timeout, "SYST:CAP:HARD:PORT:COUN?") {
+        Ok(s) => c.port_count = s.trim().parse::<u8>().ok().filter(|n| *n > 0),
+        Err(e) => c.warnings.push(e.to_string()),
+    }
     for (command, target) in [
         ("*OPT?", 0),
         ("SYST:CAP:LIC:CAT? VALID", 1),
@@ -140,6 +145,17 @@ pub fn is_pna(idn: &str) -> bool {
         && (parts[0].to_ascii_uppercase().contains("KEYSIGHT")
             || parts[0].to_ascii_uppercase().contains("AGILENT"))
         && ["N52", "E83"]
+            .iter()
+            .any(|p| parts[1].trim().to_ascii_uppercase().starts_with(p))
+}
+/// Streamline USB VNAs share the Keysight VNA SCPI command set. This profile
+/// is deliberately not advertised as a universal driver for every USB VNA.
+pub fn is_usb_vna(idn: &str) -> bool {
+    let parts: Vec<_> = idn.split(',').collect();
+    parts.len() >= 2
+        && (parts[0].to_ascii_uppercase().contains("KEYSIGHT")
+            || parts[0].to_ascii_uppercase().contains("AGILENT"))
+        && ["P50", "P93"]
             .iter()
             .any(|p| parts[1].trim().to_ascii_uppercase().starts_with(p))
 }
@@ -224,9 +240,28 @@ pub(crate) fn finish_transfer<T>(
 /// Read the existing selected standard-channel measurement, optionally configure
 /// the sweep and trigger. The live catalog validates the trace's parameter.
 pub fn acquire(session: &mut dyn Session, c: &Config) -> Result<NetworkTrace> {
+    acquire_vna(session, c, Kind::Pna)
+}
+pub fn acquire_vna(session: &mut dyn Session, c: &Config, kind: Kind) -> Result<NetworkTrace> {
     c.instrument.validate().map_err(Error::Protocol)?;
+    let max = kind
+        .max_rf_ports()
+        .ok_or_else(|| Error::Protocol("Profil VNA requis".into()))?;
+    let (receiver, source) = rf_core::physical::s_parameter_ports(&c.s_parameter)
+        .ok_or_else(|| Error::Protocol("Paramètre Sij invalide".into()))?;
+    if c.instrument.port_count > max
+        || receiver > c.instrument.port_count
+        || source > c.instrument.port_count
+    {
+        return Err(Error::Protocol("Paramètre S hors ports configurés".into()));
+    }
     let idn = session.query("*IDN?")?;
-    if !is_pna(&idn)
+    let identified = if kind == Kind::UsbVna {
+        is_usb_vna(&idn)
+    } else {
+        is_pna(&idn)
+    };
+    if !identified
         || (!c.instrument.expected_idn.trim().is_empty()
             && !idn
                 .to_lowercase()
@@ -234,6 +269,16 @@ pub fn acquire(session: &mut dyn Session, c: &Config) -> Result<NetworkTrace> {
     {
         return Err(Error::Protocol(
             "Identité incompatible avec le pilote PNA".into(),
+        ));
+    }
+    let actual_ports = session
+        .query("SYST:CAP:HARD:PORT:COUN?")?
+        .trim()
+        .parse::<u8>()
+        .map_err(|_| Error::Protocol("Nombre de ports matériel indéterminé".into()))?;
+    if c.instrument.port_count > actual_ports || receiver > actual_ports || source > actual_ports {
+        return Err(Error::Protocol(
+            "Le VNA réel ne possède pas tous les ports configurés".into(),
         ));
     }
     let ch = c.instrument.channel;

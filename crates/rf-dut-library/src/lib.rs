@@ -16,6 +16,57 @@ pub struct Source {
     pub retrieved_on: String,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct Specification {
+    pub typical: f64,
+    pub minimum: Option<f64>,
+    pub maximum: Option<f64>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RfCharacteristics {
+    pub band_hz: [f64; 2],
+    pub reference_frequency_hz: f64,
+    pub gain_db: Specification,
+    pub noise_figure_db: Specification,
+    pub output_p1db_dbm: Specification,
+    pub conditions: String,
+    pub revision: String,
+    pub modes: Vec<String>,
+    pub attenuation_states: u8,
+    pub attenuation_step_db: f64,
+    pub phase_states: u8,
+    pub phase_step_deg: f64,
+    pub notes: Vec<String>,
+}
+impl RfCharacteristics {
+    fn valid(&self) -> bool {
+        self.band_hz.iter().all(|v| v.is_finite() && *v > 0.)
+            && self.band_hz[0] < self.band_hz[1]
+            && self.reference_frequency_hz.is_finite()
+            && (self.band_hz[0]..=self.band_hz[1]).contains(&self.reference_frequency_hz)
+            && [&self.gain_db, &self.noise_figure_db, &self.output_p1db_dbm]
+                .iter()
+                .all(|s| {
+                    s.typical.is_finite()
+                        && (-160. ..=160.).contains(&s.typical)
+                        && s.minimum.is_none_or(|v| v.is_finite() && v <= s.typical)
+                        && s.maximum.is_none_or(|v| v.is_finite() && v >= s.typical)
+                })
+            && self.noise_figure_db.typical >= 0.
+            && self.attenuation_states > 0
+            && self.attenuation_states <= 64
+            && self.phase_states > 0
+            && self.phase_states <= 64
+            && self.attenuation_step_db.is_finite()
+            && (0. ..=160.).contains(&self.attenuation_step_db)
+            && self.phase_step_deg.is_finite()
+            && (0. ..=360.).contains(&self.phase_step_deg)
+            && (self.attenuation_states - 1) as f64 * self.attenuation_step_db <= 160.
+            && (self.phase_states - 1) as f64 * self.phase_step_deg < 360.
+            && !self.conditions.is_empty()
+            && !self.revision.is_empty()
+    }
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Component {
     pub id: String,
     pub manufacturer: String,
@@ -24,6 +75,8 @@ pub struct Component {
     pub description: String,
     pub insertion_loss_db: Option<f64>,
     pub noise_figure_db: Option<f64>,
+    #[serde(default)]
+    pub rf: Option<RfCharacteristics>,
     #[serde(default)]
     pub sources: Vec<Source>,
     #[serde(default)]
@@ -57,6 +110,15 @@ impl Catalog {
         }
         let mut ids = BTreeSet::new();
         for c in &self.entries {
+            if c.rf
+                .as_ref()
+                .is_some_and(|rf| !rf.valid() || c.sources.is_empty())
+            {
+                return Err(Error::Invalid(format!(
+                    "Caractéristiques RF invalides ou non sourcées : {}",
+                    c.id
+                )));
+            }
             if c.noise_figure_db.is_some_and(|v| v > 60.) {
                 return Err(Error::Invalid("Facteur de bruit hors domaine".into()));
             }
@@ -95,6 +157,16 @@ impl Catalog {
         self.validate()?;
         Ok(serde_json::to_string_pretty(self)?)
     }
+    pub fn include_bundled(&mut self) {
+        for entry in Self::default().entries {
+            if !self.entries.iter().any(|e| e.id == entry.id) {
+                self.entries.push(entry);
+            }
+        }
+        if !self.manufacturers.iter().any(|s| s == "MACOM") {
+            self.manufacturers.push("MACOM".into());
+        }
+    }
 }
 #[cfg(test)]
 mod tests {
@@ -108,13 +180,50 @@ mod tests {
             description: "Fiche locale de test".into(),
             insertion_loss_db: Some(3.),
             noise_figure_db: None,
+            rf: None,
             sources: vec![],
             attributes: BTreeMap::new(),
         }
     }
     #[test]
-    fn empty_seed_contains_no_invented_chip_specs() {
-        assert!(Catalog::default().entries.is_empty());
+    fn bundled_manufacturer_specs_have_sources_and_conditions() {
+        let c = Catalog::default();
+        c.validate().unwrap();
+        assert_eq!(c.entries.len(), 2);
+        let lna = c.search("MAAL-FR1245")[0].rf.as_ref().unwrap();
+        assert_eq!(
+            (
+                lna.gain_db.typical,
+                lna.noise_figure_db.typical,
+                lna.output_p1db_dbm.typical
+            ),
+            (26., 1.2, 5.)
+        );
+        let core = c.search("CGY2170")[0].rf.as_ref().unwrap();
+        assert_eq!((core.attenuation_states, core.phase_states), (64, 64));
+        assert_eq!(core.attenuation_step_db * 63., 31.5);
+        assert_eq!(core.phase_step_deg * 63., 354.375);
+        assert!(!core.notes.is_empty());
+    }
+    #[test]
+    fn legacy_and_user_catalogs_keep_custom_entries_when_seeded() {
+        let json = serde_json::to_string(&component()).unwrap();
+        let mut value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        value.as_object_mut().unwrap().remove("rf");
+        assert!(
+            serde_json::from_value::<Component>(value)
+                .unwrap()
+                .rf
+                .is_none()
+        );
+        let mut c = Catalog {
+            schema_version: 1,
+            manufacturers: vec![],
+            entries: vec![component()],
+        };
+        c.include_bundled();
+        c.include_bundled();
+        assert_eq!(c.entries.len(), 3);
     }
     #[test]
     fn round_trip_and_search() {

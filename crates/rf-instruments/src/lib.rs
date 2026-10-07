@@ -1,4 +1,5 @@
 //! VISA-style resource manager: simulator, native SCPI TCP and vendor VISA.
+pub mod dc;
 pub mod discovery;
 pub mod pna;
 pub mod pna_application;

@@ -4,6 +4,9 @@ use eframe::egui::{self, Align2, FontId, Pos2, Rect, Stroke, StrokeKind};
 use rf_core::Kind;
 
 pub fn symbol(p: &egui::Painter, rect: Rect, kind: Kind) {
+    symbol_with_ports(p, rect, kind, 2);
+}
+pub fn symbol_with_ports(p: &egui::Painter, rect: Rect, kind: Kind, port_count: u8) {
     let at = |x: f32, y: f32| rect.min + egui::vec2(x * rect.width(), y * rect.height());
     let line = |a: (f32, f32), b: (f32, f32), color| {
         p.line_segment(
@@ -151,10 +154,34 @@ pub fn symbol(p: &egui::Painter, rect: Rect, kind: Kind) {
             line((0., 0.5), (0.08, 0.5), accent);
             line((0.92, 0.5), (1., 0.5), accent);
         }
+        Kind::DcSupplyE3631A | Kind::DcSupplyE36313A => {
+            let chassis = Rect::from_min_max(at(0.03, 0.06), at(0.97, 0.95));
+            p.rect_filled(chassis, 5., egui::Color32::from_rgb(63, 78, 94));
+            p.rect_stroke(chassis, 5., Stroke::new(1., muted()), StrokeKind::Inside);
+            for i in 0..3 {
+                let x = 0.08 + i as f32 * 0.3;
+                p.rect_filled(
+                    Rect::from_min_max(at(x, 0.16), at(x + 0.25, 0.57)),
+                    3.,
+                    bg(),
+                );
+                text(x + 0.125, 0.3, &format!("CH{}", i + 1), teal());
+                text(x + 0.125, 0.48, "V / A", muted());
+                for (dx, color) in [(0.07, red()), (0.18, blue())] {
+                    p.circle_filled(at(x + dx, 0.78), rect.height() * 0.065, color);
+                    p.circle_stroke(
+                        at(x + dx, 0.78),
+                        rect.height() * 0.065,
+                        Stroke::new(1., text_color()),
+                    );
+                }
+            }
+        }
         Kind::Generator
         | Kind::Analyzer
         | Kind::Pna
         | Kind::PnaX
+        | Kind::UsbVna
         | Kind::Awg
         | Kind::NoiseFigureMeter
         | Kind::PowerMeter
@@ -192,7 +219,7 @@ pub fn symbol(p: &egui::Painter, rect: Rect, kind: Kind) {
                         let t = i as f32 / 49.;
                         let y = match kind {
                             Kind::Analyzer => 0.66 - 0.43 * (-((t - 0.55) * 8.).powi(2)).exp(),
-                            Kind::Pna | Kind::PnaX => {
+                            Kind::Pna | Kind::PnaX | Kind::UsbVna => {
                                 0.43 + 0.07 * (t * std::f32::consts::TAU).sin()
                             }
                             _ => 0.45 + 0.18 * (t * std::f32::consts::TAU * 2.).sin(),
@@ -224,8 +251,8 @@ pub fn symbol(p: &egui::Painter, rect: Rect, kind: Kind) {
                     );
                 }
             }
-            let count = if matches!(kind, Kind::Pna | Kind::PnaX) {
-                4
+            let count = if kind.max_rf_ports().is_some() {
+                port_count.clamp(1, kind.max_rf_ports().unwrap())
             } else {
                 2
             };

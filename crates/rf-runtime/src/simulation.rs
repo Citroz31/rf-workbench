@@ -104,12 +104,17 @@ pub(crate) fn execute(
                 simulated: true,
             }]
         }
-        Kind::Pna | Kind::PnaX => {
+        Kind::Pna | Kind::PnaX | Kind::UsbVna => {
             let loss = match inputs.get(&0) {
                 Some(Value::Dut { loss, .. }) => *loss,
                 _ => c.loss_db,
             };
-            let reflection = matches!(c.s_parameter.as_str(), "S11" | "S22");
+            let phase = match inputs.get(&0) {
+                Some(Value::Dut { phase, .. }) => *phase,
+                _ => 0.,
+            };
+            let reflection =
+                rf_core::physical::s_parameter_ports(&c.s_parameter).is_some_and(|(i, j)| i == j);
             let frequency_hz: Vec<_> = (0..c.points)
                 .map(|i| c.start_hz + (c.stop_hz - c.start_hz) * i as f64 / (c.points - 1) as f64)
                 .collect();
@@ -131,13 +136,26 @@ pub(crate) fn execute(
                         }
                     })
                     .collect(),
-                phase_deg: frequency_hz.iter().map(|f| -360. * f * 1e-9).collect(),
+                phase_deg: frequency_hz
+                    .iter()
+                    .map(|f| -360. * f * 1e-9 + if reflection { 0. } else { phase })
+                    .collect(),
                 frequency_hz,
                 parameter: c.s_parameter.clone(),
                 simulated: true,
             };
             result.network = Some(network.clone());
             vec![Value::Network(network)]
+        }
+        Kind::DcSupplyE3631A | Kind::DcSupplyE36313A => {
+            // Stored setpoints do not imply an enabled output or an electrical load model.
+            result.measurements.push(Measurement {
+                name: format!("{} · sortie OFF", node.title),
+                value: 0.,
+                unit: "V".into(),
+                simulated: true,
+            });
+            vec![Value::Scalar(0., true), Value::Scalar(0., true)]
         }
         Kind::VariableResistor => vec![Value::Scalar(c.resistance_ohm, true)],
         Kind::Thermostream => vec![Value::Scalar(c.temperature_c, true)],

@@ -3,6 +3,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct Controls {
+    /// Displayed physical RF ports; independent from a PNA measurement channel.
+    pub port_count: u8,
+    pub dc: DcControls,
     pub expected_idn: String,
     pub timeout_ms: u64,
     pub channel: u32,
@@ -20,6 +23,8 @@ pub struct Controls {
 impl Default for Controls {
     fn default() -> Self {
         Self {
+            port_count: 2,
+            dc: DcControls::default(),
             expected_idn: String::new(),
             timeout_ms: 5000,
             channel: 1,
@@ -38,7 +43,8 @@ impl Default for Controls {
 }
 impl Controls {
     pub fn validate(&self) -> Result<(), String> {
-        if self.expected_idn.len() > 256
+        if !(1..=4).contains(&self.port_count)
+            || self.expected_idn.len() > 256
             || !(1..=30000).contains(&self.timeout_ms)
             || !(1..=1000).contains(&self.channel)
             || !matches!(self.precision, 32 | 64)
@@ -57,6 +63,45 @@ impl Controls {
                 .any(|s| s.len() > 1024 || s.contains(['\n', '\r', '\0']))
         {
             return Err("Réglages instrument invalides (canal, délai, format ou commande)".into());
+        }
+        Ok(())
+    }
+}
+
+/// Setpoints are persisted; enabling a physical supply is a separate explicit
+/// worker command. Graph loading and Run never arm a DC output.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct DcControls {
+    pub channel: u8,
+    pub voltage_v: f64,
+    pub current_limit_a: f64,
+}
+impl Default for DcControls {
+    fn default() -> Self {
+        Self {
+            channel: 1,
+            voltage_v: 0.,
+            current_limit_a: 0.1,
+        }
+    }
+}
+impl DcControls {
+    pub fn validate(&self, kind: crate::Kind) -> Result<(), String> {
+        let (low, high, current) = match (kind, self.channel) {
+            (crate::Kind::DcSupplyE3631A, 1) => (0., 6., 5.),
+            (crate::Kind::DcSupplyE3631A, 2) => (0., 25., 1.),
+            (crate::Kind::DcSupplyE3631A, 3) => (-25., 0., 1.),
+            (crate::Kind::DcSupplyE36313A, 1) => (0., 6., 10.),
+            (crate::Kind::DcSupplyE36313A, 2 | 3) => (0., 25., 2.),
+            _ => return Err("Modèle ou canal DC invalide".into()),
+        };
+        if !self.voltage_v.is_finite()
+            || !(low..=high).contains(&self.voltage_v)
+            || !self.current_limit_a.is_finite()
+            || !(0. ..=current).contains(&self.current_limit_a)
+        {
+            return Err("Consignes DC hors plage nominale du canal".into());
         }
         Ok(())
     }

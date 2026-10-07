@@ -1,6 +1,10 @@
 use super::*;
 impl Workbench {
     fn create_bench(&mut self, graph: rf_core::Graph, name: &str) {
+        if self.worker.is_busy() || self.studio.workspaces.len() >= 8 || name.trim().is_empty() {
+            self.log("Un nom est requis ; huit setups maximum peuvent être ouverts. Fermer un setup dans Espaces de travail si nécessaire.".into(),true);
+            return;
+        }
         self.snapshot_workspace();
         let project = Project {
             schema_version: rf_core::SCHEMA_VERSION,
@@ -25,7 +29,7 @@ impl Workbench {
             ui.heading("Créer ou ouvrir un banc de mesure");
             if ui.button("Revenir au banc courant").clicked(){self.welcome=false;}
             ui.label("Un fichier .rfbench conserve le schéma, les réglages des blocs et la disposition des panneaux.");
-            ui.add_space(20.);ui.label("Nom du nouveau projet");ui.add(egui::TextEdit::singleline(&mut self.workspace_name).desired_width(500.));
+             ui.add_space(20.);ui.label("Nom du nouveau projet");ui.add(egui::TextEdit::singleline(&mut self.workspace_name).char_limit(80).desired_width(500.));
             ui.horizontal_wrapped(|ui|{
                 if ui.add_sized([230.,55.],egui::Button::new("+ Nouveau projet vide")).clicked(){
                     self.create_bench(rf_core::Graph::default(),&self.workspace_name.clone());
@@ -34,9 +38,15 @@ impl Workbench {
             });
             ui.add_space(25.);ui.separator();ui.heading("Partir d'un exemple");
             ui.horizontal_wrapped(|ui|{
-                for (label,index) in [("PNA-X / paramètres S",0),("RF / DSP / QAM16",1),("PA 36–38 GHz · 20 dB",2),("RF / spectre",3)] {
-                    if ui.button(label).clicked(){let (graph,name)=match index {0=>(rf_core::Graph::network_demo(),"PNA-X / DUT"),1=>(rf_runtime::dsp_demo(),"RF / DSP / QAM16"),2=>(rf_core::Graph::pa_demo(),"PA 36–38 GHz · gain 20 dB (simulation)"),_=>(rf_core::Graph::demo(),"RF / spectre")};self.create_bench(graph,name);}
-                }
+                 for (label,index) in [("PNA-X / paramètres S",0),("RF / DSP / QAM16",1),("PA 36–38 GHz · 20 dB",2),("RF / spectre",3)] {
+                     if ui.button(label).clicked(){let (graph,name)=match index {0=>(rf_core::Graph::network_demo(),"PNA-X / DUT"),1=>(rf_runtime::dsp_demo(),"RF / DSP / QAM16"),2=>(rf_core::Graph::pa_demo(),"PA 36–38 GHz · gain 20 dB (simulation)"),_=>(rf_core::Graph::demo(),"RF / spectre")};self.create_bench(graph,name);}
+                 }
+                 for (label,text) in [("LNA MAAL-FR1245",include_str!("../../../../examples/LNA-MAAL-FR1245.rfbench")),("Core chip CGY2170",include_str!("../../../../examples/Corechip-CGY2170YHV-C1.rfbench"))] {
+                     if ui.button(label).clicked() {match crate::bench_file::BenchFile::parse(text) {
+                         Ok(b)=>{self.create_bench(b.project.graph,&b.project.name);self.layout=b.layout;self.canvas.fit();self.start_routing(false,false,false);}
+                         Err(e)=>self.log(e,true),
+                     }}
+                 }
             });
             ui.add_space(20.);ui.label("Simulation au démarrage. Les ressources instrument sont mémorisées ; le mode Matériel doit être activé à chaque ouverture.");
             ui.label("Fichier historique .rfw.json accepté à l'ouverture. Les nouveaux enregistrements utilisent .rfbench.");

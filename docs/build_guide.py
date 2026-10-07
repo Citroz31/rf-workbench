@@ -38,7 +38,7 @@ def para(text,small=False):story.append(p(text,small))
 def sub(text):story.append(Paragraph(text,styles['SubGuide']))
 def page(number,title):
     if story:story.append(PageBreak())
-    story.append(p(f'RF WORKBENCH 0.5  /  {number:02}',True));story.append(Paragraph(title,styles['HGuide']))
+    story.append(p(f'RF WORKBENCH 0.6  /  {number:02}',True));story.append(Paragraph(title,styles['HGuide']))
 def steps(items):
     for i,item in enumerate(items,1):para(f'<b>{i:02}.</b> {item}')
 def table(headers,rows,widths=None):
@@ -100,7 +100,7 @@ csv.write_text('provenance,Pin_dBm,Pout_dBm,gain_dB\n'+''.join(f'simulation_peda
 
 page(1,'Guide utilisateur')
 story.append(Paragraph('RF Workbench',styles['CoverGuide']))
-para('<b>Version 0.5 - Windows</b><br/>Bancs graphiques RF, DSP, scripts Python et instrumentation VISA/SCPI.')
+para('<b>Version 0.6 - Windows</b><br/>Bancs graphiques RF, DSP, scripts Python et instrumentation VISA/SCPI.')
 story.append(Spacer(1,12));picture('PA.png','Application native : exemple petit signal PA 36-38 GHz, données simulées.')
 sub('Du premier schéma à la lecture binaire du PNA-X')
 para('Ce guide accompagne le prototype livré. Il décrit les actions disponibles, les unités, les limites et un protocole de caractérisation de PA : gain 20 dB, objectif 40 dBm, OP1dB voisin de 34 dBm, bande 36-38 GHz.')
@@ -108,25 +108,25 @@ para('Les résultats du banc PA fourni sont simulés. Aucun équipement physique
 para('Édition du 7 octobre 2026. Sources : github.com/Citroz31/rf-workbench. Projet ouvert et extensible, sous licence MIT.')
 
 page(2,'Parcours de lecture et périmètre')
-table(['Sujet','Chapitres'],[['Installation, démarrage, projets','3-4'],['Confort, schéma, raccourcis','5-7'],['Connexion, PNA-X et options','8-11'],['Bibliothèque instruments','12-13'],['RF/DSP, mesures, unités','14-16'],['Python, fichiers et exécution','17-18'],['Exemple PA complet','19-22'],['Diagnostic et références','23-24']],[350,140])
+table(['Sujet','Chapitres'],[['Installation, démarrage, projets','3-4'],['Confort, schéma, raccourcis','5-7'],['Connexion, PNA-X et options','8-11'],['Bibliothèque instruments','12-13'],['RF/DSP, mesures, unités','14-16'],['Python, fichiers et exécution','17-18'],['Exemple PA complet','19-22'],['Diagnostic et références','23-24'],['Onglets, câblage RF, composants MACOM et DC','25-28']],[350,140])
 sub('Fonctionnel dans cette livraison')
-para('63 types de blocs, portage desktop Rust/egui, schéma typé, fenêtres de configuration, démarrage par projet, sauvegarde .rfbench, scripts Python, moteur DSP, acquisition binaire PNA et lecture FDATA des applications existantes autorisées. VISA dynamique, TCP/UDP et adaptateurs SDK complètent la HAL.')
+para('66 types de blocs, portage desktop Rust/egui, schéma typé, fenêtres de configuration, démarrage par projet, sauvegarde .rfbench, scripts Python, moteur DSP, acquisition binaire PNA et lecture FDATA des applications existantes autorisées. VISA dynamique, TCP/UDP et adaptateurs SDK complètent la HAL.')
 sub('Frontières à connaître')
 para('La validation locale concerne Windows et des serveurs de test. Un test de protocole ne valide ni le firmware d’un PNA réel, ni les options, ni la justesse métrologique. Les pilotes spécifiques AWG, thermique, capteurs et convertisseurs restent à écrire par modèle ; leurs simulations et console SCPI sont disponibles.')
 para('Les applications GCA/NF/IMD/spectre se préparent sur l’instrument : cette version n’effectue pas leur configuration complète ni leur calibration automatique. Elle détecte les classes valides, récupère les données et propose un réglage de niveau GCA sur un canal existant.')
-para('iOS/Android, synchronisation matérielle PTP/GPSDO/MIMO complète et streaming haut débit sans pertes ne sont pas livrés. Les nouveaux dialogues 0.5 sont en français ; la traduction anglaise des vues historiques reste disponible.')
+para('iOS/Android, synchronisation matérielle PTP/GPSDO/MIMO complète et streaming haut débit sans pertes ne sont pas livrés. Les nouveaux dialogues 0.6 sont en français ; la traduction anglaise des vues historiques reste disponible.')
 
 page(3,'Installer et préparer le laboratoire')
-steps(['Extraire <b>rf-workbench-windows.zip</b> dans un dossier accessible. Garder les fichiers du paquet ensemble. Lancer <b>Lancer RF Workbench.cmd</b> ou rf-workbench.exe. Aucun compilateur Rust n’est nécessaire.',
+steps(['Télécharger <b>RF-Workbench-Windows-x64-portable.zip</b> depuis Releases, puis extraire entièrement son contenu dans un dossier de votre compte. Double-cliquer sur <b>rf-workbench.exe</b>, directement à la racine. Aucun CMD, terminal, installation ou compilateur n’est nécessaire. Le ZIP Source code contient seulement les sources.',
        'Pour les bancs simulés et la démonstration QAM, aucun runtime VISA ni SDK SDR n’est nécessaire. Le bloc Python exige Python 3.10 ou ultérieur, configuré dans l’onglet Python.',
        'Pour GPIB/USB/LAN VISA, installer NI-VISA, Keysight VISA ou le runtime compatible du laboratoire. Vérifier d’abord la ressource dans l’outil du constructeur, avec un processus de même architecture que l’application x64.',
        'Si nécessaire, définir RF_WORKBENCH_VISA vers la DLL/bibliothèque VISA choisie. Le chargement échoue explicitement si le runtime manque ou si l’architecture est incompatible.',
        'Pour un instrument LAN, vérifier son adresse, le routage et le protocole activé. VXI-11/HiSLIP utilisent VISA ; un socket SCPI brut utilise l’adresse TCPIP::hôte::port::SOCKET.'])
 table(['Interface','Exemple de ressource'],[['GPIB','GPIB0::16::INSTR'],['USB','Ressource USB0::…::INSTR retournée par VISA'],['LAN VXI-11','TCPIP0::192.168.1.10::inst0::INSTR'],['LAN HiSLIP','TCPIP0::192.168.1.10::hislip0::INSTR'],['Socket SCPI','TCPIP::192.168.1.10::5025::SOCKET'],['Série via VISA','ASRL5::INSTR'],['Simulation','SIM::RF::INSTR']],[155,335])
-para('Ne pas transformer une adresse INSTR en SOCKET : ce sont des protocoles différents. Les réglages série restent dans le runtime/profil constructeur.',True)
+para('La simulation fonctionne hors ligne. Les préférences restent dans %LOCALAPPDATA%/RF Workbench. Le programme ne demande pas de droits administrateur ; son EXE est actuellement non signé et peut nécessiter la validation IT de votre entreprise. Ne pas transformer une adresse INSTR en SOCKET : les protocoles diffèrent.',True)
 
 page(4,'Créer, ouvrir et sauvegarder un projet')
-picture('START.png','Écran de démarrage. Les quatre exemples sont accessibles sans instrument.')
+picture('START.png','Écran de démarrage historique. La version 0.6 ajoute les exemples LNA MACOM et corechip X-band aux quatre bancs initiaux.')
 steps(['Saisir le nom et cliquer <b>Nouveau projet vide</b>, ou choisir un exemple. Le banc courant reste accessible dans les espaces de travail de la session.',
        'Cliquer <b>Ouvrir un projet</b>. Parcourir les dossiers, sélectionner un .rfbench ou saisir son chemin complet. Les fichiers .rfw.json historiques sont acceptés.',
        'Utiliser l’icône Enregistrer ou Ctrl+S : choisir le chemin puis Enregistrer. L’extension .rfbench est ajoutée/normalisée. Les réglages, ressources et layout sont inclus ; les mesures acquises ne le sont pas.',
@@ -145,13 +145,13 @@ sub('Retrouver une disposition confortable')
 para('Espaces de travail propose un layout banc + spectre, un layout debug, des layouts nommés, le thème clair, le contraste et une échelle de texte. Si l’écran devient chargé, masquer l’inspecteur ou déplacer l’analyse dans une fenêtre flottante. Les limites minimales évitent de rendre les commandes inaccessibles.')
 
 page(6,'Construire et câbler un schéma')
-picture('DSP-GRAPH.png','Exemple de graphe : les câbles représentent des dépendances de données, pas un câblage RF physique.')
+picture('SCHEMA-V06.png','Deux types de liaison : broches rondes RF/DC pour décrire le montage ; ports carrés de données sur ces blocs pour le graphe de calcul.')
 steps(['Dans la palette ou Blocs, rechercher un type et cliquer pour l’ajouter. Déplacer le bloc par glisser-déposer. La grille et l’alignement facilitent la construction.',
-       'Sélectionner un bloc. L’inspecteur présente ses ports et ses commandes rapides ; Configurer l’instrument ouvre les fonctions détaillées. F2 affiche son aide.',
-       'Appuyer sur <b>W</b>, cliquer un port de sortie puis une entrée compatible. Cliquer le fond entre les deux pour définir un coude. Échap annule ; clic droit sur un câble le retire.',
-       'Les ports RF, Trace, réseau complexe, I/Q, bits et unités sont distincts. Une entrée requise doit être câblée. Les cycles et entrées déjà reliées sont refusés.',
+       'Sélectionner un bloc. L’inspecteur présente ses ports et ses commandes rapides ; Réglages du bloc ou un double-clic ouvre les fonctions détaillées. F2 affiche son aide.',
+       'Appuyer sur <b>W</b> ou sur l’icône de câble : le curseur devient une croix. Cliquer la broche source, approcher la broche cible compatible puis cliquer. Une petite marge aimante la prévisualisation ; le survol seul ne crée aucun câble. Le mode reste actif pour enchaîner les connexions. Échap ou clic droit annule la liaison en cours ; V revient à la sélection.',
+       'Cliquer le fond avant la cible pour ajouter des coudes ; les parcours automatiques contournent les blocs en tâche de fond. Les broches RF/DC et les ports de données sont distincts. Les cycles sont refusés dans le graphe de données ; le retour PNA → DUT → PNA est permis en câblage physique. Une broche occupée ne reçoit pas une seconde liaison.',
        'Utiliser multi-sélection, copier/coller, annotations et commentaires. Un schéma peut être sauvegardé incomplet ; Exécuter exige un graphe valide.'])
-para('Un câble graphique ne commande aucun commutateur RF et ne change aucune connexion de laboratoire. Les ressources des blocs et le montage physique doivent correspondre au banc dessiné.',True)
+para('Un câble graphique ne commande aucun commutateur RF et ne change aucune connexion de laboratoire. Les ressources des blocs et le montage physique doivent correspondre au banc dessiné. La simulation RF utilise les chemins DUT directs ; elle ne résout pas un circuit complet.',True)
 
 page(7,'Palette, navigation et raccourcis')
 para('La palette regroupe instruments RF, conversion, thermique, DUT, automatisation, sources/HAL, DSP/canal, modulation, codage, mesures et calibration. La recherche est floue ; un clic droit ajoute un favori. Les blocs récents restent accessibles.')
@@ -163,17 +163,17 @@ sub('Aide intégrée')
 para('F1 ouvre l’aide globale ; F2 ou Aide du bloc explique ports, exemples, formules et limites. Les tests de l’onglet Tests vérifient le moteur avec des données de référence simulées, sans qualifier un équipement réel.')
 
 page(8,'Identifier et sélectionner un équipement')
-steps(['Sélectionner un bloc instrument, puis <b>Configurer l’instrument</b>. La fenêtre comprend Connexion, Fonctions, Options PNA et Console SCPI.',
+steps(['Sélectionner un bloc instrument, puis <b>Réglages du bloc</b>. La fenêtre comprend Connexion, Fonctions, Options PNA et Console SCPI.',
        'Dans Connexion, choisir un timeout. Activer Matériel puis Détecter VISA + identifier. La découverte VISA liste les ressources accessibles ; chaque candidate est interrogée avec *IDN?. Stop interrompt entre les tentatives.',
-       'Pour un PNA, le pilote reconnaît les familles Keysight/Agilent N52xx/E83xx. Pour les autres appareils, saisir éventuellement un fragment IDN attendu : modèle ou numéro de série.',
+       'Pour un PNA, le pilote reconnaît les familles Keysight/Agilent N52xx/E83xx ; le profil VNA USB reconnaît P50xx/P93xx. Les alimentations exigent le modèle E3631A ou E36313A correspondant au bloc. Pour les autres appareils, saisir éventuellement un fragment IDN attendu : modèle ou numéro de série.',
        'Si une seule candidate correspond et si le bloc est encore simulé, l’adresse est proposée dans le brouillon. En cas de plusieurs réponses, sélectionner dans la liste. Une adresse déjà choisie manuellement n’est pas remplacée.',
        'Si le LAN n’est pas découvert, saisir son adresse VISA ou socket. Aucune exploration automatique de sous-réseau n’est effectuée. La candidate manuelle est aussi identifiée.',
-       'Cliquer Appliquer au bloc. Les valeurs persistent dans .rfbench. Fermer sans appliquer laisse la configuration précédente.'])
+       'Cliquer Appliquer au bloc. Les valeurs persistent dans .rfbench. Fermer sans appliquer laisse les consignes précédentes, sauf le nombre de ports RF, qui modifie immédiatement le schéma et reste annulable par Ctrl+Z.'])
 para('Les ressources USB nécessitent le support du constructeur ; un capteur USB propriétaire n’est pas automatiquement USBTMC. Les appareils qui ne répondent pas à *IDN? exigent une sélection manuelle et un profil adapté. Les pilotes Soapy/UHD/IIO utilisent les blocs HAL, avec leurs chaînes de ressources propres.')
 para('La découverte est plafonnée à 64 candidates et chaque tentative possède son timeout. Un timeout ne démontre pas qu’un équipement est absent : adresse, runtime, firmware ou session exclusive peuvent empêcher sa réponse.')
 
 page(9,'PNA-X : canaux et transfert rapide')
-picture('INSTRUMENT.png','Fonctions PNA : Channel, mesure, format binaire et contrôle explicite du balayage.')
+picture('INSTRUMENT-V06.png','Fonctions PNA : Channel, mesure, format binaire et contrôle explicite du balayage.')
 steps(['Dans Connexion, Lire canaux / options PNA. Vérifier l’identité et les canaux présents. Dans Fonctions, sélectionner le Channel par numéro ou dans la liste retournée.',
        'Relire les options après avoir changé de canal. Choisir une mesure existante du catalogue. Si le nom reste vide, la lecture SDATA exige une seule mesure correspondant au paramètre S choisi.',
        'Choisir REAL32 pour les données complexes compactes ou REAL64. L’axe est toujours acquis en REAL64 sur l’équipement pour éviter de reconstruire un axe arrondi.',
@@ -199,14 +199,14 @@ steps(['Préparer le canal d’application et sa calibration sur le PNA. Relire 
 para('L’option Spectrum Analyzer peut avoir une plage en fréquence différente de celle du VNA. À 36-38 GHz, vérifier la licence, la bande, les sources/récepteurs et les atténuateurs ; le bouton Disponible n’atteste aucune de ces conditions.',True)
 
 page(12,'Fonctions des blocs instruments RF')
-table(['Bloc','Réglages et chemin effectif'],[['Générateur RF','Fréquence et puissance. Simulateur ou SCPI générique FREQ/POW/OUTP ; arrêt demandé en fin/Stop.'],['Analyseur de spectre','Début/fin/points, requête ASCII configurable. Profil générique et axe configuré localement à valider sur le modèle.'],['PNA / PNA-X','Canal, trace, S11/S21/S12/S22, REAL32/64, IFBW, moyennage, déclenchement optionnel, SDATA native.'],['AWG','Cadence, tone, nombre d’échantillons, résolution, pleine échelle ; formes d’onde simulées. Console réelle ; téléchargement constructeur à développer.'],['Noise Figure Meter','Facteur de bruit simulé / modèle DUT. Connexion et console ; profil NF constructeur à développer.'],['Power Sensor / Power Meter','Chaîne RF → sensor → meter simulée, unité dBm. Console et commandes de profil pour un appareil réel ; lecture typée disponible dans la bibliothèque HAL.']],[145,345])
+table(['Bloc','Réglages et chemin effectif'],[['Générateur RF','Fréquence et puissance. Simulateur ou SCPI générique FREQ/POW/OUTP ; arrêt demandé en fin/Stop.'],['Analyseur de spectre','Début/fin/points, requête ASCII configurable. Profil générique et axe configuré localement à valider sur le modèle.'],['PNA / PNA-X','1-4 ports RF, canal, trace, Sij parmi les ports configurés, REAL32/64, IFBW, moyennage, déclenchement optionnel, SDATA native.'],['AWG','Cadence, tone, nombre d’échantillons, résolution, pleine échelle ; formes d’onde simulées. Console réelle ; téléchargement constructeur à développer.'],['Noise Figure Meter','Facteur de bruit simulé / modèle DUT. Connexion et console ; profil NF constructeur à développer.'],['Power Sensor / Power Meter','Chaîne RF → sensor → meter simulée, unité dBm. Console et commandes de profil pour un appareil réel ; lecture typée disponible dans la bibliothèque HAL.']],[145,345])
 para('Chaque bloc éligible possède connexion, timeout, identification attendue et commandes de profil. Les commandes Lecture et Consigne du profil sont des raccourcis de console, pas des actions automatiques du graphe. Consulter le manuel avant un write.')
 sub('Console commune')
 para('Query texte attend une réponse ; Envoyer write ne la lit pas. Choisir une commande correspondant au mode. Query binaire → fichier extrait le payload d’un bloc IEEE 488.2 à longueur définie, sans convertir son type numérique ; la limite de réponse est 8 Mio. Le fichier doit être neuf. Nommer le fichier .bin et noter précision, endian et unité séparément.')
 para('Le bouton Erreurs lit SYST:ERR? : cette interrogation peut retirer une entrée de la file d’erreurs. Les commandes utilisateur peuvent activer RF ou changer les calibrations. Elles ne sont ni filtrées en dialecte constructeur ni relancées automatiquement.')
 
 page(13,'Conversion, thermique et DUT')
-table(['Bloc','Usage et limite'],[['DAC / CAN','Cadence, tone, échantillons, résolution, pleine échelle. Modèle de conversion borné/quantifié ; aucune cadence matérielle inventée.'],['Modulateur I/Q','Relier I, Q et LO ; même taille/cadence/tone pour I et Q. Perte de conversion réglable, modèle idéal simulé.'],['Résistance variable','Résistance locale en Ω ; identification/console pour instrument réel.'],['Thermomètre','Entrée TEMP ou valeur locale en °C. Lecture du profil à adapter au modèle.'],['Thermostream','Consigne idéale en °C ; aucune dynamique de stabilisation ni pilote constructeur implicite.'],['DUT','Modèle RF avec gain/perte, NF et lien catalogue. Perte négative = gain ; aucune compression non linéaire dans ce modèle.'],['Catalogue DUT','Ajout manuel, recherche, JSON import/export. Base initiale vide ; pas de scraping des fabricants dans cette livraison.']],[150,340])
+table(['Bloc','Usage et limite'],[['DAC / CAN','Cadence, tone, échantillons, résolution, pleine échelle. Modèle de conversion borné/quantifié ; aucune cadence matérielle inventée.'],['Modulateur I/Q','Relier I, Q et LO ; même taille/cadence/tone pour I et Q. Perte de conversion réglable, modèle idéal simulé.'],['Résistance variable','Résistance locale en Ω ; identification/console pour instrument réel.'],['Thermomètre','Entrée TEMP ou valeur locale en °C. Lecture du profil à adapter au modèle.'],['Thermostream','Consigne idéale en °C ; aucune dynamique de stabilisation ni pilote constructeur implicite.'],['DUT','Modèle RF avec gain/perte, NF et lien catalogue. Perte négative = gain ; aucune compression non linéaire dans ce modèle.'],['Catalogue DUT','Ajout manuel, recherche, JSON import/export. Deux fiches MACOM sourcées sont intégrées : MAAL-FR1245 et CGY2170YHV/C1. Aucun scraping automatique dans cette livraison.']],[150,340])
 sub('Choisir une représentation juste')
 para('Un DUT graphique décrit les données de modèle utilisées par le PNA/NF simulé. Il n’alimente pas une puce ni ne vérifie ses limites de puissance. Les connexions et métadonnées restent des descriptions de banc. Ajouter une annotation pour la polarisation, les plans de référence, les pertes et les protections.')
 para('Pour un appareil non encore piloté par le graphe, la console fournit un accès SCPI explicite. Un pilote spécifique devra fixer format, unités, commandes, synchronisation et comportement d’arrêt. Les blocs simulés refusent une ressource physique tant qu’un pilote réel n’existe pas.')
@@ -296,8 +296,50 @@ refs=[('Code, versions et CI','https://github.com/Citroz31/rf-workbench'),('Keys
 for label,url in refs:
     para(f'<b>{label}</b><br/><link href="{url}" color="#007E86">{url}</link>')
 sub('Documents du dépôt')
-para('V0.5.md décrit la nouvelle interface et les acquisitions PNA. V0.4.md précise les 45 opérations DSP/HAL et leurs profils de recherche. ARCHITECTURE.md détaille les frontières natives/SDK. VALIDATION.md sépare tests locaux, CI et matériel non validé.')
+para('V0.6.md décrit le câblage RF, les composants MACOM et les alimentations. V0.5.md décrit la nouvelle interface et les acquisitions PNA. V0.4.md précise les 45 opérations DSP/HAL et leurs profils de recherche. ARCHITECTURE.md détaille les frontières natives/SDK. VALIDATION.md sépare tests locaux, CI et matériel non validé.')
 para('Les prochaines validations dépendent des modèles, firmware, options et ressources du laboratoire. Les points prioritaires sont les dialectes des autres instruments, les calibrations applicatives, la traçabilité des acquisitions, l’ordonnanceur streaming et les plateformes mobiles.')
+
+
+page(25,'Onglets et espace de travail')
+picture('SCHEMA-V06.png','Le nom du setup apparaît dans son onglet. Les titres et descriptions redondants ont été retirés du canevas.')
+steps(['Faire un clic droit sur l’onglet du setup, puis <b>Renommer le setup...</b>. Saisir un nom et confirmer avec Renommer ou Entrée ; Échap annule.',
+       'Le nom est limité à 80 caractères et 128 octets UTF-8. Les noms vides et caractères de contrôle sont refusés. Le setup actif et ceux en arrière-plan se renomment de la même façon.',
+       'Enregistrer le projet avec Ctrl+S pour conserver son nom dans .rfbench ; Enregistrer Studio conserve la liste des espaces de travail.',
+       'Ouvrir les réglages détaillés par double-clic sur un instrument ou DUT. Ajuster les panneaux avec leurs séparateurs, ou faire flotter les vues d’analyse.'])
+para('L’icône Ajuster recadre le schéma ; la molette zoome autour du pointeur. La marge de câblage correspond à environ 1 mm à 96 pixels logiques/pouce, autour du disque du pin. Ce rayon reste stable à l’écran avec le zoom ; ce n’est pas une calibration physique du moniteur.',True)
+
+page(26,'Ports RF et mesure de LNA au VNA')
+picture('INSTRUMENT-V06.png','Fenêtre Fonctions : nombre de ports RF, paramètre S et Channel sont des réglages distincts.',width=450)
+steps(['Choisir 1 à 4 ports sur PNA / PNA-X, ou 1 à 2 sur VNA USB. Le symbole et les broches se mettent à jour immédiatement. Réduire le nombre retire les câbles attachés aux ports disparus ; Ctrl+Z restaure la modification.',
+       'Ouvrir LNA-MAAL-FR1245.rfbench. PORT 1 est relié à RF IN du DUT, RF OUT à PORT 2. Choisir S21 : le second indice est le port source, le premier le port récepteur.',
+       'Exécuter en simulation : le gain nominal est 26 dB à 29 GHz. L’extension du tracé sur 27-31,5 GHz utilise un gain constant pédagogique et ne constitue pas une courbe constructeur.',
+       'Sur l’appareil, préparer le canal Standard, la trace S21 et la calibration. Identifier l’adresse, vérifier le nombre réel de ports, puis choisir Channel / trace / REAL32 ou REAL64.'])
+para('La lecture SYST:CAP:HARD:PORT:COUN? vérifie la disponibilité matérielle avant l’acquisition. Un nombre configuré supérieur au matériel est refusé. Le bloc USB est un profil SCPI Keysight P50xx/P93xx ; les autres VNA USB nécessitent un pilote adapté. Les broches DC décrivent le montage sans séquencer la polarisation.',True)
+
+page(27,'Bibliothèque MACOM et états du corechip')
+table(['Composant','Caractéristiques de la fiche intégrée'],[
+ ['MAAL-FR1245','27-31,5 GHz ; référence 29 GHz. Gain typique 26 dB, minimum 23 dB. NF typique 1,2 dB, maximum 1,5 dB. P1dB de sortie typique 5 dBm. TA = 25 °C, VD = +1,5 V, VG = -1,5 V, ID typique 48 mA. Rev. V4, 8 avril 2026.'],
+ ['CGY2170YHV/C1','8-12 GHz ; référence 10 GHz. Gain typique 5,8 dB, NF typique 8 dB ; P1dB de sortie typique 13 dBm dans le tableau page 3. Rev. V3. VD = +3 V et VS = -3 V.'],
+ ['Contrôles CGY','Modes RX / TX. Atténuateur 6 bits : 64 états, pas 0,5 dB, de 0 à 31,5 dB. Déphaseur 6 bits : 64 états, pas 5,625°, de 0 à 354,375°.']],[135,355])
+para('La première page du CGY indique également 12 dBm pour P1dB ; la fiche locale conserve 13 dBm du tableau de caractéristiques et signale explicitement cette différence. Les valeurs typiques ne sont pas des garanties sur un composant mesuré.')
+steps(['Dans Catalogue DUT, ouvrir la fiche, consulter conditions et sources, puis Créer le bloc DUT. Double-cliquer ce bloc pour régler son gain nominal, NF et référence.',
+       'Pour CGY, sélectionner RX ou TX, puis l’état d’atténuation et de phase. La simulation applique gain effectif = gain nominal - atténuation, et ajoute le déphasage.',
+       'En RX, câbler source → RX IN et COM RF → réception. En TX, câbler source → COM RF et TX OUT → réception. Changer de mode impose de vérifier ces liaisons.'])
+para('Ces réglages simulent un modèle linéaire constant : aucune compression P1dB, génération de bruit NF, dépendance de fréquence, erreur RMS des états ou programmation SPI du corechip. Les rails VD/VS regroupent les alimentations de la fiche ; ils ne représentent pas tous les pads du boîtier. Le séquencement réel doit suivre le fabricant.')
+for label,url in [('MAAL-FR1245 : fiche officielle','https://cdn.macom.com/datasheets/MAAL-FR1245.pdf'),('CGY2170YHV/C1 : fiche officielle','https://cdn.macom.com/datasheets/CGY2170YHV-C1.pdf')]:
+    para(f'<b>{label}</b><br/><link href="{url}" color="#007E86">{url}</link>',True)
+
+page(28,'Alimentations DC : lecture et commandes')
+table(['Modèle / voie','Plages nominales prises en charge'],[
+ ['E3631A','CH1/P6V : 0 à 6 V, 5 A ; CH2/P25V : 0 à 25 V, 1 A ; CH3/N25V : -25 à 0 V, 1 A. ON/OFF est global aux trois sorties.'],
+ ['E36313A','CH1 : 0 à 6 V, 10 A ; CH2 et CH3 : 0 à 25 V, 2 A. ON/OFF sélectionne la voie. Le profil exige des voies indépendantes en mode fixe.']],[140,350])
+steps(['Ajouter le bloc Keysight correspondant et ouvrir ses réglages. Sélectionner la voie, la tension et la limite de courant. Identifier l’adresse pour le matériel, ou conserver SIM pour l’essai.',
+       '<b>Lire V / I / état</b> interroge la voie sans appliquer de consigne. <b>Appliquer consignes (OFF)</b> coupe la sortie avant de régler courant puis tension ; elle reste OFF.',
+       '<b>Activer sortie ON</b> est une commande explicite : les consignes de l’appareil doivent correspondre à celles de la fenêtre. Sur E3631A, cela active les trois sorties ; vérifier et préparer chacune avant ON.',
+       '<b>Couper sortie OFF</b> coupe la sortie sélectionnée (toutes sur E3631A). Stop tente de couper les sorties DC que RF Workbench a activées, même si aucune acquisition n’est en cours.'])
+para('Charger un projet ou Exécuter le graphe n’applique aucune tension et n’active aucune sortie : Exécuter lit V/I. Les commandes DC conservent la session afin que ON reste actif jusqu’à OFF ou Stop. L’identité du modèle et les limites sont vérifiées avant écriture ; les modes tracking E3631A, couplage/pairing et modes dynamiques E36313A sont refusés par ce profil.')
+para('La simulation DC reproduit l’état ON/OFF et les tensions appliquées ; le courant est nul car aucun modèle de charge n’est calculé. Les câbles DC ne pilotent pas une séquence d’alimentation et n’établissent pas de connexions électriques. Les exemples MACOM sont des descriptions, pas une procédure automatique de polarisation. Vérifier la fiche et le montage avant de commander un équipement réel.',True)
+para('Références : guides de programmation Keysight E3631A et E36300. Aucun équipement réel n’a été utilisé pour valider les dialectes de cette livraison ; les tests utilisent des sessions simulées et des réponses de protocole contrôlées.',True)
 
 class NumberedCanvas(canvas.Canvas):
     def __init__(self,*a,**k):super().__init__(*a,**k);self.pages=[]
@@ -306,12 +348,12 @@ class NumberedCanvas(canvas.Canvas):
         total=len(self.pages)
         for state in self.pages:
             self.__dict__.update(state);self.setStrokeColor(TEAL);self.setLineWidth(.7);self.line(52,802,543,802)
-            self.setFont('Guide',7.4);self.setFillColor(GRAY);self.drawString(52,812,'RF WORKBENCH  /  GUIDE UTILISATEUR  /  0.5')
+            self.setFont('Guide',7.4);self.setFillColor(GRAY);self.drawString(52,812,'RF WORKBENCH  /  GUIDE UTILISATEUR  /  0.6')
             self.drawString(52,27,'Prototype RF et métrologie  |  7 octobre 2026');self.drawRightString(543,27,f'{self._pageNumber} / {total}')
             super().showPage()
         super().save()
 
 output=HERE/'Guide-utilisateur.pdf'
-doc=SimpleDocTemplate(str(output),pagesize=A4,leftMargin=52,rightMargin=53,topMargin=55,bottomMargin=48,title='RF Workbench 0.5 - Guide utilisateur',author='RF Workbench',pageCompression=1)
+doc=SimpleDocTemplate(str(output),pagesize=A4,leftMargin=52,rightMargin=53,topMargin=55,bottomMargin=48,title='RF Workbench 0.6 - Guide utilisateur',author='RF Workbench',pageCompression=1)
 doc.build(story,canvasmaker=NumberedCanvas)
-print(json.dumps({'pdf':str(output),'bytes':output.stat().st_size,'chapters':24,'synthetic_Rapp_p':q},ensure_ascii=False))
+print(json.dumps({'pdf':str(output),'bytes':output.stat().st_size,'chapters':28,'synthetic_Rapp_p':q},ensure_ascii=False))
