@@ -271,18 +271,25 @@ impl Workbench {
             .max()
             .unwrap_or(0)
             + 1;
-        let mut window=Window::new(id,node,parameter,format,corrected);
-        window.rect=[250.+((id-1)%2) as f32*560.,210.+(((id-1)/2)%2) as f32*340.,540.,290.];
+        let mut window = Window::new(id, node, parameter, format, corrected);
+        window.rect = [
+            250. + ((id - 1) % 2) as f32 * 560.,
+            210. + (((id - 1) / 2) % 2) as f32 * 340.,
+            540.,
+            290.,
+        ];
         window.ensure_traces();
         self.layout.result_windows.push(window);
-        self.layout.result_panel.open=true;
-        self.layout.result_panel.selected=id;
-        self.result_target=Some(id);
+        self.layout.result_panel.open = true;
+        self.layout.result_panel.selected = id;
+        self.result_target = Some(id);
     }
     pub(super) fn result_manager(&mut self, ctx: &egui::Context) {
-        if !self.results_open { return; }
-        let mut open=true;
-        let mut delete=None;
+        if !self.results_open {
+            return;
+        }
+        let mut open = true;
+        let mut delete = None;
         egui::Window::new("VNA · graphiques et traces").id(egui::Id::new("result-manager"))
             .open(&mut open).default_size([720.,580.]).resizable(true).show(ctx,|ui| {
             ui.horizontal_wrapped(|ui| {
@@ -352,13 +359,27 @@ impl Workbench {
             if ui.text_edit_singleline(&mut folder).changed()&&let Some(node)=self.project.graph.nodes.iter_mut().find(|node|node.id==n){node.config.instrument.pna.result_path=folder.clone();}
             if ui.add_enabled(!self.worker.is_busy()&&!folder.trim().is_empty()&&!self.curves.is_empty(),egui::Button::new("Exporter les résultats JSON")).clicked(){self.submit(Command::ExportResults{curves:self.curves.iter().filter(|c|c.node==n).cloned().collect(),folder,project:self.project.name.clone()});}
         });
-        if let Some(id)=delete{self.layout.result_windows.retain(|w|w.id!=id);}
-        self.results_open=open;
+        if let Some(id) = delete {
+            self.layout.result_windows.retain(|w| w.id != id);
+        }
+        self.results_open = open;
     }
-    pub(super) fn pna_result_windows(&mut self, ctx:&egui::Context) {
-        let out=crate::vna_panel::show(ctx,&mut self.layout.result_panel,&mut self.layout.result_windows,&self.curves,self.layout_revision);
-        if let Some(id)=out.configure{self.layout.result_panel.selected=id;self.result_target=Some(id);self.results_open=true;}
-        self.layout.result_windows.retain(|w|!out.closed.contains(&w.id));
+    pub(super) fn pna_result_windows(&mut self, ctx: &egui::Context) {
+        let out = crate::vna_panel::show(
+            ctx,
+            &mut self.layout.result_panel,
+            &mut self.layout.result_windows,
+            &self.curves,
+            self.layout_revision,
+        );
+        if let Some(id) = out.configure {
+            self.layout.result_panel.selected = id;
+            self.result_target = Some(id);
+            self.results_open = true;
+        }
+        self.layout
+            .result_windows
+            .retain(|w| !out.closed.contains(&w.id));
     }
     pub(super) fn poll_fixture(&mut self) {
         let Some(rx) = &self.fixture_job.receiver else {

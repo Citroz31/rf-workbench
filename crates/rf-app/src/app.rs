@@ -473,8 +473,12 @@ impl Workbench {
         if args.iter().any(|a| a == "--welcome") {
             bench.welcome = true;
         }
-        if args.iter().any(|a| a == "--new-project-ui") { bench.create_bench(rf_core::Graph::default(), "Banc RF"); }
-        if args.iter().any(|a| a == "--placement-ui") { bench.add_block(Kind::PnaX); }
+        if args.iter().any(|a| a == "--new-project-ui") {
+            bench.create_bench(rf_core::Graph::default(), "Banc RF");
+        }
+        if args.iter().any(|a| a == "--placement-ui") {
+            bench.add_block(Kind::PnaX);
+        }
         if args.iter().any(|a| a == "--project-ui") {
             bench.project_dialog = Some(false);
         }
@@ -873,7 +877,9 @@ impl Workbench {
         let mut draft = rf_core::Graph::default();
         let id = draft.add(kind, [0., 0.]);
         let mut node = draft.node(id).unwrap().clone();
-        if kind == Kind::PnaX { node.config.instrument.expected_idn = "N5245B".into(); }
+        if kind == Kind::PnaX {
+            node.config.instrument.expected_idn = "N5245B".into();
+        }
         self.canvas.begin_placement(node);
         self.studio.used(kind);
         self.view = View::Schematic;

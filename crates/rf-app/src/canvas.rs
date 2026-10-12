@@ -449,63 +449,133 @@ impl Canvas {
             }
         }
         if self.placement.is_some() {
-            if !crate::shortcuts::text_editing(ui.ctx()) && ui.input(|i|i.key_pressed(egui::Key::Escape))
-                || response.secondary_clicked() {
+            if !crate::shortcuts::text_editing(ui.ctx())
+                && ui.input(|i| i.key_pressed(egui::Key::Escape))
+                || response.secondary_clicked()
+            {
                 self.placement = None;
                 return None;
             }
-            if let Some(mouse) = ui.input(|i|i.pointer.hover_pos()).filter(|p|rect.contains(*p)) {
+            if let Some(mouse) = ui
+                .input(|i| i.pointer.hover_pos())
+                .filter(|p| rect.contains(*p))
+            {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
-                let world=(mouse-rect.min-self.pan)/self.zoom;
-                let position=if self.snap { [(world.x/24.).round()*24.,(world.y/24.).round()*24.] }
-                    else { [world.x,world.y] };
-                let draft=self.placement.as_ref().unwrap();
-                let top=self.screen(rect.min,position);
-                let ghost=Rect::from_min_size(top,NODE_SIZE*self.zoom);
-                painter.rect_filled(ghost,8.,card_fill().gamma_multiply(0.88));
-                painter.rect_stroke(ghost,8.,Stroke::new(2.,kind(draft.kind)),StrokeKind::Inside);
-                painter.text(top+egui::vec2(12.,14.)*self.zoom,Align2::LEFT_TOP,&draft.title,
-                    crate::theme::font(14.*self.zoom),text_color());
-                visuals::symbol_with_ports(&painter,Rect::from_min_size(top+egui::vec2(33.,55.)*self.zoom,
-                    egui::vec2(174.,80.)*self.zoom),draft.kind,draft.config.instrument.port_count);
-                painter.text(top+egui::vec2(12.,160.)*self.zoom,Align2::LEFT_TOP,"Clic : placer · Échap : annuler",
-                    crate::theme::font(11.*self.zoom),teal());
-                if response.clicked() && g.nodes.len()<1000 {
-                    let draft=self.placement.take().unwrap();
+                let world = (mouse - rect.min - self.pan) / self.zoom;
+                let position = if self.snap {
+                    [(world.x / 24.).round() * 24., (world.y / 24.).round() * 24.]
+                } else {
+                    [world.x, world.y]
+                };
+                let draft = self.placement.as_ref().unwrap();
+                let top = self.screen(rect.min, position);
+                let ghost = Rect::from_min_size(top, NODE_SIZE * self.zoom);
+                painter.rect_filled(ghost, 8., card_fill().gamma_multiply(0.88));
+                painter.rect_stroke(
+                    ghost,
+                    8.,
+                    Stroke::new(2., kind(draft.kind)),
+                    StrokeKind::Inside,
+                );
+                painter.text(
+                    top + egui::vec2(12., 14.) * self.zoom,
+                    Align2::LEFT_TOP,
+                    &draft.title,
+                    crate::theme::font(14. * self.zoom),
+                    text_color(),
+                );
+                visuals::symbol_with_ports(
+                    &painter,
+                    Rect::from_min_size(
+                        top + egui::vec2(33., 55.) * self.zoom,
+                        egui::vec2(174., 80.) * self.zoom,
+                    ),
+                    draft.kind,
+                    draft.config.instrument.port_count,
+                );
+                painter.text(
+                    top + egui::vec2(12., 160.) * self.zoom,
+                    Align2::LEFT_TOP,
+                    "Clic : placer · Échap : annuler",
+                    crate::theme::font(11. * self.zoom),
+                    teal(),
+                );
+                if response.clicked() && g.nodes.len() < 1000 {
+                    let draft = self.placement.take().unwrap();
                     history.record(g.clone());
-                    let id=g.add(draft.kind,position);
-                    let placed=g.nodes.iter_mut().find(|n|n.id==id).unwrap();
-                    placed.title=draft.title;placed.config=draft.config;
-                    self.select_only(id);self.completed.clear();
+                    let id = g.add(draft.kind, position);
+                    let placed = g.nodes.iter_mut().find(|n| n.id == id).unwrap();
+                    placed.title = draft.title;
+                    placed.config = draft.config;
+                    self.select_only(id);
+                    self.completed.clear();
                 }
             }
             // Keep both data and physical wiring visible while placing a new block.
             for e in &g.edges {
-                if let (Some(a),Some(b))=(g.node(e.from),g.node(e.to)) {
-                    let from=self.screen(rect.min,a.position)+port_offset(a,true,e.from_port)*self.zoom;
-                    let to=self.screen(rect.min,b.position)+port_offset(b,false,e.to_port)*self.zoom;
-                    let wp:Vec<_>=e.waypoints.iter().map(|p|self.screen(rect.min,*p)).collect();
-                    painter.add(egui::Shape::line(route(from,to,&wp,self.orthogonal,self.zoom),Stroke::new(2.,port(a.kind.outputs()[e.from_port].port))));
+                if let (Some(a), Some(b)) = (g.node(e.from), g.node(e.to)) {
+                    let from = self.screen(rect.min, a.position)
+                        + port_offset(a, true, e.from_port) * self.zoom;
+                    let to = self.screen(rect.min, b.position)
+                        + port_offset(b, false, e.to_port) * self.zoom;
+                    let wp: Vec<_> = e
+                        .waypoints
+                        .iter()
+                        .map(|p| self.screen(rect.min, *p))
+                        .collect();
+                    painter.add(egui::Shape::line(
+                        route(from, to, &wp, self.orthogonal, self.zoom),
+                        Stroke::new(2., port(a.kind.outputs()[e.from_port].port)),
+                    ));
                 }
             }
             for e in &g.physical_connections {
-                if let (Some(a),Some(b))=(g.node(e.from),g.node(e.to)) {
-                    let from=self.screen(rect.min,a.position)+physical_port_offset(a,e.from_port)*self.zoom;
-                    let to=self.screen(rect.min,b.position)+physical_port_offset(b,e.to_port)*self.zoom;
-                    let wp:Vec<_>=e.waypoints.iter().map(|p|self.screen(rect.min,*p)).collect();
-                    painter.add(egui::Shape::line(physical_route(from,to,&wp,self.orthogonal,self.zoom,physical_port_exit(a,e.from_port),physical_port_exit(b,e.to_port)),Stroke::new(2.,physical_color(a.physical_ports()[e.from_port].kind))));
+                if let (Some(a), Some(b)) = (g.node(e.from), g.node(e.to)) {
+                    let from = self.screen(rect.min, a.position)
+                        + physical_port_offset(a, e.from_port) * self.zoom;
+                    let to = self.screen(rect.min, b.position)
+                        + physical_port_offset(b, e.to_port) * self.zoom;
+                    let wp: Vec<_> = e
+                        .waypoints
+                        .iter()
+                        .map(|p| self.screen(rect.min, *p))
+                        .collect();
+                    painter.add(egui::Shape::line(
+                        physical_route(
+                            from,
+                            to,
+                            &wp,
+                            self.orthogonal,
+                            self.zoom,
+                            physical_port_exit(a, e.from_port),
+                            physical_port_exit(b, e.to_port),
+                        ),
+                        Stroke::new(2., physical_color(a.physical_ports()[e.from_port].kind)),
+                    ));
                 }
             }
             // Existing instruments stay visible, but cannot receive placement clicks.
             for node in &g.nodes {
-                let top=self.screen(rect.min,node.position);
-                let card=Rect::from_min_size(top,NODE_SIZE*self.zoom);
-                painter.rect_filled(card,8.,card_fill());
-                painter.rect_stroke(card,8.,Stroke::new(1.,border()),StrokeKind::Inside);
-                painter.text(top+egui::vec2(12.,14.)*self.zoom,Align2::LEFT_TOP,&node.title,
-                    crate::theme::font(14.*self.zoom),text_color());
-                visuals::symbol_with_ports(&painter,Rect::from_min_size(top+egui::vec2(33.,55.)*self.zoom,
-                    egui::vec2(174.,80.)*self.zoom),node.kind,node.config.instrument.port_count);
+                let top = self.screen(rect.min, node.position);
+                let card = Rect::from_min_size(top, NODE_SIZE * self.zoom);
+                painter.rect_filled(card, 8., card_fill());
+                painter.rect_stroke(card, 8., Stroke::new(1., border()), StrokeKind::Inside);
+                painter.text(
+                    top + egui::vec2(12., 14.) * self.zoom,
+                    Align2::LEFT_TOP,
+                    &node.title,
+                    crate::theme::font(14. * self.zoom),
+                    text_color(),
+                );
+                visuals::symbol_with_ports(
+                    &painter,
+                    Rect::from_min_size(
+                        top + egui::vec2(33., 55.) * self.zoom,
+                        egui::vec2(174., 80.) * self.zoom,
+                    ),
+                    node.kind,
+                    node.config.instrument.port_count,
+                );
             }
             return None;
         }
@@ -1535,21 +1605,49 @@ mod tests {
     }
     #[test]
     fn cursor_placement_commits_only_on_click_respects_grid_pan_zoom_and_undo() {
-        let ctx=egui::Context::default();let mut g=Graph::default();let mut h=History::default();
-        let mut c=Canvas::configured(true,true);c.restore_view([45.,-20.],0.7);
-        let mut draft=Graph::default();let id=draft.add(Kind::PnaX,[0.,0.]);
+        let ctx = egui::Context::default();
+        let mut g = Graph::default();
+        let mut h = History::default();
+        let mut c = Canvas::configured(true, true);
+        c.restore_view([45., -20.], 0.7);
+        let mut draft = Graph::default();
+        let id = draft.add(Kind::PnaX, [0., 0.]);
         c.begin_placement(draft.node(id).unwrap().clone());
-        let (origin,_)=physical_frame(&ctx,&mut c,&mut g,&mut h,vec![]);
-        let mouse=origin+c.pan+egui::vec2(289.,146.)*c.zoom;
-        physical_frame(&ctx,&mut c,&mut g,&mut h,vec![egui::Event::PointerMoved(mouse)]);
+        let (origin, _) = physical_frame(&ctx, &mut c, &mut g, &mut h, vec![]);
+        let mouse = origin + c.pan + egui::vec2(289., 146.) * c.zoom;
+        physical_frame(
+            &ctx,
+            &mut c,
+            &mut g,
+            &mut h,
+            vec![egui::Event::PointerMoved(mouse)],
+        );
         assert!(g.nodes.is_empty());
-        physical_click(&ctx,&mut c,&mut g,&mut h,mouse);
-        assert_eq!(g.nodes.len(),1);assert_eq!(g.nodes[0].position,[288.,144.]);
-        assert_eq!(c.zoom,0.7);assert_eq!(c.pan,egui::vec2(45.,-20.));
-        h.undo(&mut g);assert!(g.nodes.is_empty());h.redo(&mut g);assert_eq!(g.nodes.len(),1);
+        physical_click(&ctx, &mut c, &mut g, &mut h, mouse);
+        assert_eq!(g.nodes.len(), 1);
+        assert_eq!(g.nodes[0].position, [288., 144.]);
+        assert_eq!(c.zoom, 0.7);
+        assert_eq!(c.pan, egui::vec2(45., -20.));
+        h.undo(&mut g);
+        assert!(g.nodes.is_empty());
+        h.redo(&mut g);
+        assert_eq!(g.nodes.len(), 1);
         c.begin_placement(draft.node(id).unwrap().clone());
-        physical_frame(&ctx,&mut c,&mut g,&mut h,vec![egui::Event::Key {key:egui::Key::Escape,physical_key:Some(egui::Key::Escape),pressed:true,repeat:false,modifiers:egui::Modifiers::NONE}]);
-        assert!(c.placement.is_none());assert_eq!(g.nodes.len(),1);
+        physical_frame(
+            &ctx,
+            &mut c,
+            &mut g,
+            &mut h,
+            vec![egui::Event::Key {
+                key: egui::Key::Escape,
+                physical_key: Some(egui::Key::Escape),
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+        assert!(c.placement.is_none());
+        assert_eq!(g.nodes.len(), 1);
     }
     #[test]
     fn keyboard_navigation_connects_named_ports_with_canvas_focus() {

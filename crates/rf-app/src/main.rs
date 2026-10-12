@@ -7,9 +7,8 @@ mod editor;
 mod file_browser;
 mod help;
 mod i18n;
-mod paths;
 mod new_project;
-mod vna_panel;
+mod paths;
 mod plot;
 #[cfg(test)]
 mod plot_tests;
@@ -19,6 +18,7 @@ mod shortcuts;
 mod studio;
 mod theme;
 mod visuals;
+mod vna_panel;
 
 fn main() -> eframe::Result<()> {
     let args: Vec<String> = std::env::args().collect();
