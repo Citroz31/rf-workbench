@@ -107,7 +107,10 @@ pub fn plan_editor(ui: &mut egui::Ui, c: &mut Config) {
             (Arrangement::Two, "2 fenêtres"),
             (Arrangement::Quad, "4 fenêtres · 2 × 2"),
         ] {
-            if ui.selectable_value(&mut plan.arrangement, a, label).clicked() {
+            if ui
+                .selectable_value(&mut plan.arrangement, a, label)
+                .clicked()
+            {
                 plan.rebuild_windows();
             }
         }

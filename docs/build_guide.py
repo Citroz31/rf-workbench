@@ -401,7 +401,7 @@ steps(['Dans Fonctions du bloc PNA, choisir <b>Paramètres S - 4 fenêtres</b>. 
 para('La synchronisation remplace les traces affichées dans les numéros de fenêtres choisis, avec des noms RFW réservés. Elle ne fait pas de preset et ne supprime pas les mesures/calibrations. Les autres fenêtres restent présentes ; TILE peut alors montrer plus de quatre fenêtres. Les modifications locales des formats/échelles sont reprises pour la prochaine configuration.',True)
 para('Une lecture des dernières données conserve les réglages matériels. Si un nouveau sweep est demandé sans reconfiguration, les réglages effectifs doivent correspondre au projet. Les canaux avancés NF/IMD/GCA restent ceux autorisés et préparés sur l’appareil.',True)
 
-picture('PNA-PLAN-V010.png','Plan natif : sélection des quatre S et format/échelle par trace.')
+picture('PNA-PLAN-V010.png','Plan natif : sélection des quatre S et format/échelle par trace.',width=380)
 
 page(36,'Architecture interne et chemins RF / IF')
 steps(['Ouvrir <b>Architecture / chemins</b> dans le bloc PNA-X. Le schéma fonctionnel montre sources, sorties, bypass, combiner, coupleurs/ponts, références R1-R4, récepteurs A-D et IF. Quatre ports : P1, P3, P4, P2.',
@@ -423,7 +423,7 @@ para('<b>Aucune phase ou impédance complexe n’est inventée.</b> Ces jeux fou
 para('Les courbes typiques décrivent une fiche publiée, pas votre exemplaire de DUT. Leur numérisation a une précision limitée ; les paramètres de polarisation et température restent ceux de la source. La compression en sweep de puissance demeure une estimation, sauf modèle spécifique supplémentaire.',True)
 para('<link href="https://cdn.macom.com/datasheets/MAAL-FR1245.pdf">MACOM MAAL-FR1245</link> - <link href="https://cdn.macom.com/datasheets/CGY2170YHV-C1.pdf">MACOM CGY2170YHV/C1</link>. Les nouveaux scénarios sont testés sur des sessions factices ; aucun N5245B physique n’a été connecté pour cette livraison.',True)
 
-picture('PNA-COURBES-V010.png','Simulation du MAAL-FR1245 connecté : S11, S12, S21 et S22 numérisés, phase inconnue.')
+picture('PNA-COURBES-V010.png','Simulation du MAAL-FR1245 connecté : S11, S12, S21 et S22 numérisés, phase inconnue.',width=380)
 
 class NumberedCanvas(canvas.Canvas):
     def __init__(self,*a,**k):super().__init__(*a,**k);self.pages=[]
