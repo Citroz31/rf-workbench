@@ -58,6 +58,11 @@ fn number(text: &str) -> Result<f64> {
         .filter(|v| v.is_finite() && v.abs() < 1e30)
         .ok_or_else(|| Error::Protocol("Valeur numérique instrument invalide".into()))
 }
+pub(crate) fn check_error(s:&mut dyn Session,context:&str)->Result<()> {
+    let error=s.query("SYST:ERR?")?;
+    if error.trim_start().starts_with("0,") || error.trim()=="0" {Ok(())}
+    else {Err(Error::Protocol(format!("{context} : {error}")))}
+}
 /// Explicitly add standard S traces to an existing Standard channel.
 pub fn prepare(s: &mut dyn Session, c: &Config) -> Result<String> {
     c.instrument.validate().map_err(Error::Protocol)?;
@@ -109,6 +114,7 @@ pub fn acquire_curves(
     kind: Kind,
     node: u64,
 ) -> Result<Vec<rf_core::network::Curve>> {
+    if c.instrument.pna.plan.is_some() { return planned_curves(s,c,kind,node); }
     if c.instrument.pna.power_sweep {
         return power_curves(s, c, kind, node);
     }
@@ -170,6 +176,150 @@ pub fn acquire_curves(
     }
     Ok(curves)
 }
+/// Configure the display and path together. Sweep settings are applied by the
+/// first acquisition afterwards, since recalling a path can change IF values.
+pub fn prepare_plan(s:&mut dyn Session,c:&Config,kind:Kind)->Result<String> {
+    c.instrument.validate().map_err(Error::Protocol)?;
+    if c.instrument.port_count>kind.max_rf_ports().unwrap_or(0) {return Err(Error::Protocol("Ports incompatibles avec le bloc VNA".into()));}
+    let id=s.query("*IDN?")?;
+    if !(is_pna(&id) || kind==Kind::UsbVna && is_usb_vna(&id))
+        || !c.instrument.expected_idn.is_empty() && !id.to_lowercase().contains(&c.instrument.expected_idn.to_lowercase())
+    {return Err(Error::Protocol("Identité VNA différente".into()));}
+    let ch=c.instrument.channel;
+    if number(&s.query("SYST:CAP:HARD:PORT:COUN?")?)?<f64::from(c.instrument.port_count)
+        || s.query(&format!("SENS{ch}:CLAS:NAME?"))?.trim().trim_matches('"')!="Standard"
+    {return Err(Error::Protocol("Canal Standard / ports physiques requis".into()));}
+    s.write(&format!("SENS{ch}:SWE:MODE HOLD"))?;
+    crate::pna_path::apply(s,c)?;
+    if let Some(plan)=&c.instrument.pna.plan {crate::pna_display::apply(s,c,plan)?;}
+    let cat=measurements(&s.query(&format!("CALC{ch}:PAR:CAT:EXT?"))?)?;
+    for parameter in rf_core::pna_plan::selected(c) {
+        if !cat.iter().any(|(_,p)|p==&parameter) {
+            let name=format!("RFW_CH{ch}_{parameter}");
+            if cat.iter().any(|(n,_)|n==&name) {return Err(Error::Protocol("Nom de mesure réservé déjà utilisé".into()));}
+            s.write(&format!("CALC{ch}:PAR:DEF:EXT \"{name}\",\"{}\"",parameter.replace('_',",")))?;
+        }
+    }
+    check_error(s,"Plan PNA")?;
+    Ok(format!("Canal {ch} : chemin et écran préparés ; balayage non déclenché."))
+}
+pub fn configure(s:&mut dyn Session,c:&Config,kind:Kind)->Result<String> {
+    prepare_plan(s,c,kind)?;
+    apply_sweep(s,c)?;check_error(s,"Réglages de mesure")?;
+    confirm_settings(s,c)?;
+    Ok(format!("Channel {} : écran, chemins, fréquence, IFBW, puissance et calibration configurés ; aucun sweep lancé.",c.instrument.channel))
+}
+fn apply_sweep(s:&mut dyn Session,c:&Config)->Result<()> {
+    let ch=c.instrument.channel;let p=&c.instrument.pna;
+    let min=number(&s.query("SYST:CAP:FREQ:MIN?")?)?;
+    let max=number(&s.query("SYST:CAP:FREQ:MAX?")?)?;
+    let (start,stop)=if p.power_sweep {(c.frequency_hz,c.frequency_hz)}else{(c.start_hz,c.stop_hz)};
+    if !start.is_finite() || !stop.is_finite() || start<min || stop>max
+        || !p.power_sweep && stop<=start || !(2..=MAX_POINTS).contains(&c.points) {
+        return Err(Error::Protocol("Balayage hors plage de fréquence / taille supportée".into()));
+    }
+    configure_power_and_cal(s,c)?;
+    if p.power_sweep {
+        s.write(&format!("SENS{ch}:SWE:TYPE POW"))?;
+        s.write(&format!("SENS{ch}:FREQ:CW {}",c.frequency_hz))?;
+        s.write(&format!("SOUR{ch}:POW:COUP OFF"))?;
+        s.write(&format!("SOUR{ch}:POW{}:PORT:STAR {}",p.source_port,p.power_start_dbm))?;
+        s.write(&format!("SOUR{ch}:POW{}:PORT:STOP {}",p.source_port,p.power_stop_dbm))?;
+    } else {
+        s.write(&format!("SENS{ch}:SWE:TYPE LIN"))?;
+        s.write(&format!("SENS{ch}:FREQ:STAR {}",c.start_hz))?;
+        s.write(&format!("SENS{ch}:FREQ:STOP {}",c.stop_hz))?;
+    }
+    s.write(&format!("SENS{ch}:SWE:POIN {}",c.points))?;
+    s.write(&format!("SENS{ch}:BWID {}",c.instrument.if_bandwidth_hz))?;
+    s.write(&format!("SENS{ch}:AVER:COUN {}",c.instrument.averages))?;
+    s.write(&format!("SENS{ch}:AVER {}",if p.power_sweep {if c.instrument.averaging {"ON"}else{"OFF"}.into()}else{u8::from(c.instrument.averaging).to_string()}))?;
+    Ok(())
+}
+fn confirm_settings(s:&mut dyn Session,c:&Config)->Result<()> {
+    let ch=c.instrument.channel;let p=&c.instrument.pna;
+    let actual_type=s.query(&format!("SENS{ch}:SWE:TYPE?"))?;
+    if !actual_type.trim().trim_matches('"').starts_with(if p.power_sweep {"POW"}else{"LIN"}) {
+        return Err(Error::Protocol("Type de balayage différent du plan".into()));
+    }
+    let mut expected=vec![(format!("SENS{ch}:BWID?"),c.instrument.if_bandwidth_hz),(format!("SENS{ch}:SWE:POIN?"),c.points as f64)];
+    if p.power_sweep {
+        expected.extend([(format!("SENS{ch}:FREQ:CW?"),c.frequency_hz),(format!("SOUR{ch}:POW{}:PORT:STAR?",p.source_port),p.power_start_dbm),
+            (format!("SOUR{ch}:POW{}:PORT:STOP?",p.source_port),p.power_stop_dbm)]);
+    }else {
+        expected.extend([(format!("SENS{ch}:FREQ:STAR?"),c.start_hz),(format!("SENS{ch}:FREQ:STOP?"),c.stop_hz),(format!("SOUR{ch}:POW?"),c.power_dbm)]);
+    }
+    for (query,desired) in expected {
+        let actual=number(&s.query(&query)?)?;
+        if (actual-desired).abs()>1e-8*desired.abs().max(1.) {
+            return Err(Error::Protocol(format!("{query} : demandé {desired}, accepté {actual}. Ajuster le projet avant de lancer la mesure.")));
+        }
+    }
+    Ok(())
+}
+fn planned_curves(s:&mut dyn Session,c:&Config,kind:Kind,node:u64)->Result<Vec<rf_core::network::Curve>> {
+    c.instrument.validate().map_err(Error::Protocol)?;
+    let parameters=rf_core::pna_plan::selected(c);
+    if c.instrument.configure_sweep {configure(s,c,kind)?;}
+    else if c.instrument.trigger {confirm_settings(s,c)?;}
+    let ch=c.instrument.channel;
+    if parameters.len()>1 && !c.instrument.trigger
+        && s.query(&format!("SENS{ch}:SWE:MODE?"))?.trim().trim_matches('"')!="HOLD"
+    {return Err(Error::Protocol("Multi-traces : HOLD ou déclenchement unique requis".into()));}
+    let catalog=measurements(&s.query(&format!("CALC{ch}:PAR:CAT:EXT?"))?)?;
+    let mut selections=Vec::new();
+    for p in parameters {
+        let mut preferred=c.instrument.pna.plan.as_ref().and_then(|plan|
+            plan.windows.iter().enumerate().find_map(|(wi,w)|w.traces.iter().enumerate().find_map(|(ti,t)|
+                (t.parameter==p).then(||crate::pna_display::name(ch,wi,ti,&p)))));
+        if p==c.s_parameter && !c.instrument.measurement.is_empty() {preferred=Some(c.instrument.measurement.clone());}
+        let matches:Vec<_>=catalog.iter().filter(|(_,param)|param==&p).collect();
+        let name=preferred.and_then(|n|matches.iter().find(|(existing,_)|*existing==n).copied())
+            .or_else(||(matches.len()==1).then(||matches[0]))
+            .ok_or_else(||Error::Protocol(format!("{p} : préparer le plan ou choisir une mesure non ambiguë")))?;
+        selections.push((p,name.0.clone()));
+    }
+    // A ratioed S measure configures the sweep once. Raw receivers follow it.
+    selections.sort_by_key(|(p,_)|(!p.starts_with('S'),p!=&c.s_parameter));
+    if selections.first().is_none_or(|(p,_)|!p.starts_with('S')) {
+        return Err(Error::Protocol("Le plan doit inclure un paramètre S pour définir le sweep".into()));
+    }
+    let mut curves=Vec::new();let mut first=c.clone();
+    first.instrument.configure_sweep=false;
+    for (i,(parameter,name)) in selections.into_iter().enumerate() {
+        first.s_parameter=parameter.clone();first.instrument.measurement=name.clone();
+        if i>0 {first.instrument.configure_sweep=false;first.instrument.trigger=false;}
+        if parameter.starts_with('S') {
+            if c.instrument.pna.power_sweep {curves.extend(power_curves(s,&first,kind,node)?);}
+            else {curves.push(rf_core::network::Curve::from_trace(node,&acquire_vna(s,&first,kind)?));}
+        } else {
+            curves.push(raw_receiver(s,&first,node,&parameter,&name)?);
+        }
+    }
+    // Restore local checkbox order independently from the one-shot trigger order.
+    let order=rf_core::pna_plan::selected(c);
+    curves.sort_by_key(|curve|order.iter().position(|p|p==&curve.name).unwrap_or(usize::MAX));
+    Ok(curves)
+}
+fn raw_receiver(s:&mut dyn Session,c:&Config,node:u64,parameter:&str,name:&str)->Result<rf_core::network::Curve> {
+    let ch=c.instrument.channel;
+    s.write(&format!("CALC{ch}:PAR:SEL \"{name}\",FAST"))?;
+    if s.query(&format!("CALC{ch}:FORM?"))?.trim().trim_matches('"')!="MLOG"
+        || s.query(&format!("CALC{ch}:FORM:UNIT? MLOG"))?.trim().trim_matches('"')!="DBM"
+    {return Err(Error::Protocol("Récepteur : format MLOG / unité dBm requis ; configurer le plan".into()));}
+    let (old,border)=saved_format(s)?;
+    let result=(|| {
+        s.write("FORM:BORD SWAP")?;s.write("FORM:DATA REAL,64")?;
+        let x=decode(&s.read_binary(&format!("CALC{ch}:X?"))?,64)?;
+        s.write(&format!("FORM:DATA REAL,{}",c.instrument.precision))?;
+        let y=decode(&s.read_binary(&format!("CALC{ch}:DATA? FDATA"))?,c.instrument.precision)?;
+        if x.len()!=y.len() || !(2..=MAX_POINTS).contains(&x.len()) || x.windows(2).any(|p|p[1]<=p[0]) {
+            return Err(Error::Protocol("Récepteur : axe/FDATA incohérents".into()));
+        }
+        Ok(rf_core::network::Curve {node,name:parameter.into(),x,y,x_unit:if c.instrument.pna.power_sweep {"dBm"}else{"Hz"}.into(),
+            y_unit:"dBm".into(),phase_deg:None,simulated:false,corrected:false,provenance:None})
+    })();finish_transfer(s,&old,&border,result)
+}
 fn power_curves(
     s: &mut dyn Session,
     c: &Config,
@@ -228,30 +378,7 @@ fn power_curves(
     }
     s.write(&format!("CALC{ch}:PAR:SEL \"{}\",FAST", entries[0].0))?;
     if c.instrument.configure_sweep {
-        let min = number(&s.query("SYST:CAP:FREQ:MIN?")?)?;
-        let max = number(&s.query("SYST:CAP:FREQ:MAX?")?)?;
-        if !c.frequency_hz.is_finite() || c.frequency_hz < min || c.frequency_hz > max {
-            return Err(Error::Protocol("Fréquence CW hors plage".into()));
-        }
-        configure_power_and_cal(s, c)?;
-        s.write(&format!("SENS{ch}:SWE:TYPE POW"))?;
-        s.write(&format!("SENS{ch}:FREQ:CW {}", c.frequency_hz))?;
-        s.write(&format!("SOUR{ch}:POW:COUP OFF"))?;
-        s.write(&format!(
-            "SOUR{ch}:POW{}:PORT:STAR {}",
-            p.source_port, p.power_start_dbm
-        ))?;
-        s.write(&format!(
-            "SOUR{ch}:POW{}:PORT:STOP {}",
-            p.source_port, p.power_stop_dbm
-        ))?;
-        s.write(&format!("SENS{ch}:SWE:POIN {}", c.points))?;
-        s.write(&format!("SENS{ch}:BWID {}", c.instrument.if_bandwidth_hz))?;
-        s.write(&format!("SENS{ch}:AVER:COUN {}", c.instrument.averages))?;
-        s.write(&format!(
-            "SENS{ch}:AVER {}",
-            if c.instrument.averaging { "ON" } else { "OFF" }
-        ))?;
+        apply_sweep(s,c)?;
     } else if !s
         .query(&format!("SENS{ch}:SWE:TYPE?"))?
         .trim()
@@ -294,6 +421,7 @@ fn power_curves(
             .map(|z| z[1].atan2(z[0]).to_degrees())
             .collect();
         Ok(vec![rf_core::network::Curve {
+            provenance: None,
             node,
             name: c.s_parameter.clone(),
             x,
@@ -610,41 +738,7 @@ pub fn acquire_vna(session: &mut dyn Session, c: &Config, kind: Kind) -> Result<
     }
     session.write(&format!("CALC{ch}:PAR:SEL \"{name}\",FAST"))?;
     if c.instrument.configure_sweep {
-        let min = session
-            .query("SYST:CAP:FREQ:MIN?")?
-            .trim()
-            .parse::<f64>()
-            .map_err(|e| Error::Protocol(e.to_string()))?;
-        let max = session
-            .query("SYST:CAP:FREQ:MAX?")?
-            .trim()
-            .parse::<f64>()
-            .map_err(|e| Error::Protocol(e.to_string()))?;
-        if !min.is_finite()
-            || !max.is_finite()
-            || !c.start_hz.is_finite()
-            || !c.stop_hz.is_finite()
-            || c.start_hz < min
-            || c.stop_hz > max
-            || c.stop_hz <= c.start_hz
-            || !(2..=MAX_POINTS).contains(&c.points)
-        {
-            return Err(Error::Protocol(
-                "Balayage hors plage de fréquence / taille supportée".into(),
-            ));
-        }
-        configure_power_and_cal(session, c)?;
-        session.write(&format!("SENS{ch}:SWE:TYPE LIN"))?;
-        for cmd in [
-            format!("SENS{ch}:FREQ:STAR {}", c.start_hz),
-            format!("SENS{ch}:FREQ:STOP {}", c.stop_hz),
-            format!("SENS{ch}:SWE:POIN {}", c.points),
-            format!("SENS{ch}:BWID {}", c.instrument.if_bandwidth_hz),
-            format!("SENS{ch}:AVER:COUN {}", c.instrument.averages),
-            format!("SENS{ch}:AVER {}", u8::from(c.instrument.averaging)),
-        ] {
-            session.write(&cmd)?;
-        }
+        apply_sweep(session,c)?;
     }
     if c.instrument.trigger {
         session.write(&format!("SENS{ch}:SWE:MODE HOLD"))?;

@@ -136,6 +136,11 @@ impl Report {
             .filter(|n| n.kind == Kind::Generator || n.kind.max_rf_ports().is_some())
         {
             let c = &src.config;
+            let active_ports: BTreeSet<usize> = if c.instrument.pna.power_sweep {
+                [usize::from(c.instrument.pna.source_port)].into_iter().collect()
+            } else {
+                crate::pna_plan::selected(c).iter().filter_map(|p|crate::pna_plan::source_port(p).map(usize::from)).collect()
+            };
             let (band, power) = if src.kind == Kind::Generator {
                 ([c.frequency_hz, c.frequency_hz], c.power_dbm)
             } else if c.instrument.pna.power_sweep {
@@ -173,7 +178,7 @@ impl Report {
                         None
                     };
                     if let Some((port, to, to_port)) = endpoint
-                        && (id == src.id || node.kind == Kind::Dut && port == node.dut_rf_path().1)
+                        && (id == src.id && active_ports.contains(&(port+1)) || node.kind == Kind::Dut && port == node.dut_rf_path().1)
                         && node
                             .physical_ports()
                             .get(port)
@@ -183,9 +188,6 @@ impl Report {
                     }
                 }
                 for (to, port) in targets {
-                    if seen.contains(&to) {
-                        continue;
-                    }
                     let Some(d) = g.node(to) else { continue };
                     let l = limits(d);
                     if let Some(b) = l.band_hz {
@@ -224,12 +226,18 @@ impl Report {
                             ),
                         );
                     }
+                    // A VNA receiver may belong to the source node already in
+                    // the route. Validate its terminal before stopping cycles.
+                    if seen.contains(&to) {continue;}
                     if d.kind == Kind::Dut {
                         if port.is_some_and(|port| port != d.dut_rf_path().0) {
                             r.add(Severity::Warning,Some(to),format!("{} : excitation inverse ; gain et overload de ce trajet non évalués",d.title));
                             continue;
                         }
-                        let output = p - d.config.loss_db - d.config.attenuation_db;
+                        let gain=d.config.dut.dataset.as_ref().filter(|_|d.config.dut.use_dataset)
+                            .and_then(|data|data.curve("S21")).map(|curve|curve.values.iter().copied().fold(f64::NEG_INFINITY,f64::max))
+                            .unwrap_or(-d.config.loss_db);
+                        let output = p + gain - d.config.attenuation_db;
                         if let Some(max) = l.max_output_dbm
                             && output > max
                         {

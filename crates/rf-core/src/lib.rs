@@ -5,6 +5,8 @@ pub mod flow;
 pub mod frequency;
 pub mod instrument;
 pub mod network;
+pub mod pna_plan;
+pub mod characterization;
 pub mod physical;
 pub use physical::{PhysicalConnection, PhysicalDirection, PhysicalPort, PhysicalPortKind};
 use serde::{Deserialize, Serialize};
@@ -569,6 +571,10 @@ impl Graph {
                 dsp::Op::Costas => c.order = 4,
                 _ => {}
             }
+        }
+        if kind.max_rf_ports().is_some() {
+            self.nodes.last_mut().expect("added VNA").config.instrument.pna.plan =
+                Some(pna_plan::Plan::default());
         }
         id
     }

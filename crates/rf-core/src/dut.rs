@@ -31,6 +31,8 @@ impl ProductType {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct Model {
+    pub dataset: Option<crate::characterization::Dataset>,
+    pub use_dataset: bool,
     pub product_type: ProductType,
     pub s11_db: f64,
     pub s22_db: f64,
@@ -45,6 +47,8 @@ pub struct Model {
 impl Default for Model {
     fn default() -> Self {
         Self {
+            dataset: None,
+            use_dataset: false,
             product_type: ProductType::Generic,
             s11_db: -20.,
             s22_db: -20.,
@@ -60,7 +64,9 @@ impl Default for Model {
 }
 impl Model {
     pub fn valid(&self) -> bool {
-        [self.s11_db, self.s22_db, self.s12_db]
+        (!self.use_dataset || self.dataset.is_some())
+            && self.dataset.as_ref().is_none_or(|d| d.validate().is_ok())
+            && [self.s11_db, self.s22_db, self.s12_db]
             .iter()
             .all(|v| v.is_finite() && (-300. ..=60.).contains(v))
             && [self.output_ip3_dbm, self.saturation_dbm]

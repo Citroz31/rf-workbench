@@ -20,6 +20,7 @@ mod studio;
 mod theme;
 mod visuals;
 mod vna_panel;
+mod pna_controls;
 
 fn main() -> eframe::Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -42,6 +43,9 @@ fn main() -> eframe::Result<()> {
                 rf_runtime::dsp_demo(),
                 "QAM16 / AWGN / Viterbi",
             ),
+            ("LNA-MAAL-FR1245-Courbes.rfbench",catalog_graph("macom-maal-fr1245"),"MAAL-FR1245 · courbes publiées +25 °C"),
+            ("Corechip-CGY2170-Courbes.rfbench",catalog_graph("macom-cgy2170yhv-c1"),"CGY2170YHV/C1 · modules publiés"),
+            ("PNA-X-Puissance-Recepteurs.rfbench",power_graph(),"PA · gain / réflexion / R1 / B"),
         ] {
             let b = bench_file::BenchFile::new(
                 rf_core::Project {
@@ -149,4 +153,27 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(|cc| Ok(Box::new(app::Workbench::new(cc)))),
     )
+}
+fn catalog_graph(id:&str)->rf_core::Graph {
+    let catalog=rf_dut_library::Catalog::default();let component=catalog.entries.iter().find(|c|c.id==id).unwrap();let rf=component.rf.as_ref().unwrap();
+    let mut graph=rf_core::Graph::network_demo();
+    for n in &mut graph.nodes {
+        if n.kind==rf_core::Kind::Dut {
+            n.title=component.part_number.clone();n.config.dut_id=Some(id.into());n.config.dut.dataset=component.dataset.clone();n.config.dut.use_dataset=true;
+            n.config.dut.product_type=if id.contains("maal"){rf_core::dut::ProductType::Lna}else{rf_core::dut::ProductType::Corechip};
+            n.config.loss_db=-rf.gain_db.typical;n.config.noise_figure_db=rf.noise_figure_db.typical;
+            n.config.limits.band_hz=Some(rf.band_hz);n.config.limits.output_p1db_dbm=Some(rf.output_p1db_dbm.typical);
+        }else if n.kind.max_rf_ports().is_some(){
+            n.config.start_hz=rf.band_hz[0];n.config.stop_hz=rf.band_hz[1];n.config.frequency_hz=rf.reference_frequency_hz;
+            n.config.instrument.pna.plan=Some(rf_core::pna_plan::Plan::default());n.config.power_dbm=-35.;
+        }
+    }
+    graph
+}
+fn power_graph()->rf_core::Graph {
+    let mut graph=rf_core::Graph::pa_demo();
+    let node=graph.nodes.iter_mut().find(|n|n.kind.max_rf_ports().is_some()).unwrap();
+    node.config.instrument.pna.power_sweep=true;node.config.instrument.pna.plan=Some(rf_core::pna_plan::Plan::power(1,2));
+    node.config.instrument.pna.power_start_dbm=5.;node.config.instrument.pna.power_stop_dbm=25.;node.config.points=101;
+    graph
 }

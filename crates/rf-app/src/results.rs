@@ -140,6 +140,7 @@ impl Window {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Panel {
+    pub initialized_nodes: Vec<u64>,
     pub open: bool,
     pub floating: bool,
     pub columns: usize,
@@ -151,6 +152,7 @@ pub struct Panel {
 impl Default for Panel {
     fn default() -> Self {
         Self {
+            initialized_nodes: Vec::new(),
             open: true,
             floating: false,
             columns: 2,
@@ -164,6 +166,7 @@ impl Default for Panel {
 impl Panel {
     pub fn validate(&self) -> Result<(), String> {
         if !(1..=4).contains(&self.columns)
+            || self.initialized_nodes.len()>1000
             || !(1..=4).contains(&self.rows)
             || self.page > 31
             || self.rect.iter().any(|v| !v.is_finite() || v.abs() > 20000.)

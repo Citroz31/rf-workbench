@@ -68,6 +68,8 @@ impl RfCharacteristics {
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Component {
+    #[serde(default)]
+    pub dataset: Option<rf_core::characterization::Dataset>,
     pub id: String,
     pub manufacturer: String,
     pub part_number: String,
@@ -110,6 +112,7 @@ impl Catalog {
         }
         let mut ids = BTreeSet::new();
         for c in &self.entries {
+            if let Some(dataset) = &c.dataset { dataset.validate().map_err(Error::Invalid)?; }
             if c.rf
                 .as_ref()
                 .is_some_and(|rf| !rf.valid() || c.sources.is_empty())
@@ -159,7 +162,11 @@ impl Catalog {
     }
     pub fn include_bundled(&mut self) {
         for entry in Self::default().entries {
-            if !self.entries.iter().any(|e| e.id == entry.id) {
+            if let Some(existing)=self.entries.iter_mut().find(|e|e.id==entry.id) {
+                if existing.dataset.is_none() && existing.part_number==entry.part_number && existing.sources==entry.sources {
+                    existing.dataset=entry.dataset;
+                }
+            }else {
                 self.entries.push(entry);
             }
         }
@@ -173,6 +180,7 @@ mod tests {
     use super::*;
     fn component() -> Component {
         Component {
+            dataset: None,
             id: "test-dut".into(),
             manufacturer: "Lab".into(),
             part_number: "TEST-1".into(),

@@ -4,6 +4,8 @@
 
 Application locale Windows x64, sans installation, sans compte et sans serveur. Double-cliquer sur `rf-workbench.exe` ; Python et VISA sont facultatifs pour les exemples simulés. Le manifeste Windows impose `asInvoker` : aucune élévation demandée par le programme. Données enregistrées dans le profil utilisateur (`%LOCALAPPDATA%/RF Workbench`), indépendamment du dossier de lancement. Aucun compte, télémétrie ou téléchargement automatique. L'exécutable est actuellement non signé : une validation IT peut être nécessaire selon la politique de l'entreprise. Voir [la procédure portable](docs/PORTABLE.md).
 
+**Version 0.10 :** plan PNA commun à l'interface, au simulateur et aux acquisitions ; quatre fenêtres S11/S12/S21/S22 en dB par défaut ; preset puissance avec récepteurs binaires et échelles indépendantes. Schéma interne fonctionnel et configurateur RF/IF interrogé sur l'appareil. Courbes MACOM sourcées dans les DUT, interpolation sans extrapolation, phase inconnue conservée et import `.s2p`/`.json`. [Utilisation et limites 0.10](docs/V0.10.md) · [Guide PDF](docs/Guide-utilisateur.pdf), chapitres 35–37.
+
 **Version 0.9 :** catalogue directement dans le bloc DUT et profils LNA/PA/corechip/passif. Le VNA simule le DUT externe câblé, avec ses S11/S22/gain/isolation ; aucun DUT implicite. Ports P1–P3–P4–P2, rotation de 90° avec Ctrl+R, fréquences et pas en Hz/kHz/MHz/GHz. [Fonctions et procédure 0.9](docs/V0.9.md) · [Guide PDF](docs/Guide-utilisateur.pdf).
 
 ![VNA et DUT indépendant avec rotation](docs/VNA-DUT-V09.png)

@@ -130,7 +130,7 @@ pub(crate) fn execute(
                     }
                 })
                 .collect();
-            let network = NetworkTrace {
+            let mut network = NetworkTrace {
                 magnitude_db: frequency_hz
                     .iter()
                     .enumerate()
@@ -186,6 +186,26 @@ pub(crate) fn execute(
                 parameter: c.s_parameter.clone(),
                 simulated: true,
             };
+            if let Some(Value::Dut {dataset:Some(dataset),dataset_attenuation,..})=inputs.get(&0) {
+                if dataset.reference_ohm.is_some_and(|z|(z-c.instrument.pna.reference_ohm).abs()>1e-8) {
+                    return Err("DUT : référence Touchstone différente du VNA ; renormalisation requise".into());
+                }
+                let data=dataset.curve(&c.s_parameter).ok_or_else(||
+                    format!("{} absent des données publiées ; utiliser le modèle scalaire explicitement",c.s_parameter))?;
+                let mut phase=Vec::new();
+                for (i,f) in network.frequency_hz.iter().enumerate() {
+                    let (value,p)=data.sample(*f)?;
+                    let attenuation=if c.s_parameter=="S21" {*dataset_attenuation}else{0.};
+                    let compression=if c.instrument.pna.power_sweep && c.s_parameter=="S21" {
+                        let power=c.instrument.pna.power_start_dbm+(c.instrument.pna.power_stop_dbm-c.instrument.pna.power_start_dbm)*i as f64/(c.points-1) as f64;
+                        let p1=match inputs.get(&0) {Some(Value::Dut {output_p1db,..})=>*output_p1db,_=>None};
+                        p1.map_or(0.,|op1|10.*(1.+(10f64.powf(0.1)-1.)*10f64.powf((power-(op1-value+attenuation+1.))/10.)).log10())
+                    }else{0.};
+                    network.magnitude_db[i]=value-attenuation-compression;
+                    if let Some(p)=p {phase.push(p+if c.s_parameter=="S21" {phase_adjustment(inputs)}else{0.});}
+                }
+                network.phase_deg=phase;
+            }
             result.network = Some(network.clone());
             vec![Value::Network(network)]
         }
@@ -246,4 +266,7 @@ pub(crate) fn execute(
         }
     }
     Ok(values)
+}
+fn phase_adjustment(inputs:&BTreeMap<usize,Value>)->f64 {
+    match inputs.get(&0) {Some(Value::Dut {phase,..})=>*phase,_=>0.}
 }

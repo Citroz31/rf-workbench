@@ -2,6 +2,8 @@
 pub mod dc;
 pub mod discovery;
 pub mod pna;
+pub mod pna_path;
+pub mod pna_display;
 pub mod pna_application;
 pub mod visa;
 use rf_core::{Config, Trace};

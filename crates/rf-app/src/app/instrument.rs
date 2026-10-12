@@ -2,6 +2,8 @@ use super::*;
 use rf_instruments::{discovery::Device, pna::Capabilities};
 #[derive(Clone)]
 pub(super) struct Dialog {
+    pub path: Option<rf_instruments::pna_path::Snapshot>,
+    pub dataset_path: String,
     pub application: Option<rf_instruments::pna_application::ApplicationData>,
     pub id: u64,
     pub kind: Kind,
@@ -41,6 +43,8 @@ pub(super) fn supports(k: Kind) -> bool {
 impl Dialog {
     pub fn new(n: &rf_core::Node, data_directory: &std::path::Path) -> Self {
         Self {
+            path: None,
+            dataset_path: String::new(),
             application: None,
             id: n.id,
             kind: n.kind,
@@ -102,7 +106,7 @@ impl Workbench {
         let mut job = None;
         let previous_port_count = d.config.instrument.port_count;
         egui::Window::new(format!("{} · réglages du bloc",d.title)).id(egui::Id::new(("instrument",d.id))).open(&mut open).resizable(true).min_size([470.,340.]).default_pos([340.,100.]).default_size([820.,620.]).max_height((ctx.content_rect().height()-140.).max(350.)).show(ctx,|ui|{
-            ui.horizontal_wrapped(|ui|{for (i,label) in ["Connexion","Fonctions","Options PNA","Console SCPI"].iter().enumerate(){if (d.kind!=Kind::Dut || i==1) && (i!=2 || matches!(d.kind,Kind::Pna|Kind::PnaX)) && ui.selectable_label(d.tab==i as u8,*label).clicked(){d.tab=i as u8;}}});ui.separator();
+            ui.horizontal_wrapped(|ui|{for (i,label) in ["Connexion","Fonctions","Options PNA","Console SCPI","Architecture / chemins"].iter().enumerate(){if (d.kind!=Kind::Dut || i==1) && (i!=2 || matches!(d.kind,Kind::Pna|Kind::PnaX)) && (i!=4 || d.kind==Kind::PnaX) && ui.selectable_label(d.tab==i as u8,*label).clicked(){d.tab=i as u8;}}});ui.separator();
             egui::ScrollArea::vertical().id_salt("instrument-content").max_height((ui.available_height()-70.).max(200.)).show(ui,|ui|{
                 let c=&mut d.config;
                 match d.tab {
@@ -122,6 +126,7 @@ impl Workbench {
                         ui.heading("Réglages du bloc");
                         match d.kind {
                             Kind::Pna|Kind::PnaX|Kind::UsbVna=>{
+                                crate::pna_controls::plan_editor(ui,c);
                                 ui.horizontal(|ui|{ui.label("Ports RF du schéma");egui::ComboBox::from_id_salt("vna-ports").selected_text(format!("{} port(s)",c.instrument.port_count)).show_ui(ui,|ui|{for count in 1..=d.kind.max_rf_ports().unwrap(){ui.selectable_value(&mut c.instrument.port_count,count,format!("{count} port(s)"));}});});
                                 ui.small("Mise à jour immédiate des broches. Réduire ce nombre retire les câbles des ports supprimés. Le canal de mesure reste indépendant.");
                                 if d.kind==Kind::UsbVna {ui.label("Pilote binaire Keysight P50xx/P93xx : le connecteur USB ne définit pas un dialecte SCPI universel.");}
@@ -137,10 +142,10 @@ impl Workbench {
                                     ui.columns(3,|cols|{crate::frequency_edit::frequency(&mut cols[0],"Début",&mut c.start_hz,&mut c.frequency_unit);crate::frequency_edit::frequency(&mut cols[1],"Fin",&mut c.stop_hz,&mut c.frequency_unit);cols[2].label("Points");cols[2].add(egui::DragValue::new(&mut c.points).range(2..=rf_core::MAX_POINTS));});ui.columns(2,|cols|{crate::frequency_edit::frequency(&mut cols[0],"IF bandwidth",&mut c.instrument.if_bandwidth_hz,&mut c.if_unit);cols[1].checkbox(&mut c.instrument.averaging,"Moyennage");cols[1].add(egui::DragValue::new(&mut c.instrument.averages).range(1..=65536).suffix(" acquisitions"));});
                                 });
                                 if !c.instrument.pna.power_sweep { crate::frequency_edit::sweep_step(ui,c); }
-                                super::pna_workspace::extra(ui,c,d.id,self.hardware,self.worker.is_busy(),&mut job,&mut self.fixture_job);
+                                super::pna_workspace::extra(ui,c,d.kind,d.id,self.hardware,self.worker.is_busy(),&mut job,&mut self.fixture_job);
                                 ui.label("Axe lu en REAL64 sur l'appareil ; données SDATA réelles/imaginaires en REAL32/64, little endian. Format de transfert restauré après lecture.");
                             }
-                            Kind::Dut=>{dut_settings(ui,c,&self.catalog);super::pna_workspace::limits_ui(ui,&mut c.limits);}
+                            Kind::Dut=>{dut_settings(ui,c,&self.catalog);dataset_editor(ui,c,&mut d.dataset_path,&mut d.message);}
                             Kind::DcSupplyE3631A|Kind::DcSupplyE36313A=>{
                                 let dc=&mut c.instrument.dc;
                                 egui::ComboBox::from_id_salt("dc-channel").selected_text(format!("CH{}",dc.channel)).show_ui(ui,|ui|{
@@ -161,7 +166,7 @@ impl Workbench {
                             Kind::Thermometer|Kind::Thermostream=>{number(ui,"Température / consigne",&mut c.temperature_c,0.1," °C");}
                             Kind::VariableResistor=>{number(ui,"Résistance",&mut c.resistance_ohm,1.," Ω");}
                             Kind::NoiseFigureMeter=>{number(ui,"Facteur de bruit simulé",&mut c.noise_figure_db,0.1," dB");}
-                            _=>{number(ui,"Fréquence de référence",&mut c.frequency_hz,1e6," Hz");number(ui,"Perte de conversion",&mut c.loss_db,0.1," dB");}
+                    _=>{number(ui,"Fréquence de référence",&mut c.frequency_hz,1e6," Hz");number(ui,"Perte de conversion",&mut c.loss_db,0.1," dB");}
                         }
                         if !matches!(d.kind,Kind::Pna|Kind::PnaX|Kind::UsbVna|Kind::Generator|Kind::Analyzer|Kind::Dut|Kind::DcSupplyE3631A|Kind::DcSupplyE36313A){ui.separator();ui.label("Commandes du profil (console, pas exécutées automatiquement par le banc)");ui.label("Lecture");ui.text_edit_singleline(&mut c.instrument.read_query);ui.label("Consigne / configuration");ui.text_edit_singleline(&mut c.instrument.set_command);}
                     }
@@ -191,6 +196,10 @@ impl Workbench {
                         }else{ui.label("Lire canaux / options dans Connexion. Les fonctions inconnues restent désactivées ; aucun déblocage d'après le seul modèle.");}
                         ui.label("GCA / NF / spectre / IMD : la classe validée ne garantit pas la gamme en fréquence, les récepteurs, sources, atténuateurs ni la calibration nécessaires.");
                     }
+                    4=>{
+                        if ui.add_enabled(self.hardware&&!self.worker.is_busy(),egui::Button::new("Lire les chemins RF / IF disponibles")).clicked(){job=Some(Command::InspectPnaPath{node:d.id,config:c.clone(),hardware:self.hardware});}
+                        crate::pna_controls::path_editor(ui,c,d.path.as_ref(),self.hardware);
+                    }
                     _=>{
                         ui.heading("Console instrument");ui.add(egui::TextEdit::singleline(&mut d.command).desired_width(f32::INFINITY));
                         ui.horizontal_wrapped(|ui|{for (label,command) in [("IDN","*IDN?"),("Options","*OPT?"),("Erreurs","SYST:ERR?")]{if ui.button(label).clicked(){d.command=command.into();}}
@@ -214,6 +223,11 @@ if ui.button("Consigne du profil").clicked(){d.command=c.instrument.set_command.
             {
                 Ok(removed) => {
                     self.history.record(before);
+                    d.config.instrument.pna.source_port=d.config.instrument.pna.source_port.min(d.config.instrument.port_count);
+                    if let Some(plan)=&mut d.config.instrument.pna.plan {
+                        plan.parameters.retain(|p|rf_core::pna_plan::valid_parameter(p,d.config.instrument.port_count));
+                        if plan.parameters.is_empty(){plan.parameters.push("S11".into());}plan.rebuild_windows();
+                    }
                     d.config.s_parameter = self
                         .project
                         .graph
@@ -263,6 +277,7 @@ if ui.button("Consigne du profil").clicked(){d.command=c.instrument.set_command.
                         n.config = d.config.clone();
                         n.title = d.title.clone();
                     }
+                    if d.kind.max_rf_ports().is_some() {self.apply_pna_layout(d.id);}
                     d.message = "Réglages mémorisés dans le bloc.".into();
                 }
                 Err(e) => d.message = e,
@@ -326,6 +341,8 @@ pub(super) fn component_details(ui: &mut egui::Ui, component: &Component) {
 pub(super) fn apply_component(c: &mut rf_core::Config, component: &Component) {
     c.dut_id = Some(component.id.clone());
     c.dut = rf_core::dut::Model::default();
+    c.dut.dataset=component.dataset.clone();
+    c.dut.use_dataset=c.dut.dataset.is_some();
     let category = component.category.to_lowercase();
     c.dut.product_type = if category.contains("lna") {
         rf_core::dut::ProductType::Lna
@@ -355,6 +372,37 @@ pub(super) fn apply_component(c: &mut rf_core::Config, component: &Component) {
         c.dut.attenuation_step_db = rf.attenuation_step_db;
         c.dut.phase_states = rf.phase_states;
         c.dut.phase_step_deg = rf.phase_step_deg;
+    }
+}
+fn dataset_editor(ui:&mut egui::Ui,c:&mut rf_core::Config,path:&mut String,message:&mut String) {
+    use rf_core::characterization::{Dataset,Characteristic,Provenance};
+    ui.separator();ui.heading("Courbes de caractérisation du DUT");
+    ui.add_enabled(c.dut.dataset.is_some(),egui::Checkbox::new(&mut c.dut.use_dataset,"Simuler avec les courbes publiées / importées"));
+    if let Some(data)=&c.dut.dataset {
+        ui.label(&data.label);
+        for curve in &data.curves {
+            egui::CollapsingHeader::new(format!("{} · {} points · {}{}",curve.parameter,curve.values.len(),curve.unit,if curve.phase_deg.is_none(){" · phase non disponible"}else{" · complexe"})).id_salt(("dut-data",&curve.parameter)).show(ui,|ui| {
+                ui.label(&curve.provenance.conditions);ui.small(&curve.provenance.method);
+                if curve.provenance.url.starts_with("https://") {ui.hyperlink_to(format!("Source · {} · page {}",curve.provenance.revision,curve.provenance.page),&curve.provenance.url);}
+                plot::series(ui,&curve.frequency_hz,&curve.values,150.,"GHz",&curve.unit,1e9);
+            });
+        }
+        ui.small("Interpolation dans la bande publiée, sans extrapolation. Les champs scalaires servent au mode scalaire ; les états d'atténuation appliquent un décalage nominal. Sans phase : aucun Smith ni deembedding. Un sweep de puissance reste un modèle de compression estimé.");
+    }else{ui.small("Ce DUT utilise un modèle scalaire. Choisir un produit documenté ou importer un jeu de données.");}
+    ui.label("Fichier local .json (jeu de courbes) ou .s2p (réseau complexe)");ui.text_edit_singleline(path);
+    if ui.button("Importer dans le DUT du projet").clicked() {
+        let result=(||->Result<Dataset,String> {
+            let text=read_limited(path,2_000_000)?;
+            if path.to_lowercase().ends_with(".s2p") {
+                let network=rf_dsp::fixture::parse(&text)?;
+                let provenance=Provenance {url:format!("file://{}",path.replace('\\',"/")),page:0,revision:"Touchstone local".into(),
+                    conditions:format!("Réseau importé ; référence {} Ω ; conditions de mesure à renseigner dans le projet",network.z0),method:"Données complexes Touchstone ; aucune phase inventée".into(),approximate:false};
+                let curves=["S11","S12","S21","S22"].into_iter().map(|parameter| {
+                    let t=network.trace(parameter).unwrap();Characteristic {parameter:parameter.into(),frequency_hz:t.frequency_hz,values:t.magnitude_db,unit:"dB".into(),phase_deg:Some(t.phase_deg),provenance:provenance.clone()}
+                }).collect();Ok(Dataset {label:format!("Touchstone · {path}"),curves,reference_ohm:Some(network.z0)})
+            }else{serde_json::from_str(&text).map_err(|e|e.to_string())}
+        })().and_then(|data|{data.validate()?;Ok(data)});
+        match result {Ok(data)=>{c.dut.dataset=Some(data);c.dut.use_dataset=true;*message="Données intégrées au DUT ; Appliquer pour les mémoriser dans le projet.".into();},Err(error)=>*message=error}
     }
 }
 fn dut_settings(ui: &mut egui::Ui, c: &mut rf_core::Config, catalog: &Catalog) {
@@ -408,6 +456,8 @@ fn dut_settings(ui: &mut egui::Ui, c: &mut rf_core::Config, catalog: &Catalog) {
     crate::frequency_edit::frequency(ui, "Bande début", &mut c.start_hz, &mut c.frequency_unit);
     crate::frequency_edit::frequency(ui, "Bande fin", &mut c.stop_hz, &mut c.frequency_unit);
     c.limits.band_hz = Some([c.start_hz, c.stop_hz]);
+    optional_dut(ui,"Puissance d'entrée maximale déclarée",&mut c.limits.max_input_dbm);
+    optional_dut(ui,"Puissance de sortie maximale déclarée",&mut c.limits.max_output_dbm);
     dut_number(ui, "S11", &mut c.dut.s11_db, 0.1, " dB");
     dut_number(ui, "S22", &mut c.dut.s22_db, 0.1, " dB");
     dut_number(ui, "S12 · isolation inverse", &mut c.dut.s12_db, 0.1, " dB");

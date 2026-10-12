@@ -82,7 +82,7 @@ jobs:
           if ($tests.ExitCode -ne 0) { throw 'Executable self-tests failed.' }
           $simulation = Start-Process -FilePath $binary -ArgumentList '--headless-run','--demo-dsp' -WindowStyle Hidden -Wait -PassThru
           if ($simulation.ExitCode -ne 0) { throw 'Standalone DSP simulation failed.' }
-          foreach ($example in @('LNA-MAAL-FR1245.rfbench','Corechip-CGY2170YHV-C1.rfbench','PNA-X-N5245B-4ports.rfbench','PNA-X-N5245B-Panel.rfbench','VNA-DUT-Externe.rfbench')) {
+          foreach ($example in @('LNA-MAAL-FR1245.rfbench','Corechip-CGY2170YHV-C1.rfbench','PNA-X-N5245B-4ports.rfbench','PNA-X-N5245B-Panel.rfbench','VNA-DUT-Externe.rfbench','LNA-MAAL-FR1245-Courbes.rfbench','Corechip-CGY2170-Courbes.rfbench','PNA-X-Puissance-Recepteurs.rfbench')) {
             $fixture = (Resolve-Path -LiteralPath "examples/$example").Path
             $run = Start-Process -FilePath $binary -ArgumentList "--headless-run --open `"$fixture`"" -WindowStyle Hidden -Wait -PassThru
             if ($run.ExitCode -ne 0) { throw "Physical RF fixture failed: $example" }
