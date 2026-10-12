@@ -28,15 +28,9 @@ pub struct RunResult {
     pub overflows: usize,
 }
 fn dut_p1db(n: &rf_core::Node) -> Option<f64> {
-    n.config.limits.output_p1db_dbm.or_else(|| {
-        rf_dut_library::Catalog::default()
-            .entries
-            .iter()
-            .find(|e| Some(e.id.as_str()) == n.config.dut_id.as_deref())
-            .and_then(|e| e.rf.as_ref())
-            .map(|rf| rf.output_p1db_dbm.typical)
-    })
+    n.config.limits.output_p1db_dbm
 }
+
 pub fn preflight(graph: &Graph) -> rf_core::flow::Report {
     let catalog = rf_dut_library::Catalog::default();
     let mut profiles = BTreeMap::new();

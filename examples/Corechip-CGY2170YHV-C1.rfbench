@@ -305,6 +305,14 @@
               "s11_db": -15.0,
               "s22_db": -18.0,
               "s12_db": -60.0
+            },
+            "limits": {
+              "band_hz": [
+                8000000000,
+                12000000000
+              ],
+              "output_p1db_dbm": 13,
+              "source": "V3 · 10 GHz ; TA +25 °C ; état de référence ; ID1 20 mA, ID2 23 mA, ID3 40 mA, IDN 2,5 mA, ISS 4 mA, ISN 21,5 mA (p. 3)."
             }
           },
           "comment": "",

@@ -38,7 +38,7 @@ def para(text,small=False):story.append(p(text,small))
 def sub(text):story.append(Paragraph(text,styles['SubGuide']))
 def page(number,title):
     if story:story.append(PageBreak())
-    story.append(p(f'RF WORKBENCH 0.8  /  {number:02}',True));story.append(Paragraph(title,styles['HGuide']))
+    story.append(p(f'RF WORKBENCH 0.9  /  {number:02}',True));story.append(Paragraph(title,styles['HGuide']))
 def steps(items):
     for i,item in enumerate(items,1):para(f'<b>{i:02}.</b> {item}')
 def table(headers,rows,widths=None):
@@ -100,7 +100,7 @@ csv.write_text('provenance,Pin_dBm,Pout_dBm,gain_dB\n'+''.join(f'simulation_peda
 
 page(1,'Guide utilisateur')
 story.append(Paragraph('RF Workbench',styles['CoverGuide']))
-para('<b>Version 0.8 - Windows</b><br/>Bancs graphiques RF, DSP, scripts Python et instrumentation VISA/SCPI.')
+para('<b>Version 0.9 - Windows</b><br/>Bancs graphiques RF, DSP, scripts Python et instrumentation VISA/SCPI.')
 story.append(Spacer(1,12));picture('PA.png','Application native : exemple petit signal PA 36-38 GHz, données simulées.')
 sub('Du premier schéma à la lecture binaire du PNA-X')
 para('Ce guide accompagne le prototype livré. Il décrit les actions disponibles, les unités, les limites et un protocole de caractérisation de PA : gain 20 dB, objectif 40 dBm, OP1dB voisin de 34 dBm, bande 36-38 GHz.')
@@ -114,7 +114,7 @@ para('66 types de blocs, portage desktop Rust/egui, schéma typé, fenêtres de 
 sub('Frontières à connaître')
 para('La validation locale concerne Windows et des serveurs de test. Un test de protocole ne valide ni le firmware d’un PNA réel, ni les options, ni la justesse métrologique. Les pilotes spécifiques AWG, thermique, capteurs et convertisseurs restent à écrire par modèle ; leurs simulations et console SCPI sont disponibles.')
 para('Les applications GCA/NF/IMD/spectre se préparent sur l’instrument : cette version n’effectue pas leur configuration complète ni leur calibration automatique. Elle détecte les classes valides, récupère les données et propose un réglage de niveau GCA sur un canal existant.')
-para('iOS/Android, synchronisation matérielle PTP/GPSDO/MIMO complète et streaming haut débit sans pertes ne sont pas livrés. Les nouveaux dialogues 0.8 sont en français ; la traduction anglaise des vues historiques reste disponible.')
+para('iOS/Android, synchronisation matérielle PTP/GPSDO/MIMO complète et streaming haut débit sans pertes ne sont pas livrés. Les nouveaux dialogues 0.9 sont en français ; la traduction anglaise des vues historiques reste disponible.')
 
 page(3,'Installer et préparer le laboratoire')
 steps(['Télécharger <b>RF-Workbench-Windows-x64-portable.zip</b> depuis Releases, puis extraire entièrement son contenu dans un dossier de votre compte. Double-cliquer sur <b>rf-workbench.exe</b>, directement à la racine. Aucun CMD, terminal, installation ou compilateur n’est nécessaire. Le ZIP Source code contient seulement les sources.',
@@ -253,7 +253,7 @@ page(19,'Exemple PA : définir les objectifs')
 table(['Grandeur demandée','Interprétation dans cet exemple'],[['Bande','36-38 GHz ; points de contrôle 36, 37 et 38 GHz.'],['Gain petit signal','20 dB, à vérifier par fréquence.'],['P1dB','Hypothèse : OP1dB ≈ 34 dBm, puissance de sortie.'],['Pin au point de compression','Gain comprimé = 19 dB ; Pin1dB ≈ 34 - 19 = 15 dBm.'],['Puissance maximale','40 dBm = 10 W, objectif séparé ; le point d’entrée nécessaire ne se déduit pas du gain petit signal.']],[185,305])
 para('Si « P1dB 34 dBm » désigne au contraire une puissance d’entrée, l’interprétation change complètement. Pour ce guide, OP1dB désigne explicitement la sortie. 34 dBm correspond à environ 2,512 W ; 15 dBm à 31,62 mW à l’entrée.')
 story.append(chart);story.append(p('Courbe pédagogique synthétique, pas une mesure du PA. L’asymptote 40 dBm illustre une saturation choisie.',True))
-para('Le CSV PA-compression-synthetique.csv accompagne le guide. Le fichier PA-36-38GHz.rfbench exécute uniquement le petit signal : gain nominal 20 dB avec ripple illustratif de ±0,15 dB. Il ne simule ni P1dB, ni échauffement, ni Psat ; ces valeurs sont des objectifs annotés.')
+para('Le CSV PA-compression-synthetique.csv accompagne le guide. Le fichier PA-36-38GHz.rfbench exécute uniquement le petit signal : gain constant de 20 dB. Le sweep de puissance optionnel utilise OP1dB = 34 dBm comme hypothèse de compression douce. Psat = 40 dBm reste une caractéristique documentaire ; échauffement et saturation réelle ne sont pas modélisés.')
 
 page(20,'Exemple PA : préparer le montage')
 story.append(Diagram());story.append(Spacer(1,12))
@@ -297,7 +297,7 @@ refs=[('Code, versions et CI','https://github.com/Citroz31/rf-workbench'),('Keys
 for label,url in refs:
     para(f'<b>{label}</b><br/><link href="{url}" color="#007E86">{url}</link>')
 sub('Documents du dépôt')
-para('V0.8.md décrit le câblage RF, les composants MACOM et les alimentations. V0.5.md décrit la nouvelle interface et les acquisitions PNA. V0.4.md précise les 45 opérations DSP/HAL et leurs profils de recherche. ARCHITECTURE.md détaille les frontières natives/SDK. VALIDATION.md sépare tests locaux, CI et matériel non validé.')
+para('V0.9.md décrit le DUT externe, les familles et les unités ; V0.6.md décrit les alimentations. V0.5.md décrit la nouvelle interface et les acquisitions PNA. V0.4.md précise les 45 opérations DSP/HAL et leurs profils de recherche. ARCHITECTURE.md détaille les frontières natives/SDK. VALIDATION.md sépare tests locaux, CI et matériel non validé.')
 para('Les prochaines validations dépendent des modèles, firmware, options et ressources du laboratoire. Les points prioritaires sont les dialectes des autres instruments, les calibrations applicatives, la traçabilité des acquisitions, l’ordonnanceur streaming et les plateformes mobiles.')
 
 
@@ -312,7 +312,7 @@ para('W active un outil de câblage persistant ; clic source puis clic cible pro
 page(26,'Ports RF et mesure de LNA au VNA')
 picture('INSTRUMENT-V06.png','Fenêtre Fonctions : nombre de ports RF, paramètre S et Channel sont des réglages distincts.',width=450)
 steps(['Choisir 1 à 4 ports sur PNA / PNA-X, ou 1 à 2 sur VNA USB. Le symbole et les broches se mettent à jour immédiatement. Réduire le nombre retire les câbles attachés aux ports disparus ; Ctrl+Z restaure la modification.',
-       'Ouvrir LNA-MAAL-FR1245.rfbench. PORT 1 est relié à RF IN du DUT, RF OUT à PORT 2. Choisir S21 : le second indice est le port source, le premier le port récepteur.',
+       'Ouvrir LNA-MAAL-FR1245.rfbench. P1 est relié à RF IN du DUT, RF OUT à P2. Choisir S21 : le second indice est le port source, le premier le port récepteur.',
        'Exécuter en simulation : le gain nominal est 26 dB à 29 GHz. L’extension du tracé sur 27-31,5 GHz utilise un gain constant pédagogique et ne constitue pas une courbe constructeur.',
        'Sur l’appareil, préparer le canal Standard, la trace S21 et la calibration. Identifier l’adresse, vérifier le nombre réel de ports, puis choisir Channel / trace / REAL32 ou REAL64.'])
 para('La lecture SYST:CAP:HARD:PORT:COUN? vérifie la disponibilité matérielle avant l’acquisition. Un nombre configuré supérieur au matériel est refusé. Le bloc USB est un profil SCPI Keysight P50xx/P93xx ; les autres VNA USB nécessitent un pilote adapté. Les broches DC décrivent le montage sans séquencer la polarisation.',True)
@@ -356,7 +356,7 @@ steps(['Activer la matrice Sij dans Fonctions pour obtenir les traces des ports 
        'Dans VNA / résultats, choisir Nouveau graphique ou un graphique existant, puis la trace et Ajouter dB, phase, Smith ou valeur Y. Le panneau propose 1, 2, 4, 6 ou 8 graphes ; plusieurs pages sont possibles. Fenêtres séparées conserve l’autre mode d’affichage.',
        'Cliquer une légende pour activer la trace. Régler Échelle/div, Référence et Position/div (0 = haut, 5 = milieu, 10 = bas). Auto concerne seulement cette trace. Les graduations visibles suivent la trace active ; les autres tracés gardent leurs propres échelles. Le survol affiche leurs vraies valeurs et unités.',
        'Sauvegarder le .rfbench conserve disposition, dimensions, traces, formats, visibilité, sélection et échelles. Pour NF/IMD/R1/B1, lire FDATA ; aucune phase complexe n’est inventée. Smith exige une réflexion complexe et se combine avec d’autres traces Smith. Les axes Hz et dBm ne sont pas superposés. Exporter JSON conserve les données brutes/corrigées et leurs unités.'])
-para('Modèle natif illustratif : gain et phase du DUT, réflexion proche de -20 dB, isolation inverse S12 = -60 dB. Les ports non câblés sont supposés ouverts ; les chemins correspondants ont une transmission nulle affichée à -300 dB. Les courbes ne sont pas des mesures constructeur. Le sweep de puissance utilise un modèle de compression doux si OP1dB est renseigné, avec perte de gain 1 dB au Pin1dB = OP1dB - gain + 1 dB. IFBW et moyennage ne génèrent pas une incertitude métrologique simulée.')
+para('Modèle natif illustratif : gain et phase du DUT externe, réflexions S11/S22 et isolation S12 déclarées dans ses réglages (valeurs génériques par défaut : -20/-20/-60 dB). Aucun DUT interne n’est créé par le VNA. Les ports non câblés sont supposés ouverts ; les chemins correspondants ont une transmission nulle affichée à -300 dB. Les courbes ne sont pas des mesures constructeur. Le sweep de puissance utilise un modèle de compression doux si OP1dB est renseigné, avec perte de gain 1 dB au Pin1dB = OP1dB - gain + 1 dB. IFBW et moyennage ne génèrent pas une incertitude métrologique simulée.')
 
 page(31,'Fixtures : mesurer ou importer')
 picture('FIXTURES-V07.png','Atelier de fixture séparé du schéma. Les opérations de lecture/calcul s’exécutent en arrière-plan.')
@@ -375,6 +375,23 @@ steps(['Mesurer une grille harmonique f = Δf, 2Δf, ... NΔf, avec 16 à 8192 p
 para('La méthode native suit une approche NZC de gating temporel inspirée de scikit-RF / IEEE P370. Un test compare ses données complexes à scikit-RF 1.8.0 sur des transitions asymétriques. Hypothèses : 2×Thru passif et réciproque, demi-fixtures de longueurs électriques égales et impédance représentative du montage. La répartition de pertes n’est pas identifiable sans hypothèse supplémentaire pour deux fixtures très différentes. Ce n’est ni l’algorithme propriétaire Keysight AFR, ni une implémentation ZC complète, ni une certification IEEE 370.')
 para('Référence : scikit-rf.readthedocs.io/en/latest/examples/networktheory/IEEEP370%20Deembedding.html. Commandes N524xB : helpfiles.keysight.com/csg/NA520xA/Programming/GP-IB_Command_Finder/. Le contrôle sur un N5245B physique reste à effectuer avec le firmware, les options et la calibration du laboratoire.',True)
 
+page(33,'DUT externe et catalogue dans le bloc')
+picture('DUT-V09.png','Un choix de produit et une famille de DUT dans les réglages du bloc. Les données copiées du catalogue restent modifiables dans ce projet.')
+steps(['Créer un projet, prendre un bloc VNA puis un bloc DUT dans la palette et les placer sur la grille. Double-cliquer le DUT, sélectionner sa référence dans Produit du catalogue ou conserver Modèle personnalisé.',
+       'Choisir le type LNA, PA, Corechip ou Passif. Renseigner bande, S11, S22, isolation S12 et gain. LNA : NF, OP1dB et OIP3 facultatif ; PA : OP1dB, OIP3 et Psat ; corechip : mode RX/TX, atténuation et phase.',
+       'Appliquer au bloc. Avec W, relier P1 à RF IN et RF OUT à P2 (CGY : RX IN/COM RF en RX, COM RF/TX OUT en TX). Le modèle est pris dans le DUT câblé, pas dans le VNA. Changer de référence retire les câbles de ce DUT afin de vérifier les nouvelles broches.',
+       'Régler la bande du VNA dans celle du DUT puis Exécuter en simulation. S21 suit gain - atténuation ; S11/S22 suivent les valeurs déclarées. Inverser les deux câbles permute correctement les réflexions et les transmissions.'])
+para('Le modèle est scalaire et constant en fréquence : aucune courbe mesurée constructeur n’est inventée. NF/OIP3/Psat sont documentaires ; pas de génération de bruit ni IM3. Le sweep de puissance applique une compression douce selon OP1dB. Les limites de dommage restent à renseigner séparément.',True)
+
+page(34,'Rotation, ports et unités de fréquence')
+picture('VNA-DUT-V09.png','Exemple VNA-DUT-Externe.rfbench : ports P1-P3-P4-P2 et DUT tourné de 90 degrés. Les connexions gardent leur identité électrique.')
+steps(['Sélectionner un ou plusieurs blocs puis Ctrl+R : chaque bloc tourne de 90° autour de son centre. Les broches et le symbole tournent ; le titre reste lisible. Ctrl+Z annule ; copier/coller et sauvegarder conservent la rotation. Pendant un placement, Ctrl+R tourne aussi le bloc au curseur.',
+       'Un PNA à quatre ports affiche P1, P3, P4, P2 de gauche à droite. Les indices Sij restent électriques : S21 signifie réception P2, source P1. Un VNA à deux ports affiche P1 puis P2.',
+       'Dans Fonctions du VNA, choisir Hz, kHz, MHz ou GHz pour début/fin, IFBW et pas fréquentiel. Changer d’unité conserve la même valeur physique. Double-cliquer la valeur numérique permet une saisie fine jusqu’à neuf décimales.',
+       'Exemple : 36 à 38 GHz avec pas demandé 5 MHz donne 401 points. Les deux extrémités sont conservées ; un pas non divisible ajuste le nombre de points et affiche le pas effectif. La limite est 100001 points ; une demande plus fine est bornée explicitement.',
+       'Le routage utilise maintenant Ctrl+Shift+R ; les anciennes préférences Ctrl+R sont migrées. Les raccourcis restent personnalisables et sont suspendus pendant la saisie d’un texte.'])
+para('Ces fonctions sont locales et sans dépendance Python ou VISA en simulation. Le projet conserve les unités choisies et les caractéristiques de chaque DUT. Le panneau multitraces continue de conserver une échelle propre à chaque trace.',True)
+
 class NumberedCanvas(canvas.Canvas):
     def __init__(self,*a,**k):super().__init__(*a,**k);self.pages=[]
     def showPage(self):self.pages.append(dict(self.__dict__));self._startPage()
@@ -382,12 +399,12 @@ class NumberedCanvas(canvas.Canvas):
         total=len(self.pages)
         for state in self.pages:
             self.__dict__.update(state);self.setStrokeColor(TEAL);self.setLineWidth(.7);self.line(52,802,543,802)
-            self.setFont('Guide',7.4);self.setFillColor(GRAY);self.drawString(52,812,'RF WORKBENCH  /  GUIDE UTILISATEUR  /  0.8')
+            self.setFont('Guide',7.4);self.setFillColor(GRAY);self.drawString(52,812,'RF WORKBENCH  /  GUIDE UTILISATEUR  /  0.9')
             self.drawString(52,27,'Prototype RF et métrologie  |  12 octobre 2026');self.drawRightString(543,27,f'{self._pageNumber} / {total}')
             super().showPage()
         super().save()
 
 output=HERE/'Guide-utilisateur.pdf'
-doc=SimpleDocTemplate(str(output),pagesize=A4,leftMargin=52,rightMargin=53,topMargin=55,bottomMargin=48,title='RF Workbench 0.8 - Guide utilisateur',author='RF Workbench',pageCompression=1)
+doc=SimpleDocTemplate(str(output),pagesize=A4,leftMargin=52,rightMargin=53,topMargin=55,bottomMargin=48,title='RF Workbench 0.9 - Guide utilisateur',author='RF Workbench',pageCompression=1)
 doc.build(story,canvasmaker=NumberedCanvas)
-print(json.dumps({'pdf':str(output),'bytes':output.stat().st_size,'chapters':32,'synthetic_Rapp_p':q},ensure_ascii=False))
+print(json.dumps({'pdf':str(output),'bytes':output.stat().st_size,'chapters':34,'synthetic_Rapp_p':q},ensure_ascii=False))

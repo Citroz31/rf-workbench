@@ -305,6 +305,14 @@
               "s11_db": -15.0,
               "s22_db": -18.0,
               "s12_db": -60.0
+            },
+            "limits": {
+              "band_hz": [
+                27000000000,
+                31500000000
+              ],
+              "output_p1db_dbm": 5,
+              "source": "V4 — 8 avril 2026 · 29 GHz ; TA +25 °C ; VD +1,5 V ; VG −1,5 V (table électrique, p. 3)."
             }
           },
           "comment": "",

@@ -107,7 +107,10 @@ fn physical_route(
     }
     let start = from + a * 24. * zoom;
     let end = to + b * 24. * zoom;
-    let middle = if a.y != 0. || b.y != 0. {
+    let middle = if a.y * b.y < 0. {
+        let x = (start.x + end.x) * 0.5;
+        vec![Pos2::new(x, start.y), Pos2::new(x, end.y)]
+    } else if a.y != 0. || b.y != 0. {
         let y = if a.y < 0. && b.y <= 0. {
             start.y.min(end.y) - 24. * zoom
         } else if a.y >= 0. && b.y >= 0. {
@@ -1160,9 +1163,9 @@ impl Canvas {
                 painter.circle_stroke(position, 5. * self.zoom.max(0.7), Stroke::new(1., bg()));
                 let exit = physical_port_exit(node, index);
                 let (offset, align) = if exit.y < 0. {
-                    (egui::vec2(0., -9.), Align2::CENTER_BOTTOM)
-                } else if exit.y > 0. {
                     (egui::vec2(0., 9.), Align2::CENTER_TOP)
+                } else if exit.y > 0. {
+                    (egui::vec2(0., -9.), Align2::CENTER_BOTTOM)
                 } else if exit.x < 0. {
                     (egui::vec2(8., -8.), Align2::LEFT_BOTTOM)
                 } else {
@@ -1238,6 +1241,7 @@ impl Canvas {
                         );
                     }
                     let physical_block = !node.physical_ports().is_empty();
+                    if !physical_block || self.selected_ids.contains(&node.id) {
                     painter.text(
                         position
                             + if physical_block {
@@ -1258,6 +1262,7 @@ impl Canvas {
                         crate::theme::font(9. * self.zoom),
                         port(terminal.port),
                     );
+                    }
                     let terminal_hit = ui.interact(
                         Rect::from_center_size(position, egui::vec2(20., 20.)),
                         Id::new(("terminal", node.id, output, index)),
@@ -2065,6 +2070,14 @@ mod tests {
 #[cfg(test)]
 mod rotation_tests {
     use super::*;
+    #[test]
+    fn opposed_vertical_pins_leave_cards_before_turning() {
+        let a=Pos2::new(25.,208.);let b=Pos2::new(520.,0.);
+        let path=physical_route(a,b,&[],true,1.,egui::vec2(0.,1.),egui::vec2(0.,-1.));
+        let boxes=[Rect::from_min_size(Pos2::ZERO,NODE_SIZE).shrink(0.1),Rect::from_min_size(Pos2::new(400.,0.),egui::vec2(208.,240.)).shrink(0.1)];
+        assert!(path.windows(2).all(|w|boxes.iter().all(|r|!r.contains((w[0]+w[1].to_vec2())*0.5))));
+        assert!(path.windows(2).all(|w|w[0].x==w[1].x||w[0].y==w[1].y));
+    }
     #[test]
     fn rotation_keeps_port_identity_center_history_and_serialization() {
         let mut g = Graph::default();

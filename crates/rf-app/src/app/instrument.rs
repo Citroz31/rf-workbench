@@ -136,6 +136,7 @@ impl Workbench {
                                 ui.add_enabled_ui(c.instrument.configure_sweep || !self.hardware,|ui|{
                                     ui.columns(3,|cols|{crate::frequency_edit::frequency(&mut cols[0],"Début",&mut c.start_hz,&mut c.frequency_unit);crate::frequency_edit::frequency(&mut cols[1],"Fin",&mut c.stop_hz,&mut c.frequency_unit);cols[2].label("Points");cols[2].add(egui::DragValue::new(&mut c.points).range(2..=rf_core::MAX_POINTS));});ui.columns(2,|cols|{crate::frequency_edit::frequency(&mut cols[0],"IF bandwidth",&mut c.instrument.if_bandwidth_hz,&mut c.if_unit);cols[1].checkbox(&mut c.instrument.averaging,"Moyennage");cols[1].add(egui::DragValue::new(&mut c.instrument.averages).range(1..=65536).suffix(" acquisitions"));});
                                 });
+                                if !c.instrument.pna.power_sweep { crate::frequency_edit::sweep_step(ui,c); }
                                 super::pna_workspace::extra(ui,c,d.id,self.hardware,self.worker.is_busy(),&mut job,&mut self.fixture_job);
                                 ui.label("Axe lu en REAL64 sur l'appareil ; données SDATA réelles/imaginaires en REAL32/64, little endian. Format de transfert restauré après lecture.");
                             }
@@ -407,18 +408,18 @@ fn dut_settings(ui: &mut egui::Ui, c: &mut rf_core::Config, catalog: &Catalog) {
     crate::frequency_edit::frequency(ui, "Bande début", &mut c.start_hz, &mut c.frequency_unit);
     crate::frequency_edit::frequency(ui, "Bande fin", &mut c.stop_hz, &mut c.frequency_unit);
     c.limits.band_hz = Some([c.start_hz, c.stop_hz]);
-    number(ui, "S11", &mut c.dut.s11_db, 0.1, " dB");
-    number(ui, "S22", &mut c.dut.s22_db, 0.1, " dB");
-    number(ui, "S12 · isolation inverse", &mut c.dut.s12_db, 0.1, " dB");
+    dut_number(ui, "S11", &mut c.dut.s11_db, 0.1, " dB");
+    dut_number(ui, "S22", &mut c.dut.s22_db, 0.1, " dB");
+    dut_number(ui, "S12 · isolation inverse", &mut c.dut.s12_db, 0.1, " dB");
     let mut gain = -c.loss_db;
-    if number(ui, "Gain de référence du modèle", &mut gain, 0.1, " dB") {
+    if dut_number(ui, "Gain de référence du modèle", &mut gain, 0.1, " dB") {
         c.loss_db = -gain;
     }
     if matches!(
         c.dut.product_type,
         ProductType::Lna | ProductType::Generic | ProductType::Corechip
     ) {
-        number(ui, "Facteur de bruit", &mut c.noise_figure_db, 0.1, " dB");
+        dut_number(ui, "Facteur de bruit", &mut c.noise_figure_db, 0.1, " dB");
     }
     if matches!(
         c.dut.product_type,
@@ -442,14 +443,14 @@ fn dut_settings(ui: &mut egui::Ui, c: &mut rf_core::Config, catalog: &Catalog) {
             ui.selectable_value(&mut c.dut_mode, "RX".into(), "RX");
             ui.selectable_value(&mut c.dut_mode, "TX".into(), "TX");
         });
-        number(
+        dut_number(
             ui,
             "Atténuation",
             &mut c.attenuation_db,
             c.dut.attenuation_step_db.max(0.01),
             " dB",
         );
-        number(
+        dut_number(
             ui,
             "Déphasage",
             &mut c.phase_deg,
@@ -505,16 +506,16 @@ fn dut_settings(ui: &mut egui::Ui, c: &mut rf_core::Config, catalog: &Catalog) {
             }
         }
         ui.separator();
-        component_details(ui, component);
+        ui.collapsing("Fiche constructeur et conditions", |ui| component_details(ui, component));
     } else {
-        number(
+        dut_number(
             ui,
             "Atténuation additionnelle",
             &mut c.attenuation_db,
             0.1,
             " dB",
         );
-        number(ui, "Phase additionnelle", &mut c.phase_deg, 1., "°");
+        dut_number(ui, "Phase additionnelle", &mut c.phase_deg, 1., "°");
         ui.label("Modèle personnalisé : sélectionner une référence du catalogue ci-dessus ou renseigner les caractéristiques.");
     }
     ui.separator();
@@ -566,4 +567,8 @@ mod dut_tests {
         assert_eq!(c.attenuation_db, 0.);
         assert!(c.dut.valid());
     }
+}
+
+fn dut_number(ui: &mut egui::Ui, label: &str, value: &mut f64, speed: f64, unit: &str) -> bool {
+    ui.horizontal(|ui| { ui.label(label); ui.add(egui::DragValue::new(value).speed(speed).suffix(unit)).changed() }).inner
 }

@@ -90,22 +90,6 @@ pub(super) fn extra(
             0.1,
             " dBm",
         );
-        let mut step = (c.stop_hz - c.start_hz) / (c.points.saturating_sub(1).max(1)) as f64;
-        if crate::frequency_edit::frequency(ui, "Pas fréquentiel", &mut step, &mut c.step_unit)
-            && let Some(points) = rf_core::frequency::points_for_step(c.start_hz, c.stop_hz, step)
-        {
-            c.points = points;
-        }
-        ui.label(format!(
-            "Pas effectif : {:.9} {} · {} points (maximum {})",
-            (c.stop_hz - c.start_hz)
-                / (c.points.saturating_sub(1).max(1) as f64)
-                / c.step_unit.factor(),
-            c.step_unit.label(),
-            c.points,
-            rf_core::MAX_POINTS
-        ));
-        ui.small("Pas effectif = (stop−start)/(points−1) ; les deux extrémités sont conservées.");
         ui.checkbox(
             &mut c.instrument.pna.all_s_parameters,
             "Acquérir toutes les traces Sij (matrice 1–4 ports)",
