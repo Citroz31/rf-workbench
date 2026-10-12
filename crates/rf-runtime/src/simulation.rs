@@ -107,10 +107,10 @@ pub(crate) fn execute(
         Kind::Pna | Kind::PnaX | Kind::UsbVna => {
             let mut loss = match inputs.get(&0) {
                 Some(Value::Dut { loss, .. }) => *loss,
-                _ => c.loss_db,
+                _ => return Err("VNA : modèle DUT externe requis".into()),
             };
             if c.s_parameter == "S12" {
-                loss = 60.;
+                loss = match inputs.get(&0) { Some(Value::Dut { s12_db, .. }) => -*s12_db, _ => 60. };
             } // explicit illustrative reverse isolation, not catalogue data
             let phase = match inputs.get(&0) {
                 Some(Value::Dut { phase, .. }) => *phase,
@@ -131,12 +131,9 @@ pub(crate) fn execute(
                 magnitude_db: frequency_hz
                     .iter()
                     .enumerate()
-                    .map(|(i, f)| {
+                    .map(|(i, _f)| {
                         if reflection {
-                            -20. + 0.7
-                                * ((f - c.start_hz) / (c.stop_hz - c.start_hz)
-                                    * std::f64::consts::TAU)
-                                    .cos()
+                            match inputs.get(&0) { Some(Value::Dut { s11_db, s22_db, .. }) => if c.s_parameter == "S11" { *s11_db } else { *s22_db }, _ => return 0. }
                         } else if c.instrument.pna.power_sweep {
                             let power = c.instrument.pna.power_start_dbm
                                 + (c.instrument.pna.power_stop_dbm
@@ -160,16 +157,12 @@ pub(crate) fn execute(
                             -loss - compression
                         } else {
                             -loss
-                                + 0.15
-                                    * ((f - c.start_hz) / (c.stop_hz - c.start_hz)
-                                        * std::f64::consts::TAU)
-                                        .sin()
                         }
                     })
                     .collect(),
                 phase_deg: frequency_hz
                     .iter()
-                    .map(|f| -360. * f * 1e-9 + if reflection { 0. } else { phase })
+                    .map(|_| if reflection || c.s_parameter == "S12" { 0. } else { phase })
                     .collect(),
                 frequency_hz,
                 parameter: c.s_parameter.clone(),

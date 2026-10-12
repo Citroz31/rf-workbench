@@ -5,6 +5,7 @@ mod bench_file;
 mod canvas;
 mod editor;
 mod file_browser;
+mod frequency_edit;
 mod help;
 mod i18n;
 mod new_project;

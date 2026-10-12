@@ -39,6 +39,11 @@ pub fn s_parameter_ports(value: &str) -> Option<(u8, u8)> {
         .then(|| (p[1] - b'0', p[2] - b'0'))
 }
 impl Node {
+    /// Visual faceplate order, independent from electrical indices and Sij.
+    pub fn rf_display_order(&self) -> Vec<usize> {
+        let count = self.config.instrument.port_count as usize;
+        [0, 2, 3, 1].into_iter().filter(|i| *i < count).collect()
+    }
     pub fn dut_rf_path(&self) -> (usize, usize) {
         if self.config.dut_id.as_deref() == Some("macom-cgy2170yhv-c1") {
             if self.config.dut_mode == "TX" {
@@ -60,7 +65,7 @@ impl Node {
         };
         if let Some(max) = self.kind.max_rf_ports() {
             return (1..=self.config.instrument.port_count.min(max))
-                .map(|i| p(&format!("PORT {i}"), Rf, Bidirectional))
+                .map(|i| p(&format!("P{i}"), Rf, Bidirectional))
                 .collect();
         }
         match self.kind {

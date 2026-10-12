@@ -941,6 +941,7 @@ impl Workbench {
             }
             Action::AutoLayout => self.organize(),
             Action::Route => self.route_all(),
+            Action::Rotate => self.canvas.rotate_selection(&mut self.project.graph, &mut self.history),
             Action::Annotate => self.add_annotation(),
             Action::Help => {
                 self.help_kind = None;
@@ -1130,6 +1131,7 @@ impl Workbench {
                         Action::Annotate,
                         Action::AutoLayout,
                         Action::Route,
+                        Action::Rotate,
                     ] {
                         if ui.button(t(action.label())).clicked() {
                             self.action(action);

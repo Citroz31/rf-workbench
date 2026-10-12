@@ -24,13 +24,26 @@ fn physical_color(kind: rf_core::PhysicalPortKind) -> egui::Color32 {
         rf_core::PhysicalPortKind::DcReturn => blue(),
     }
 }
-pub(crate) fn physical_port_offset(n: &Node, index: usize) -> Vec2 {
+pub(crate) fn node_size(n: &Node) -> Vec2 {
+    if n.rotation % 2 == 1 { egui::vec2(NODE_SIZE.y, NODE_SIZE.x) } else { NODE_SIZE }
+}
+pub(crate) fn rotate_offset(n: &Node, p: Vec2) -> Vec2 {
+    match n.rotation % 4 {
+        1 => egui::vec2(NODE_SIZE.y - p.y, p.x),
+        2 => NODE_SIZE - p,
+        3 => egui::vec2(p.y, NODE_SIZE.x - p.x),
+        _ => p,
+    }
+}
+pub(crate) fn rotate_vector(n: &Node, v: Vec2) -> Vec2 {
+    match n.rotation % 4 { 1 => egui::vec2(-v.y, v.x), 2 => -v, 3 => egui::vec2(v.y, -v.x), _ => v }
+}
+pub(crate) fn physical_port_offset(n: &Node, index: usize) -> Vec2 { rotate_offset(n, physical_base_offset(n,index)) }
+fn physical_base_offset(n: &Node, index: usize) -> Vec2 {
     let ports = n.physical_ports();
     if n.kind.max_rf_ports().is_some() {
-        return egui::vec2(
-            0.,
-            55. + (index + 1) as f32 / (ports.len() + 1) as f32 * 94.,
-        );
+        let slot = n.rf_display_order().iter().position(|i| *i == index).unwrap_or(0);
+        return egui::vec2(25. + slot as f32 * 190. / (ports.len().saturating_sub(1).max(1) as f32), NODE_SIZE.y);
     }
     let rf = ports
         .iter()
@@ -50,14 +63,14 @@ pub(crate) fn physical_port_offset(n: &Node, index: usize) -> Vec2 {
     )
 }
 pub(crate) fn physical_port_exit(n: &Node, index: usize) -> Vec2 {
-    let p = physical_port_offset(n, index);
-    if p.y == NODE_SIZE.y {
+    let p = physical_base_offset(n, index);
+    rotate_vector(n, if p.y == NODE_SIZE.y {
         egui::vec2(0., 1.)
     } else if p.x == 0. {
         egui::vec2(-1., 0.)
     } else {
         egui::vec2(1., 0.)
-    }
+    })
 }
 fn physical_route(
     from: Pos2,
@@ -73,8 +86,10 @@ fn physical_route(
     }
     let start = from + a * 24. * zoom;
     let end = to + b * 24. * zoom;
-    let middle = if a.y > 0. || b.y > 0. {
-        let y = start.y.max(end.y) + 24. * zoom;
+    let middle = if a.y != 0. || b.y != 0. {
+        let y = if a.y < 0. && b.y <= 0. { start.y.min(end.y) - 24. * zoom }
+            else if a.y >= 0. && b.y >= 0. { start.y.max(end.y) + 24. * zoom }
+            else { (start.y+end.y)*0.5 };
         vec![Pos2::new(start.x, y), Pos2::new(end.x, y)]
     } else if a.x == b.x {
         let x = if a.x < 0. {
@@ -345,7 +360,25 @@ impl Canvas {
         self.wiring = None;
         Ok(())
     }
+    pub fn rotate_selection(&mut self, g: &mut Graph, history: &mut History) {
+        if let Some(n) = &mut self.placement { n.rotation = (n.rotation + 1) % 4; return; }
+        let ids = if self.selected_ids.is_empty() { self.selected.into_iter().collect() } else { self.selected_ids.clone() };
+        if !g.nodes.iter().any(|n| ids.contains(&n.id)) { return; }
+        history.record(g.clone());
+        self.cancel_wire();
+        for n in &mut g.nodes {
+            if ids.contains(&n.id) {
+                let before = node_size(n); n.rotation = (n.rotation + 1) % 4;
+                let delta = (before - node_size(n)) * 0.5;
+                n.position[0] += delta.x; n.position[1] += delta.y;
+            }
+        }
+        for e in &mut g.edges { if e.auto_routed && (ids.contains(&e.from) || ids.contains(&e.to)) { e.waypoints.clear(); } }
+        for e in &mut g.physical_connections { if e.auto_routed && (ids.contains(&e.from) || ids.contains(&e.to)) { e.waypoints.clear(); } }
+        self.routes_dirty = self.auto_route;
+    }
     fn paint_node(&self, painter: &egui::Painter, node: &Node, top: Pos2, card: Rect) {
+        let size = node_size(node);
         let color = kind(node.kind);
         let selected = self.selected_ids.contains(&node.id);
         painter.rect_filled(
@@ -373,14 +406,14 @@ impl Canvas {
         }
         if node.breakpoint {
             painter.circle_filled(
-                top + egui::vec2(221., 18.) * self.zoom,
+                top + egui::vec2(size.x - 19., 18.) * self.zoom,
                 6. * self.zoom,
                 red(),
             );
         }
         if node.probe {
             painter.text(
-                top + egui::vec2(211., 187.) * self.zoom,
+                top + egui::vec2(size.x - 29., size.y - 21.) * self.zoom,
                 Align2::CENTER_CENTER,
                 "P",
                 crate::theme::font(13. * self.zoom),
@@ -388,7 +421,7 @@ impl Canvas {
             );
         }
         painter.rect_filled(
-            Rect::from_min_size(top, egui::vec2(NODE_SIZE.x, 4.) * self.zoom),
+            Rect::from_min_size(top, egui::vec2(size.x, 4.) * self.zoom),
             2.,
             color,
         );
@@ -411,17 +444,12 @@ impl Canvas {
             crate::theme::font(14. * self.zoom),
             text_color(),
         );
-        visuals::symbol_with_ports(
-            painter,
-            Rect::from_min_size(
-                top + egui::vec2(33., 55.) * self.zoom,
-                egui::vec2(174., 80.) * self.zoom,
-            ),
-            node.kind,
-            node.config.instrument.port_count,
-        );
+        visuals::rotated_symbol(painter,
+            Rect::from_center_size(top + egui::vec2(size.x * 0.5, if node.rotation % 2 == 1 { 124. } else { 95. }) * self.zoom,
+                (if node.rotation % 2 == 1 { egui::vec2(128., 60.) } else { egui::vec2(174., 80.) }) * self.zoom),
+            node.kind, node.config.instrument.port_count, node.rotation);
         painter.text(
-            top + egui::vec2(13., 150.) * self.zoom,
+            top + egui::vec2(13., size.y - 58.) * self.zoom,
             Align2::LEFT_TOP,
             summary(node),
             crate::theme::font(11. * self.zoom),
@@ -438,12 +466,12 @@ impl Canvas {
             "Matériel"
         };
         painter.circle_filled(
-            top + egui::vec2(16., 185.) * self.zoom,
+            top + egui::vec2(16., size.y - 23.) * self.zoom,
             3. * self.zoom,
             if done { teal() } else { muted() },
         );
         painter.text(
-            top + egui::vec2(25., 185.) * self.zoom,
+            top + egui::vec2(25., size.y - 23.) * self.zoom,
             Align2::LEFT_CENTER,
             crate::i18n::t(state),
             crate::theme::font(10. * self.zoom),
@@ -549,13 +577,13 @@ impl Canvas {
             let max_x = g
                 .nodes
                 .iter()
-                .map(|n| n.position[0] + NODE_SIZE.x)
+                .map(|n| n.position[0] + node_size(n).x)
                 .fold(f32::NEG_INFINITY, f32::max)
                 + 35.;
             let max_y = g
                 .nodes
                 .iter()
-                .map(|n| n.position[1] + NODE_SIZE.y)
+                .map(|n| n.position[1] + node_size(n).y)
                 .fold(f32::NEG_INFINITY, f32::max)
                 + 50.;
             self.zoom = (rect.width() / (max_x - min_x))
@@ -615,7 +643,7 @@ impl Canvas {
                         .map(|p| self.screen(rect.min, *p))
                         .collect();
                     painter.add(egui::Shape::line(
-                        route(from, to, &wp, self.orthogonal, self.zoom),
+                        physical_route(from, to, &wp, self.orthogonal, self.zoom, rotate_vector(a, egui::vec2(1.,0.)), rotate_vector(b, egui::vec2(-1.,0.))),
                         Stroke::new(2., port(a.kind.outputs()[e.from_port].port)),
                     ));
                 }
@@ -648,7 +676,7 @@ impl Canvas {
             // Existing instruments stay visible, but cannot receive placement clicks.
             for node in &g.nodes {
                 let top = self.screen(rect.min, node.position);
-                let card = Rect::from_min_size(top, NODE_SIZE * self.zoom);
+                let card = Rect::from_min_size(top, node_size(node) * self.zoom);
                 if !rect.intersects(card) {
                     continue;
                 }
@@ -668,7 +696,7 @@ impl Canvas {
                 };
                 let draft = self.placement.as_ref().unwrap();
                 let top = self.screen(rect.min, position);
-                let ghost = Rect::from_min_size(top, NODE_SIZE * self.zoom);
+                let ghost = Rect::from_min_size(top, node_size(draft) * self.zoom);
                 let overlay = ui
                     .ctx()
                     .layer_painter(egui::LayerId::new(
@@ -724,7 +752,7 @@ impl Canvas {
                     .iter()
                     .map(|p| self.screen(rect.min, *p))
                     .collect();
-                let points = route(from, to, &waypoints, self.orthogonal, self.zoom);
+                let points = physical_route(from, to, &waypoints, self.orthogonal, self.zoom, rotate_vector(a, egui::vec2(1.,0.)), rotate_vector(b, egui::vec2(-1.,0.)));
                 let color = port(a.kind.outputs()[e.from_port].port);
                 painter.add(egui::Shape::line(
                     points.clone(),
@@ -977,7 +1005,7 @@ impl Canvas {
         }
         for node in &g.nodes {
             let top = self.screen(rect.min, node.position);
-            let card = Rect::from_min_size(top, NODE_SIZE * self.zoom);
+            let card = Rect::from_min_size(top, node_size(node) * self.zoom);
             if !rect.intersects(card) {
                 continue;
             }
@@ -1058,7 +1086,9 @@ impl Canvas {
                 painter.circle_filled(position, 5. * self.zoom.max(0.7), color);
                 painter.circle_stroke(position, 5. * self.zoom.max(0.7), Stroke::new(1., bg()));
                 let exit = physical_port_exit(node, index);
-                let (offset, align) = if exit.y > 0. {
+                let (offset, align) = if exit.y < 0. {
+                    (egui::vec2(0., -9.), Align2::CENTER_BOTTOM)
+                } else if exit.y > 0. {
                     (egui::vec2(0., 9.), Align2::CENTER_TOP)
                 } else if exit.x < 0. {
                     (egui::vec2(8., -8.), Align2::LEFT_BOTTOM)
@@ -1330,7 +1360,7 @@ impl Canvas {
                 for n in &g.nodes {
                     if selection.intersects(Rect::from_min_size(
                         self.screen(rect.min, n.position),
-                        NODE_SIZE * self.zoom,
+                        node_size(n) * self.zoom,
                     )) {
                         self.selected_ids.insert(n.id);
                     }
@@ -1434,7 +1464,8 @@ fn summary(n: &Node) -> String {
         Kind::Limit => format!("[{:.1}, {:.1}] dBm", c.lower_dbm, c.upper_dbm),
     }
 }
-pub(crate) fn port_offset(n: &Node, output: bool, index: usize) -> Vec2 {
+pub(crate) fn port_offset(n: &Node, output: bool, index: usize) -> Vec2 { rotate_offset(n, port_base_offset(n,output,index)) }
+fn port_base_offset(n: &Node, output: bool, index: usize) -> Vec2 {
     let count = if output {
         n.kind.outputs().len()
     } else {
@@ -1953,5 +1984,31 @@ mod tests {
         assert!(g.edges.is_empty());
         c.cancel_wire();
         assert!(c.wiring.is_none());
+    }
+}
+
+#[cfg(test)]
+mod rotation_tests {
+    use super::*;
+    #[test]
+    fn rotation_keeps_port_identity_center_history_and_serialization() {
+        let mut g = Graph::default(); let v=g.add(Kind::PnaX,[0.,0.]); let d=g.add(Kind::Dut,[400.,0.]);
+        g.set_vna_ports(v,4).unwrap(); g.connect_physical(v,0,d,0).unwrap(); g.connect_physical(v,1,d,1).unwrap();
+        let original=g.clone(); let mut c=Canvas::default(); c.select_only(v); let mut h=History::default();
+        let center=Pos2::from(g.nodes[0].position)+node_size(&g.nodes[0])*0.5;
+        for turn in 1..=4 {
+            c.rotate_selection(&mut g,&mut h);
+            assert_eq!(g.nodes[0].rotation,turn%4);
+            assert_eq!(Pos2::from(g.nodes[0].position)+node_size(&g.nodes[0])*0.5,center);
+            assert_eq!(g.vna_dut(v,"S21").unwrap().unwrap().id,d);
+        }
+        assert_eq!(g,original); h.undo(&mut g); assert_eq!(g.nodes[0].rotation,3); h.redo(&mut g); assert_eq!(g,original);
+        let json=serde_json::to_string(&g).unwrap(); assert_eq!(serde_json::from_str::<Graph>(&json).unwrap(),g);
+        let xs:Vec<_>=g.nodes[0].rf_display_order().iter().map(|i|physical_port_offset(&g.nodes[0],*i).x).collect();
+        assert!(xs.windows(2).all(|w|w[0]<w[1]));
+        assert_eq!(g.nodes[0].rf_display_order(),vec![0,2,3,1]);
+        assert_eq!(g.nodes[0].physical_ports()[1].name,"P2");
+        let mut legacy:serde_json::Value=serde_json::from_str(&json).unwrap(); legacy["nodes"][0].as_object_mut().unwrap().remove("rotation");
+        assert_eq!(serde_json::from_value::<Graph>(legacy).unwrap().nodes[0].rotation,0);
     }
 }

@@ -31,6 +31,7 @@ pub enum Action {
     SelectAll,
     AutoLayout,
     Route,
+    Rotate,
     Annotate,
     Help,
     BlockHelp,
@@ -39,7 +40,7 @@ pub enum Action {
     DebugContinue,
 }
 impl Action {
-    pub const ALL: [Self; 28] = [
+    pub const ALL: [Self; 29] = [
         Self::Select,
         Self::Wire,
         Self::Pan,
@@ -62,6 +63,7 @@ impl Action {
         Self::SelectAll,
         Self::AutoLayout,
         Self::Route,
+        Self::Rotate,
         Self::Annotate,
         Self::Help,
         Self::BlockHelp,
@@ -93,6 +95,7 @@ impl Action {
             Self::SelectAll => "Tout sélectionner",
             Self::AutoLayout => "Organiser le graphe",
             Self::Route => "Router les câbles",
+            Self::Rotate => "Rotation de 90°",
             Self::Annotate => "Ajouter une annotation",
             Self::Help => "Aide globale",
             Self::BlockHelp => "Aide du bloc",
@@ -124,7 +127,8 @@ impl Action {
             Self::Paste => "Ctrl+V",
             Self::SelectAll => "Ctrl+A",
             Self::AutoLayout => "Ctrl+L",
-            Self::Route => "Ctrl+R",
+            Self::Route => "Ctrl+Shift+R",
+            Self::Rotate => "Ctrl+R",
             Self::Annotate => "Ctrl+Shift+A",
             Self::Help => "F1",
             Self::BlockHelp => "F2",
@@ -222,6 +226,10 @@ fn parse(text: &str) -> Result<Chord, String> {
 }
 impl Preferences {
     pub fn upgrade(mut self) -> Self {
+        if !self.shortcuts.iter().any(|b| b.action == Action::Rotate) {
+            let used = self.shortcuts.iter().filter(|b| b.action != Action::Route).flat_map(|b| b.keys.split(',')).any(|s| parse(s.trim()).ok() == parse("Ctrl+Shift+R").ok());
+            if let Some(b) = self.shortcuts.iter_mut().find(|b| b.action == Action::Route && b.keys == "Ctrl+R") { b.keys = if used { String::new() } else { "Ctrl+Shift+R".into() }; }
+        }
         for action in Action::ALL {
             if !self.shortcuts.iter().any(|b| b.action == action) {
                 let keys = action.default_keys();
@@ -395,6 +403,14 @@ mod tests {
         let mut p = p;
         p.shortcuts[0].keys = "w".into();
         assert!(p.validate().is_err());
+    }
+    #[test]
+    fn old_route_binding_migrates_to_make_room_for_rotation() {
+        let mut p=Preferences::default(); p.shortcuts.retain(|b|b.action!=Action::Rotate);
+        p.shortcuts.iter_mut().find(|b|b.action==Action::Route).unwrap().keys="Ctrl+R".into();
+        let p=p.upgrade(); p.validate().unwrap();
+        assert_eq!(p.action(&event(Key::R,egui::Modifiers { ctrl:true, command:true, ..Default::default() }),false),Some(Action::Rotate));
+        assert_eq!(p.action(&event(Key::R,egui::Modifiers::CTRL),true),None);
     }
     #[test]
     fn invalid_and_reserved_keys_are_rejected() {

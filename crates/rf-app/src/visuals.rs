@@ -583,3 +583,31 @@ pub fn icon_button(ui: &mut egui::Ui, icon: Icon, tooltip: &str, selected: bool)
     }
     response.on_hover_text(tooltip)
 }
+
+pub fn rotated_symbol(p: &egui::Painter, rect: Rect, kind: Kind, count: u8, turns: u8) {
+    let start = p.ctx().graphics_mut(|g| g.entry(p.layer_id()).next_idx());
+    symbol_with_ports(p, rect, kind, count);
+    if turns % 4 == 0 { return; }
+    p.ctx().graphics_mut(|g| {
+        let list = g.entry(p.layer_id());
+        let end = list.next_idx();
+        for i in start.0..end.0 { list.mutate_shape(egui::layers::ShapeIdx(i), |s| rotate_shape(&mut s.shape, rect.center(), turns)); }
+    });
+}
+fn rotate_shape(s: &mut egui::Shape, center: Pos2, turns: u8) {
+    let rotation = egui::emath::Rot2::from_angle(f32::from(turns % 4) * std::f32::consts::FRAC_PI_2);
+    let point = |p: &mut Pos2| { *p = center + rotation * (*p-center); };
+    match s {
+        egui::Shape::Vec(shapes) => for s in shapes { rotate_shape(s, center, turns); },
+        egui::Shape::Circle(c) => point(&mut c.center),
+        egui::Shape::Ellipse(e) => { point(&mut e.center); if turns % 2 == 1 { e.radius = egui::vec2(e.radius.y,e.radius.x); } },
+        egui::Shape::LineSegment { points, .. } => for p in points { point(p); },
+        egui::Shape::Path(path) => for p in &mut path.points { point(p); },
+        egui::Shape::Rect(r) => { let mut a=r.rect.min; let mut b=r.rect.max; point(&mut a); point(&mut b); r.rect=Rect::from_two_pos(a,b); },
+        egui::Shape::Text(t) => { point(&mut t.pos); t.angle += rotation.angle(); },
+        egui::Shape::Mesh(m) => for v in &mut std::sync::Arc::make_mut(m).vertices { point(&mut v.pos); },
+        egui::Shape::QuadraticBezier(b) => for p in &mut b.points { point(p); },
+        egui::Shape::CubicBezier(b) => for p in &mut b.points { point(p); },
+        egui::Shape::Noop | egui::Shape::Callback(_) => {},
+    }
+}

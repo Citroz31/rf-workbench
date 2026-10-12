@@ -1,5 +1,5 @@
 //! Reusable editing operations and bounded obstacle-aware Manhattan routing.
-use crate::canvas::{NODE_SIZE, physical_port_exit, physical_port_offset, port_offset};
+use crate::canvas::{ node_size, rotate_vector, physical_port_exit, physical_port_offset, port_offset};
 use eframe::egui::{Pos2, Rect};
 use rf_core::{Graph, Kind};
 use std::cmp::Reverse;
@@ -217,8 +217,8 @@ pub fn route_edge(g: &Graph, index: usize) -> Result<Vec<[f32; 2]>, String> {
         b.id,
         from,
         to,
-        eframe::egui::vec2(24., 0.),
-        eframe::egui::vec2(-24., 0.),
+        rotate_vector(a, eframe::egui::vec2(24., 0.)),
+        rotate_vector(b, eframe::egui::vec2(-24., 0.)),
     )
 }
 pub fn route_physical(g: &Graph, index: usize) -> Result<Vec<[f32; 2]>, String> {
@@ -249,7 +249,7 @@ fn route_terminals(
     let obstacles: Vec<_> = g
         .nodes
         .iter()
-        .map(|n| Rect::from_min_size(Pos2::from(n.position), NODE_SIZE).expand(14.))
+        .map(|n| Rect::from_min_size(Pos2::from(n.position), node_size(n)).expand(14.))
         .collect();
     let start = from + exit_a;
     let end = to + exit_b;
@@ -451,6 +451,7 @@ impl RoutingJob {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::canvas::NODE_SIZE;
     #[test]
     fn physical_loop_copy_paste_and_routing_preserve_endpoints() {
         let mut g = Graph::default();

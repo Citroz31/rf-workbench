@@ -1,5 +1,7 @@
 //! Platform-independent RF data, typed acyclic graphs and versioned bench files.
 pub mod dsp;
+pub mod dut;
+pub mod frequency;
 pub mod flow;
 pub mod instrument;
 pub mod network;
@@ -458,6 +460,10 @@ pub struct Measurement {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct Config {
+    pub dut: dut::Model,
+    pub frequency_unit: frequency::Unit,
+    pub step_unit: frequency::Unit,
+    pub if_unit: frequency::Unit,
     pub limits: flow::Limits,
     pub instrument: instrument::Controls,
     pub dsp: dsp::Settings,
@@ -488,7 +494,7 @@ pub struct Config {
 }
 impl Default for Config {
     fn default() -> Self {
-        Self { limits: flow::Limits::default(), instrument: instrument::Controls::default(), dsp: dsp::Settings::default(), resource: "SIM::RF::INSTR".into(), frequency_hz: 2.45e9, power_dbm: -10.0,
+        Self { dut: dut::Model::default(), frequency_unit: frequency::Unit::Ghz, step_unit: frequency::Unit::Mhz, if_unit: frequency::Unit::Khz, limits: flow::Limits::default(), instrument: instrument::Controls::default(), dsp: dsp::Settings::default(), resource: "SIM::RF::INSTR".into(), frequency_hz: 2.45e9, power_dbm: -10.0,
             loss_db: 3.0, start_hz: 2.40e9, stop_hz: 2.50e9, points: 401,
             lower_dbm: -15.0, upper_dbm: -11.0, trace_query: ":TRAC:DATA? TRACE1".into(),
             sample_rate_hz: 100e6, tone_hz: 1e6, samples: 1024, resolution_bits: 14, voltage_v: 1.0, temperature_c: 25., resistance_ohm: 50., noise_figure_db: 2.5, s_parameter: "S21".into(), dut_id: None,
@@ -503,6 +509,8 @@ pub struct Node {
     pub title: String,
     pub kind: Kind,
     pub position: [f32; 2],
+    #[serde(default)]
+    pub rotation: u8,
     pub config: Config,
     #[serde(default)]
     pub comment: String,
@@ -548,6 +556,7 @@ impl Graph {
             title: kind.label().into(),
             kind,
             position,
+            rotation: 0,
             config: Config::default(),
             comment: String::new(),
             breakpoint: false,
@@ -697,7 +706,7 @@ impl Graph {
             let c = &node.config;
             c.instrument.validate().map_err(Error::Invalid)?;
             c.limits.validate().map_err(Error::Invalid)?;
-            if node.id == u64::MAX
+            if node.rotation > 3 || node.id == u64::MAX
                 || node
                     .position
                     .iter()
@@ -722,7 +731,7 @@ impl Graph {
                         && (-160.0..=30.0).contains(&c.power_dbm)
                 }
                 Kind::Dut => {
-                    c.attenuation_db.is_finite()
+                    c.dut.valid() && c.attenuation_db.is_finite()
                         && (0. ..=160.).contains(&c.attenuation_db)
                         && c.phase_deg.is_finite()
                         && (-360. ..=360.).contains(&c.phase_deg)

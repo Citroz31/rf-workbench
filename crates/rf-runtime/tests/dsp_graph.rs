@@ -52,7 +52,12 @@ fn vswr_uses_its_own_vna_not_the_last_acquisition() {
     g.nodes.last_mut().unwrap().config.s_parameter = "S11".into();
     let second = g.add(Kind::PnaX, [0., 300.]);
     g.nodes.last_mut().unwrap().config.s_parameter = "S21".into();
-    let vswr = g.add(Kind::Dsp(Op::Vswr), [300., 0.]);
+    let d1 = g.add(Kind::Dut, [300., 0.]);
+    let d2 = g.add(Kind::Dut, [300., 300.]);
+    g.connect_physical(first, 0, d1, 0).unwrap();
+    g.connect_physical(second, 0, d2, 0).unwrap();
+    g.connect_physical(second, 1, d2, 1).unwrap();
+    let vswr = g.add(Kind::Dsp(Op::Vswr), [600., 0.]);
     g.connect(first, vswr).unwrap();
     let result = Engine::default()
         .execute(&g, 0, "unused", false, &AtomicBool::new(false))

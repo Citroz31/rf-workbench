@@ -133,8 +133,8 @@ impl Workbench {
                                 ui.checkbox(&mut c.instrument.configure_sweep,"Appliquer le balayage avant acquisition");
                                 ui.checkbox(&mut c.instrument.trigger,"Déclencher un nouveau balayage et attendre *OPC?");
                                 ui.label("Cases désactivées : lecture des dernières données du canal existant. Aucun preset ni changement de calibration/RF.");
-                                ui.add_enabled_ui(c.instrument.configure_sweep,|ui|{
-                                    ui.columns(3,|cols|{number(&mut cols[0],"Début",&mut c.start_hz,1e6," Hz");number(&mut cols[1],"Fin",&mut c.stop_hz,1e6," Hz");cols[2].label("Points");cols[2].add(egui::DragValue::new(&mut c.points).range(2..=rf_core::MAX_POINTS));});ui.columns(2,|cols|{number(&mut cols[0],"IF bandwidth",&mut c.instrument.if_bandwidth_hz,100.," Hz");cols[1].checkbox(&mut c.instrument.averaging,"Moyennage");cols[1].add(egui::DragValue::new(&mut c.instrument.averages).range(1..=65536).suffix(" acquisitions"));});
+                                ui.add_enabled_ui(c.instrument.configure_sweep || !self.hardware,|ui|{
+                                    ui.columns(3,|cols|{crate::frequency_edit::frequency(&mut cols[0],"Début",&mut c.start_hz,&mut c.frequency_unit);crate::frequency_edit::frequency(&mut cols[1],"Fin",&mut c.stop_hz,&mut c.frequency_unit);cols[2].label("Points");cols[2].add(egui::DragValue::new(&mut c.points).range(2..=rf_core::MAX_POINTS));});ui.columns(2,|cols|{crate::frequency_edit::frequency(&mut cols[0],"IF bandwidth",&mut c.instrument.if_bandwidth_hz,&mut c.if_unit);cols[1].checkbox(&mut c.instrument.averaging,"Moyennage");cols[1].add(egui::DragValue::new(&mut c.instrument.averages).range(1..=65536).suffix(" acquisitions"));});
                                 });
                                 super::pna_workspace::extra(ui,c,d.id,self.hardware,self.worker.is_busy(),&mut job,&mut self.fixture_job);
                                 ui.label("Axe lu en REAL64 sur l'appareil ; données SDATA réelles/imaginaires en REAL32/64, little endian. Format de transfert restauré après lecture.");
@@ -236,6 +236,12 @@ if ui.button("Consigne du profil").clicked(){d.command=c.instrument.set_command.
         }
         if apply {
             let result = d.config.instrument.validate().and_then(|_| {
+                if d.kind == Kind::Dut {
+                    let mut candidate = rf_core::Graph::default();
+                    candidate.add(Kind::Dut, [0.,0.]);
+                    candidate.nodes[0].config = d.config.clone();
+                    candidate.validate().map_err(|e| e.to_string())?;
+                }
                 if d.kind.is_dc_supply() {
                     d.config.instrument.dc.validate(d.kind)?;
                 }
@@ -247,6 +253,9 @@ if ui.button("Consigne du profil").clicked(){d.command=c.instrument.set_command.
                 Ok(()) => {
                     self.history.record(self.project.graph.clone());
                     if let Some(n) = self.project.graph.nodes.iter_mut().find(|n| n.id == d.id) {
+                        if n.kind == Kind::Dut && n.config.dut_id != d.config.dut_id {
+                            self.project.graph.physical_connections.retain(|e| e.from != d.id && e.to != d.id);
+                        }
                         n.config = d.config.clone();
                         n.title = d.title.clone();
                     }
@@ -310,12 +319,74 @@ pub(super) fn component_details(ui: &mut egui::Ui, component: &Component) {
         );
     }
 }
+pub(super) fn apply_component(c: &mut rf_core::Config, component: &Component) {
+    c.dut_id = Some(component.id.clone());
+    c.dut = rf_core::dut::Model::default();
+    let category = component.category.to_lowercase();
+    c.dut.product_type = if category.contains("lna") { rf_core::dut::ProductType::Lna }
+        else if category.contains("core") { rf_core::dut::ProductType::Corechip }
+        else if category.contains("pa") { rf_core::dut::ProductType::Pa } else { rf_core::dut::ProductType::Generic };
+    c.loss_db = component.insertion_loss_db.unwrap_or(0.);
+    c.noise_figure_db = component.noise_figure_db.unwrap_or(0.);
+    c.attenuation_db = 0.; c.phase_deg = 0.; c.dut_mode = "RX".into();
+    c.limits = rf_core::flow::Limits::default();
+    if let Some(rf) = &component.rf {
+        c.loss_db = -rf.gain_db.typical;
+        c.noise_figure_db = rf.noise_figure_db.typical;
+        c.limits.band_hz = Some(rf.band_hz);
+        c.limits.output_p1db_dbm = Some(rf.output_p1db_dbm.typical);
+        c.limits.source = format!("{} · {}", rf.revision, rf.conditions);
+        c.frequency_hz = rf.reference_frequency_hz;
+        c.start_hz = rf.band_hz[0]; c.stop_hz = rf.band_hz[1];
+        c.dut.attenuation_states = rf.attenuation_states;
+        c.dut.attenuation_step_db = rf.attenuation_step_db;
+        c.dut.phase_states = rf.phase_states; c.dut.phase_step_deg = rf.phase_step_deg;
+    }
+}
 fn dut_settings(ui: &mut egui::Ui, c: &mut rf_core::Config, catalog: &Catalog) {
+    use rf_core::dut::ProductType;
+    ui.horizontal(|ui| {
+        ui.label("Produit du catalogue");
+        let mut selected = c.dut_id.clone();
+        egui::ComboBox::from_id_salt("dut-catalogue").width(280.)
+            .selected_text(catalog.entries.iter().find(|e| Some(e.id.as_str()) == selected.as_deref()).map_or("Modèle personnalisé", |e| e.part_number.as_str()))
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut selected, None, "Modèle personnalisé (conserver les valeurs)");
+                for e in &catalog.entries { ui.selectable_value(&mut selected, Some(e.id.clone()), format!("{} · {} · {}", e.manufacturer, e.part_number, e.category)); }
+            });
+        if selected != c.dut_id {
+            if let Some(component) = catalog.entries.iter().find(|e| Some(e.id.as_str()) == selected.as_deref()) { apply_component(c, component); }
+            else { c.dut_id = None; }
+        }
+    });
+    egui::ComboBox::from_id_salt("dut-product-type").selected_text(c.dut.product_type.label()).show_ui(ui, |ui| {
+        for t in ProductType::ALL { ui.selectable_value(&mut c.dut.product_type, t, t.label()); }
+    });
+    ui.small("Les valeurs du catalogue sont copiées dans ce DUT puis restent modifiables. Changer de référence retire ses câbles à l'application des réglages ; recâbler les broches du nouveau produit.");
+    crate::frequency_edit::frequency(ui, "Bande début", &mut c.start_hz, &mut c.frequency_unit);
+    crate::frequency_edit::frequency(ui, "Bande fin", &mut c.stop_hz, &mut c.frequency_unit);
+    c.limits.band_hz = Some([c.start_hz, c.stop_hz]);
+    number(ui, "S11", &mut c.dut.s11_db, 0.1, " dB");
+    number(ui, "S22", &mut c.dut.s22_db, 0.1, " dB");
+    number(ui, "S12 · isolation inverse", &mut c.dut.s12_db, 0.1, " dB");
     let mut gain = -c.loss_db;
     if number(ui, "Gain de référence du modèle", &mut gain, 0.1, " dB") {
         c.loss_db = -gain;
     }
-    number(ui, "Facteur de bruit", &mut c.noise_figure_db, 0.1, " dB");
+    if matches!(c.dut.product_type, ProductType::Lna | ProductType::Generic | ProductType::Corechip) {
+        number(ui, "Facteur de bruit", &mut c.noise_figure_db, 0.1, " dB");
+    }
+    if matches!(c.dut.product_type, ProductType::Lna | ProductType::Pa | ProductType::Generic) {
+        optional_dut(ui, "P1dB sortie", &mut c.limits.output_p1db_dbm);
+        optional_dut(ui, "OIP3 (IM3)", &mut c.dut.output_ip3_dbm);
+        if let Some(op1) = c.limits.output_p1db_dbm { ui.small(format!("P1dB entrée estimé : {:.2} dBm (OP1dB − gain + 1 dB)", op1 + c.loss_db + c.attenuation_db + 1.)); }
+    }
+    if c.dut.product_type == ProductType::Pa { optional_dut(ui, "Puissance saturée Psat", &mut c.dut.saturation_dbm); }
+    if c.dut.product_type == ProductType::Corechip {
+        ui.horizontal(|ui| { ui.label("Mode"); ui.selectable_value(&mut c.dut_mode, "RX".into(), "RX"); ui.selectable_value(&mut c.dut_mode, "TX".into(), "TX"); });
+        number(ui, "Atténuation", &mut c.attenuation_db, c.dut.attenuation_step_db.max(0.01), " dB");
+        number(ui, "Déphasage", &mut c.phase_deg, c.dut.phase_step_deg.max(0.01), "°");
+    }
     if let Some(component) = catalog
         .entries
         .iter()
@@ -374,8 +445,31 @@ fn dut_settings(ui: &mut egui::Ui, c: &mut rf_core::Config, catalog: &Catalog) {
             " dB",
         );
         number(ui, "Phase additionnelle", &mut c.phase_deg, 1., "°");
-        ui.label("Modèle DUT générique. Ajouter un composant documenté depuis le catalogue DUT.");
+        ui.label("Modèle personnalisé : sélectionner une référence du catalogue ci-dessus ou renseigner les caractéristiques.");
     }
     ui.separator();
-    ui.small("Modèle linéaire à valeurs constantes : P1dB et NF sont documentés, la compression et le bruit I/Q ne sont pas simulés ici. Les commandes de puce SPI ne sont pas envoyées au matériel.");
+    ui.small("Simulation VNA : câbler P1 → RF IN et RF OUT → P2 avec W puis Exécuter en simulation. Sij constants et compression douce selon OP1dB en sweep de puissance ; NF, OIP3 et Psat sont des caractéristiques documentaires, sans synthèse de bruit ni IM3. Aucune commande SPI envoyée.");
+}
+
+fn optional_dut(ui: &mut egui::Ui, label: &str, value: &mut Option<f64>) {
+    ui.horizontal(|ui| {
+        let mut enabled = value.is_some();
+        if ui.checkbox(&mut enabled, label).changed() { *value = enabled.then_some(0.); }
+        if let Some(v) = value { ui.add(egui::DragValue::new(v).speed(0.1).suffix(" dBm")); }
+    });
+}
+
+#[cfg(test)]
+mod dut_tests {
+    use super::*;
+    #[test]
+    fn catalogue_profiles_are_project_owned_and_family_specific() {
+        let catalog=Catalog::default(); let mut c=rf_core::Config::default();
+        apply_component(&mut c,catalog.entries.iter().find(|e|e.id=="macom-maal-fr1245").unwrap());
+        assert_eq!(c.dut.product_type,rf_core::dut::ProductType::Lna); assert_eq!(c.loss_db,-26.); assert_eq!(c.limits.band_hz,Some([27e9,31.5e9]));
+        c.loss_db=-21.; assert_eq!(catalog.entries[0].rf.as_ref().unwrap().gain_db.typical,26.);
+        apply_component(&mut c,catalog.entries.iter().find(|e|e.id=="macom-cgy2170yhv-c1").unwrap());
+        assert_eq!(c.dut.product_type,rf_core::dut::ProductType::Corechip); assert_eq!(c.dut.phase_states,64); assert_eq!(c.attenuation_db,0.);
+        assert!(c.dut.valid());
+    }
 }

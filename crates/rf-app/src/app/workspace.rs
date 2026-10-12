@@ -329,6 +329,7 @@ impl Workbench {
             self.add_block(Kind::Dut);
             if let Some(n) = &mut self.canvas.placement {
                 n.title = format!("{} {}", c.manufacturer, c.part_number);
+                super::instrument::apply_component(&mut n.config, &c);
                 n.config.dut_id = Some(c.id);
                 n.config.loss_db =
                     c.rf.as_ref()

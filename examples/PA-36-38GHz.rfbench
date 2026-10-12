@@ -139,7 +139,15 @@
             "resistance_ohm": 50.0,
             "noise_figure_db": 2.5,
             "s_parameter": "S21",
-            "dut_id": null
+            "dut_id": null,
+            "dut": {
+              "product_type": "Pa",
+              "s11_db": -15.0,
+              "s22_db": -18.0,
+              "s12_db": -60.0,
+              "saturation_dbm": 40.0,
+              "output_ip3_dbm": 44.0
+            }
           },
           "comment": "Modèle petit signal uniquement. P1dB et Psat sont des objectifs du banc, pas simulés par ce bloc.",
           "breakpoint": false,
@@ -278,7 +286,10 @@
             "resistance_ohm": 50.0,
             "noise_figure_db": 2.5,
             "s_parameter": "S21",
-            "dut_id": null
+            "dut_id": null,
+            "frequency_unit": "Ghz",
+            "step_unit": "Mhz",
+            "if_unit": "Khz"
           },
           "comment": "",
           "breakpoint": false,

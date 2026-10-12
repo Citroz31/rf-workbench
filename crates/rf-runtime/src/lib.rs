@@ -171,6 +171,9 @@ pub(crate) enum Value {
     Analog(Waveform),
     Digital(Waveform),
     Dut {
+        s11_db: f64,
+        s22_db: f64,
+        s12_db: f64,
         output_p1db: Option<f64>,
         loss: f64,
         noise: f64,
@@ -641,12 +644,17 @@ impl Engine {
                 inputs.insert(
                     0,
                     Value::Dut {
+                        s11_db: dut.config.dut.s11_db, s22_db: dut.config.dut.s22_db, s12_db: dut.config.dut.s12_db,
                         output_p1db: dut_p1db(dut),
                         loss: dut.config.loss_db + dut.config.attenuation_db,
                         noise: dut.config.noise_figure_db,
                         phase: dut.config.phase_deg,
                     },
                 );
+            }
+            if node.kind.max_rf_ports().is_some() && !inputs.contains_key(&0)
+                && !graph.physical_connections.iter().any(|e| e.from == id || e.to == id) {
+                return Err(format!("{} : simulation sans DUT. Placer un bloc DUT, configurer ses paramètres et câbler P1 → RF IN, RF OUT → P2 avec W.", node.title));
             }
             if node.kind.is_extended() {
                 let output = if node.kind.max_rf_ports().is_some() {
@@ -723,9 +731,18 @@ impl Engine {
                             model_inputs.remove(&0);
                             match graph.vna_dut(id, &parameter) {
                                 Ok(Some(d)) => {
+                                    let peer_pin = |port: u8| graph.physical_connections.iter().find_map(|e| {
+                                        if e.from == id && e.from_port == usize::from(port - 1) { Some(e.to_port) }
+                                        else if e.to == id && e.to_port == usize::from(port - 1) { Some(e.from_port) } else { None }
+                                    });
+                                    let (input, _) = d.dut_rf_path();
+                                    let receiver = if peer_pin(ports.0) == Some(input) { 1 } else { 2 };
+                                    let source = if peer_pin(ports.1) == Some(input) { 1 } else { 2 };
+                                    n.config.s_parameter = format!("S{receiver}{source}");
                                     model_inputs.insert(
                                         0,
                                         Value::Dut {
+                                            s11_db: d.config.dut.s11_db, s22_db: d.config.dut.s22_db, s12_db: d.config.dut.s12_db,
                                             output_p1db: dut_p1db(d),
                                             loss: d.config.loss_db + d.config.attenuation_db,
                                             noise: d.config.noise_figure_db,
@@ -733,14 +750,12 @@ impl Engine {
                                         },
                                     );
                                 }
-                                _ => {
-                                    if parameter != c.s_parameter {
-                                        continue;
-                                    }
-                                }
+                                Ok(None) => continue,
+                                Err(e) => return Err(e.to_string()),
                             }
                         }
-                        let out = simulation::execute(&n, &model_inputs, &mut result)?;
+                        let mut out = simulation::execute(&n, &model_inputs, &mut result)?;
+                        if let Some(Value::Network(t)) = out.first_mut() { t.parameter = parameter.clone(); }
                         if let Some(Value::Network(t)) = out.first() {
                             let mut curve = rf_core::network::Curve::from_trace(id, t);
                             if c.instrument.pna.power_sweep {
@@ -796,6 +811,7 @@ impl Engine {
                 values.insert(
                     (id, 1),
                     Value::Dut {
+                        s11_db: node.config.dut.s11_db, s22_db: node.config.dut.s22_db, s12_db: node.config.dut.s12_db,
                         output_p1db: dut_p1db(node),
                         loss: c.loss_db + c.attenuation_db,
                         noise: c.noise_figure_db,

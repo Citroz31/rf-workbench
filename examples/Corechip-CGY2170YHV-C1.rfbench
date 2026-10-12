@@ -148,7 +148,10 @@
             "dut_id": null,
             "dut_mode": "RX",
             "attenuation_db": 0,
-            "phase_deg": 0
+            "phase_deg": 0,
+            "frequency_unit": "Ghz",
+            "step_unit": "Mhz",
+            "if_unit": "Khz"
           },
           "comment": "",
           "breakpoint": false,
@@ -296,7 +299,13 @@
             "dut_id": "macom-cgy2170yhv-c1",
             "dut_mode": "RX",
             "attenuation_db": 0,
-            "phase_deg": 0
+            "phase_deg": 0,
+            "dut": {
+              "product_type": "Corechip",
+              "s11_db": -15.0,
+              "s22_db": -18.0,
+              "s12_db": -60.0
+            }
           },
           "comment": "",
           "breakpoint": false,
