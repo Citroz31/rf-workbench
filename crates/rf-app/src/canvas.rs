@@ -345,125 +345,148 @@ impl Canvas {
         self.wiring = None;
         Ok(())
     }
-    fn paint_node(&self,painter:&egui::Painter,node:&Node,top:Pos2,card:Rect) {
-            let color = kind(node.kind);
-            let selected = self.selected_ids.contains(&node.id);
-            painter.rect_filled(
-                card.translate(egui::vec2(3., 5.)),
-                9.,
-                egui::Color32::BLACK.gamma_multiply(0.22),
-            );
-            painter.rect_filled(card, 8., card_fill());
+    fn paint_node(&self, painter: &egui::Painter, node: &Node, top: Pos2, card: Rect) {
+        let color = kind(node.kind);
+        let selected = self.selected_ids.contains(&node.id);
+        painter.rect_filled(
+            card.translate(egui::vec2(3., 5.)),
+            9.,
+            egui::Color32::BLACK.gamma_multiply(0.22),
+        );
+        painter.rect_filled(card, 8., card_fill());
+        painter.rect_stroke(
+            card,
+            8.,
+            Stroke::new(
+                if selected { 2. } else { 1. },
+                if selected { color } else { border() },
+            ),
+            StrokeKind::Inside,
+        );
+        if self.active_node == Some(node.id) {
             painter.rect_stroke(
-                card,
+                card.expand(5.),
                 8.,
-                Stroke::new(
-                    if selected { 2. } else { 1. },
-                    if selected { color } else { border() },
-                ),
-                StrokeKind::Inside,
+                Stroke::new(3., gold()),
+                StrokeKind::Outside,
             );
-            if self.active_node == Some(node.id) {
-                painter.rect_stroke(
-                    card.expand(5.),
-                    8.,
-                    Stroke::new(3., gold()),
-                    StrokeKind::Outside,
-                );
-            }
-            if node.breakpoint {
-                painter.circle_filled(
-                    top + egui::vec2(221., 18.) * self.zoom,
-                    6. * self.zoom,
-                    red(),
-                );
-            }
-            if node.probe {
-                painter.text(
-                    top + egui::vec2(211., 187.) * self.zoom,
-                    Align2::CENTER_CENTER,
-                    "P",
-                    crate::theme::font(13. * self.zoom),
-                    purple(),
-                );
-            }
-            painter.rect_filled(
-                Rect::from_min_size(top, egui::vec2(NODE_SIZE.x, 4.) * self.zoom),
-                2.,
-                color,
-            );
-            painter.text(
-                top + egui::vec2(13., 13.) * self.zoom,
-                Align2::LEFT_TOP,
-                crate::i18n::t(node.kind.tag()),
-                crate::theme::font(10. * self.zoom),
-                color,
-            );
-            let title = if node.title.chars().count() > 28 {
-                format!("{}…", node.title.chars().take(27).collect::<String>())
-            } else {
-                node.title.clone()
-            };
-            painter.text(
-                top + egui::vec2(13., 30.) * self.zoom,
-                Align2::LEFT_TOP,
-                crate::i18n::t(&title),
-                crate::theme::font(14. * self.zoom),
-                text_color(),
-            );
-            visuals::symbol_with_ports(
-                painter,
-                Rect::from_min_size(
-                    top + egui::vec2(33., 55.) * self.zoom,
-                    egui::vec2(174., 80.) * self.zoom,
-                ),
-                node.kind,
-                node.config.instrument.port_count,
-            );
-            painter.text(
-                top + egui::vec2(13., 150.) * self.zoom,
-                Align2::LEFT_TOP,
-                summary(node),
-                crate::theme::font(11. * self.zoom),
-                muted(),
-            );
-            let done = self.completed.contains(&node.id);
-            let state = if done {
-                "Exécuté"
-            } else if node.kind.is_extended() {
-                "Modèle simulé"
-            } else if node.config.resource.starts_with("SIM::") {
-                "Simulation"
-            } else {
-                "Matériel"
-            };
-            painter.circle_filled(
-                top + egui::vec2(16., 185.) * self.zoom,
-                3. * self.zoom,
-                if done { teal() } else { muted() },
-            );
-            painter.text(
-                top + egui::vec2(25., 185.) * self.zoom,
-                Align2::LEFT_CENTER,
-                crate::i18n::t(state),
-                crate::theme::font(10. * self.zoom),
-                if done { teal() } else { muted() },
-            );
-    }
-    fn paint_preview_pins(&self,painter:&egui::Painter,node:&Node,origin:Pos2) {
-        let top=self.screen(origin,node.position);
-        for (i,p) in node.physical_ports().iter().enumerate() {
-            let at=top+physical_port_offset(node,i)*self.zoom;
-            painter.circle_filled(at,5.*self.zoom,physical_color(p.kind));
-            painter.text(at+egui::vec2(8.,-8.)*self.zoom,Align2::LEFT_BOTTOM,&p.name,crate::theme::font(9.*self.zoom),physical_color(p.kind));
         }
-        for output in [false,true] {
-            let pins=if output{node.kind.outputs()}else{node.kind.inputs()};
-            for (i,p) in pins.iter().enumerate() {
-                let at=top+port_offset(node,output,i)*self.zoom;
-                painter.rect_filled(Rect::from_center_size(at,egui::vec2(8.,8.)*self.zoom),1.,port(p.port));
-                painter.text(at+egui::vec2(if output{10.}else{-10.},0.)*self.zoom,
-                    if output{Align2::LEFT_CENTER}else{Align2::RIGHT_CENTER},p.name,crate::theme::font(9.*self.zoom),port(p.port));
+        if node.breakpoint {
+            painter.circle_filled(
+                top + egui::vec2(221., 18.) * self.zoom,
+                6. * self.zoom,
+                red(),
+            );
+        }
+        if node.probe {
+            painter.text(
+                top + egui::vec2(211., 187.) * self.zoom,
+                Align2::CENTER_CENTER,
+                "P",
+                crate::theme::font(13. * self.zoom),
+                purple(),
+            );
+        }
+        painter.rect_filled(
+            Rect::from_min_size(top, egui::vec2(NODE_SIZE.x, 4.) * self.zoom),
+            2.,
+            color,
+        );
+        painter.text(
+            top + egui::vec2(13., 13.) * self.zoom,
+            Align2::LEFT_TOP,
+            crate::i18n::t(node.kind.tag()),
+            crate::theme::font(10. * self.zoom),
+            color,
+        );
+        let title = if node.title.chars().count() > 28 {
+            format!("{}…", node.title.chars().take(27).collect::<String>())
+        } else {
+            node.title.clone()
+        };
+        painter.text(
+            top + egui::vec2(13., 30.) * self.zoom,
+            Align2::LEFT_TOP,
+            crate::i18n::t(&title),
+            crate::theme::font(14. * self.zoom),
+            text_color(),
+        );
+        visuals::symbol_with_ports(
+            painter,
+            Rect::from_min_size(
+                top + egui::vec2(33., 55.) * self.zoom,
+                egui::vec2(174., 80.) * self.zoom,
+            ),
+            node.kind,
+            node.config.instrument.port_count,
+        );
+        painter.text(
+            top + egui::vec2(13., 150.) * self.zoom,
+            Align2::LEFT_TOP,
+            summary(node),
+            crate::theme::font(11. * self.zoom),
+            muted(),
+        );
+        let done = self.completed.contains(&node.id);
+        let state = if done {
+            "Exécuté"
+        } else if node.kind.is_extended() {
+            "Modèle simulé"
+        } else if node.config.resource.starts_with("SIM::") {
+            "Simulation"
+        } else {
+            "Matériel"
+        };
+        painter.circle_filled(
+            top + egui::vec2(16., 185.) * self.zoom,
+            3. * self.zoom,
+            if done { teal() } else { muted() },
+        );
+        painter.text(
+            top + egui::vec2(25., 185.) * self.zoom,
+            Align2::LEFT_CENTER,
+            crate::i18n::t(state),
+            crate::theme::font(10. * self.zoom),
+            if done { teal() } else { muted() },
+        );
+    }
+    fn paint_preview_pins(&self, painter: &egui::Painter, node: &Node, origin: Pos2) {
+        let top = self.screen(origin, node.position);
+        for (i, p) in node.physical_ports().iter().enumerate() {
+            let at = top + physical_port_offset(node, i) * self.zoom;
+            painter.circle_filled(at, 5. * self.zoom, physical_color(p.kind));
+            painter.text(
+                at + egui::vec2(8., -8.) * self.zoom,
+                Align2::LEFT_BOTTOM,
+                &p.name,
+                crate::theme::font(9. * self.zoom),
+                physical_color(p.kind),
+            );
+        }
+        for output in [false, true] {
+            let pins = if output {
+                node.kind.outputs()
+            } else {
+                node.kind.inputs()
+            };
+            for (i, p) in pins.iter().enumerate() {
+                let at = top + port_offset(node, output, i) * self.zoom;
+                painter.rect_filled(
+                    Rect::from_center_size(at, egui::vec2(8., 8.) * self.zoom),
+                    1.,
+                    port(p.port),
+                );
+                painter.text(
+                    at + egui::vec2(if output { 10. } else { -10. }, 0.) * self.zoom,
+                    if output {
+                        Align2::LEFT_CENTER
+                    } else {
+                        Align2::RIGHT_CENTER
+                    },
+                    p.name,
+                    crate::theme::font(9. * self.zoom),
+                    port(p.port),
+                );
             }
         }
     }
@@ -624,10 +647,10 @@ impl Canvas {
             }
             // Existing instruments stay visible, but cannot receive placement clicks.
             for node in &g.nodes {
-                let top=self.screen(rect.min,node.position);
-                let card=Rect::from_min_size(top,NODE_SIZE*self.zoom);
-                self.paint_node(&painter,node,top,card);
-                self.paint_preview_pins(&painter,node,rect.min);
+                let top = self.screen(rect.min, node.position);
+                let card = Rect::from_min_size(top, NODE_SIZE * self.zoom);
+                self.paint_node(&painter, node, top, card);
+                self.paint_preview_pins(&painter, node, rect.min);
             }
             if let Some(mouse) = ui
                 .input(|i| i.pointer.hover_pos())
@@ -643,12 +666,30 @@ impl Canvas {
                 let draft = self.placement.as_ref().unwrap();
                 let top = self.screen(rect.min, position);
                 let ghost = Rect::from_min_size(top, NODE_SIZE * self.zoom);
-                let overlay=ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Tooltip,Id::new("placement-preview"))).with_clip_rect(rect);
-                self.paint_node(&overlay,draft,top,ghost);
-                let mut preview=draft.clone();preview.position=position;
-                self.paint_preview_pins(&overlay,&preview,rect.min);
-                overlay.rect_stroke(ghost,8.,Stroke::new(2.,kind(draft.kind)),StrokeKind::Inside);
-                overlay.text(top+egui::vec2(12.,170.)*self.zoom,Align2::LEFT_TOP,"Clic : placer · Échap : annuler",crate::theme::font(10.*self.zoom),teal());
+                let overlay = ui
+                    .ctx()
+                    .layer_painter(egui::LayerId::new(
+                        egui::Order::Tooltip,
+                        Id::new("placement-preview"),
+                    ))
+                    .with_clip_rect(rect);
+                self.paint_node(&overlay, draft, top, ghost);
+                let mut preview = draft.clone();
+                preview.position = position;
+                self.paint_preview_pins(&overlay, &preview, rect.min);
+                overlay.rect_stroke(
+                    ghost,
+                    8.,
+                    Stroke::new(2., kind(draft.kind)),
+                    StrokeKind::Inside,
+                );
+                overlay.text(
+                    top + egui::vec2(12., 170.) * self.zoom,
+                    Align2::LEFT_TOP,
+                    "Clic : placer · Échap : annuler",
+                    crate::theme::font(10. * self.zoom),
+                    teal(),
+                );
                 if response.clicked() && g.nodes.len() < 1000 {
                     let draft = self.placement.take().unwrap();
                     history.record(g.clone());
@@ -937,7 +978,7 @@ impl Canvas {
             if !rect.intersects(card) {
                 continue;
             }
-            self.paint_node(&painter,node,top,card);
+            self.paint_node(&painter, node, top, card);
             let hit = ui.interact(
                 card.shrink(12. * self.zoom),
                 Id::new(("node", node.id)),

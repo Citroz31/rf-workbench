@@ -33,7 +33,10 @@ impl Workbench {
                         .char_limit(128)
                         .desired_width(f32::INFINITY),
                 );
-                if draft.focus_name { name.request_focus(); draft.focus_name=false; }
+                if draft.focus_name {
+                    name.request_focus();
+                    draft.focus_name = false;
+                }
                 if !draft.suggested_name.is_empty() {
                     ui.horizontal_wrapped(|ui| {
                         ui.small("Suggestion :");
