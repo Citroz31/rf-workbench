@@ -166,7 +166,7 @@ impl Default for Panel {
 impl Panel {
     pub fn validate(&self) -> Result<(), String> {
         if !(1..=4).contains(&self.columns)
-            || self.initialized_nodes.len()>1000
+            || self.initialized_nodes.len() > 1000
             || !(1..=4).contains(&self.rows)
             || self.page > 31
             || self.rect.iter().any(|v| !v.is_finite() || v.abs() > 20000.)

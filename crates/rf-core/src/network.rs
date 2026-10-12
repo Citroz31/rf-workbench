@@ -77,7 +77,7 @@ impl Curve {
             x_unit: "Hz".into(),
             y: t.magnitude_db.clone(),
             y_unit: "dB".into(),
-            phase_deg: (!t.phase_deg.is_empty()).then(||t.phase_deg.clone()),
+            phase_deg: (!t.phase_deg.is_empty()).then(|| t.phase_deg.clone()),
             simulated: t.simulated,
             corrected: false,
         }

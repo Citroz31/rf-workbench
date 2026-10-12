@@ -223,10 +223,20 @@ if ui.button("Consigne du profil").clicked(){d.command=c.instrument.set_command.
             {
                 Ok(removed) => {
                     self.history.record(before);
-                    d.config.instrument.pna.source_port=d.config.instrument.pna.source_port.min(d.config.instrument.port_count);
-                    if let Some(plan)=&mut d.config.instrument.pna.plan {
-                        plan.parameters.retain(|p|rf_core::pna_plan::valid_parameter(p,d.config.instrument.port_count));
-                        if plan.parameters.is_empty(){plan.parameters.push("S11".into());}plan.rebuild_windows();
+                    d.config.instrument.pna.source_port = d
+                        .config
+                        .instrument
+                        .pna
+                        .source_port
+                        .min(d.config.instrument.port_count);
+                    if let Some(plan) = &mut d.config.instrument.pna.plan {
+                        plan.parameters.retain(|p| {
+                            rf_core::pna_plan::valid_parameter(p, d.config.instrument.port_count)
+                        });
+                        if plan.parameters.is_empty() {
+                            plan.parameters.push("S11".into());
+                        }
+                        plan.rebuild_windows();
                     }
                     d.config.s_parameter = self
                         .project
@@ -277,7 +287,9 @@ if ui.button("Consigne du profil").clicked(){d.command=c.instrument.set_command.
                         n.config = d.config.clone();
                         n.title = d.title.clone();
                     }
-                    if d.kind.max_rf_ports().is_some() {self.apply_pna_layout(d.id);}
+                    if d.kind.max_rf_ports().is_some() {
+                        self.apply_pna_layout(d.id);
+                    }
                     d.message = "Réglages mémorisés dans le bloc.".into();
                 }
                 Err(e) => d.message = e,
@@ -341,8 +353,8 @@ pub(super) fn component_details(ui: &mut egui::Ui, component: &Component) {
 pub(super) fn apply_component(c: &mut rf_core::Config, component: &Component) {
     c.dut_id = Some(component.id.clone());
     c.dut = rf_core::dut::Model::default();
-    c.dut.dataset=component.dataset.clone();
-    c.dut.use_dataset=c.dut.dataset.is_some();
+    c.dut.dataset = component.dataset.clone();
+    c.dut.use_dataset = c.dut.dataset.is_some();
     let category = component.category.to_lowercase();
     c.dut.product_type = if category.contains("lna") {
         rf_core::dut::ProductType::Lna
@@ -374,22 +386,66 @@ pub(super) fn apply_component(c: &mut rf_core::Config, component: &Component) {
         c.dut.phase_step_deg = rf.phase_step_deg;
     }
 }
-fn dataset_editor(ui:&mut egui::Ui,c:&mut rf_core::Config,path:&mut String,message:&mut String) {
-    use rf_core::characterization::{Dataset,Characteristic,Provenance};
-    ui.separator();ui.heading("Courbes de caractérisation du DUT");
-    ui.add_enabled(c.dut.dataset.is_some(),egui::Checkbox::new(&mut c.dut.use_dataset,"Simuler avec les courbes publiées / importées"));
-    if let Some(data)=&c.dut.dataset {
+fn dataset_editor(
+    ui: &mut egui::Ui,
+    c: &mut rf_core::Config,
+    path: &mut String,
+    message: &mut String,
+) {
+    use rf_core::characterization::{Characteristic, Dataset, Provenance};
+    ui.separator();
+    ui.heading("Courbes de caractérisation du DUT");
+    ui.add_enabled(
+        c.dut.dataset.is_some(),
+        egui::Checkbox::new(
+            &mut c.dut.use_dataset,
+            "Simuler avec les courbes publiées / importées",
+        ),
+    );
+    if let Some(data) = &c.dut.dataset {
         ui.label(&data.label);
         for curve in &data.curves {
-            egui::CollapsingHeader::new(format!("{} · {} points · {}{}",curve.parameter,curve.values.len(),curve.unit,if curve.phase_deg.is_none(){" · phase non disponible"}else{" · complexe"})).id_salt(("dut-data",&curve.parameter)).show(ui,|ui| {
-                ui.label(&curve.provenance.conditions);ui.small(&curve.provenance.method);
-                if curve.provenance.url.starts_with("https://") {ui.hyperlink_to(format!("Source · {} · page {}",curve.provenance.revision,curve.provenance.page),&curve.provenance.url);}
-                plot::series(ui,&curve.frequency_hz,&curve.values,150.,"GHz",&curve.unit,1e9);
+            egui::CollapsingHeader::new(format!(
+                "{} · {} points · {}{}",
+                curve.parameter,
+                curve.values.len(),
+                curve.unit,
+                if curve.phase_deg.is_none() {
+                    " · phase non disponible"
+                } else {
+                    " · complexe"
+                }
+            ))
+            .id_salt(("dut-data", &curve.parameter))
+            .show(ui, |ui| {
+                ui.label(&curve.provenance.conditions);
+                ui.small(&curve.provenance.method);
+                if curve.provenance.url.starts_with("https://") {
+                    ui.hyperlink_to(
+                        format!(
+                            "Source · {} · page {}",
+                            curve.provenance.revision, curve.provenance.page
+                        ),
+                        &curve.provenance.url,
+                    );
+                }
+                plot::series(
+                    ui,
+                    &curve.frequency_hz,
+                    &curve.values,
+                    150.,
+                    "GHz",
+                    &curve.unit,
+                    1e9,
+                );
             });
         }
         ui.small("Interpolation dans la bande publiée, sans extrapolation. Les champs scalaires servent au mode scalaire ; les états d'atténuation appliquent un décalage nominal. Sans phase : aucun Smith ni deembedding. Un sweep de puissance reste un modèle de compression estimé.");
-    }else{ui.small("Ce DUT utilise un modèle scalaire. Choisir un produit documenté ou importer un jeu de données.");}
-    ui.label("Fichier local .json (jeu de courbes) ou .s2p (réseau complexe)");ui.text_edit_singleline(path);
+    } else {
+        ui.small("Ce DUT utilise un modèle scalaire. Choisir un produit documenté ou importer un jeu de données.");
+    }
+    ui.label("Fichier local .json (jeu de courbes) ou .s2p (réseau complexe)");
+    ui.text_edit_singleline(path);
     if ui.button("Importer dans le DUT du projet").clicked() {
         let result=(||->Result<Dataset,String> {
             let text=read_limited(path,2_000_000)?;
@@ -402,7 +458,16 @@ fn dataset_editor(ui:&mut egui::Ui,c:&mut rf_core::Config,path:&mut String,messa
                 }).collect();Ok(Dataset {label:format!("Touchstone · {path}"),curves,reference_ohm:Some(network.z0)})
             }else{serde_json::from_str(&text).map_err(|e|e.to_string())}
         })().and_then(|data|{data.validate()?;Ok(data)});
-        match result {Ok(data)=>{c.dut.dataset=Some(data);c.dut.use_dataset=true;*message="Données intégrées au DUT ; Appliquer pour les mémoriser dans le projet.".into();},Err(error)=>*message=error}
+        match result {
+            Ok(data) => {
+                c.dut.dataset = Some(data);
+                c.dut.use_dataset = true;
+                *message =
+                    "Données intégrées au DUT ; Appliquer pour les mémoriser dans le projet."
+                        .into();
+            }
+            Err(error) => *message = error,
+        }
     }
 }
 fn dut_settings(ui: &mut egui::Ui, c: &mut rf_core::Config, catalog: &Catalog) {
@@ -456,8 +521,16 @@ fn dut_settings(ui: &mut egui::Ui, c: &mut rf_core::Config, catalog: &Catalog) {
     crate::frequency_edit::frequency(ui, "Bande début", &mut c.start_hz, &mut c.frequency_unit);
     crate::frequency_edit::frequency(ui, "Bande fin", &mut c.stop_hz, &mut c.frequency_unit);
     c.limits.band_hz = Some([c.start_hz, c.stop_hz]);
-    optional_dut(ui,"Puissance d'entrée maximale déclarée",&mut c.limits.max_input_dbm);
-    optional_dut(ui,"Puissance de sortie maximale déclarée",&mut c.limits.max_output_dbm);
+    optional_dut(
+        ui,
+        "Puissance d'entrée maximale déclarée",
+        &mut c.limits.max_input_dbm,
+    );
+    optional_dut(
+        ui,
+        "Puissance de sortie maximale déclarée",
+        &mut c.limits.max_output_dbm,
+    );
     dut_number(ui, "S11", &mut c.dut.s11_db, 0.1, " dB");
     dut_number(ui, "S22", &mut c.dut.s22_db, 0.1, " dB");
     dut_number(ui, "S12 · isolation inverse", &mut c.dut.s12_db, 0.1, " dB");

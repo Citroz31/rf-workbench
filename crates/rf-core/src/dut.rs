@@ -67,8 +67,8 @@ impl Model {
         (!self.use_dataset || self.dataset.is_some())
             && self.dataset.as_ref().is_none_or(|d| d.validate().is_ok())
             && [self.s11_db, self.s22_db, self.s12_db]
-            .iter()
-            .all(|v| v.is_finite() && (-300. ..=60.).contains(v))
+                .iter()
+                .all(|v| v.is_finite() && (-300. ..=60.).contains(v))
             && [self.output_ip3_dbm, self.saturation_dbm]
                 .iter()
                 .all(|v| v.is_none_or(|v| v.is_finite() && (-160. ..=100.).contains(&v)))

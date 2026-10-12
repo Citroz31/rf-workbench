@@ -640,7 +640,13 @@ impl Engine {
                 inputs.insert(
                     0,
                     Value::Dut {
-                        dataset: dut.config.dut.use_dataset.then(||dut.config.dut.dataset.clone()).flatten().map(Arc::new),
+                        dataset: dut
+                            .config
+                            .dut
+                            .use_dataset
+                            .then(|| dut.config.dut.dataset.clone())
+                            .flatten()
+                            .map(Arc::new),
                         dataset_attenuation: dut.config.attenuation_db,
                         s11_db: dut.config.dut.s11_db,
                         s22_db: dut.config.dut.s22_db,
@@ -763,7 +769,13 @@ impl Engine {
                                     model_inputs.insert(
                                         0,
                                         Value::Dut {
-                                            dataset: d.config.dut.use_dataset.then(||d.config.dut.dataset.clone()).flatten().map(Arc::new),
+                                            dataset: d
+                                                .config
+                                                .dut
+                                                .use_dataset
+                                                .then(|| d.config.dut.dataset.clone())
+                                                .flatten()
+                                                .map(Arc::new),
                                             dataset_attenuation: d.config.attenuation_db,
                                             s11_db: d.config.dut.s11_db,
                                             s22_db: d.config.dut.s22_db,
@@ -785,9 +797,13 @@ impl Engine {
                         }
                         if let Some(Value::Network(t)) = out.first() {
                             let mut curve = rf_core::network::Curve::from_trace(id, t);
-                            if let Some(Value::Dut {dataset:Some(dataset),..})=model_inputs.get(&0)
-                                && let Some(data)=dataset.curve(&n.config.s_parameter) {
-                                curve.provenance=Some(data.provenance.clone());
+                            if let Some(Value::Dut {
+                                dataset: Some(dataset),
+                                ..
+                            }) = model_inputs.get(&0)
+                                && let Some(data) = dataset.curve(&n.config.s_parameter)
+                            {
+                                curve.provenance = Some(data.provenance.clone());
                             }
                             if c.instrument.pna.power_sweep {
                                 curve.x = (0..c.points)
@@ -807,31 +823,83 @@ impl Engine {
                             selected = out;
                         }
                     }
-                    for parameter in rf_core::pna_plan::selected(c).into_iter().filter(|p|!p.starts_with('S')) {
-                        let source=rf_core::pna_plan::source_port(&parameter).unwrap();
-                        let receiver=rf_core::pna_plan::receiver_port(&parameter).unwrap();
-                        let reference=parameter.starts_with('R');
-                        let term=format!("S{receiver}{source}");
-                        let base=curves.iter().find(|t|t.name==term).or_else(||curves.iter().find(|t|t.name.starts_with('S')))
-                            .ok_or_else(||"Simulation récepteur : un paramètre S est requis".to_owned())?;
-                        let mut curve=base.clone();curve.name=parameter;curve.y_unit="dBm".into();curve.phase_deg=None;
-                        let gain=curves.iter().find(|t|t.name==term);
-                        if !reference && gain.is_none() {return Err(format!("Simulation récepteur : sélectionner aussi {term}"));}
-                        curve.y=(0..base.x.len()).map(|i| {
-                            let input=if c.instrument.pna.power_sweep {base.x[i]}else{c.power_dbm};
-                            input+if reference {0.}else{gain.unwrap().y[i]}
-                        }).collect();
+                    for parameter in rf_core::pna_plan::selected(c)
+                        .into_iter()
+                        .filter(|p| !p.starts_with('S'))
+                    {
+                        let source = rf_core::pna_plan::source_port(&parameter).unwrap();
+                        let receiver = rf_core::pna_plan::receiver_port(&parameter).unwrap();
+                        let reference = parameter.starts_with('R');
+                        let term = format!("S{receiver}{source}");
+                        let base = curves
+                            .iter()
+                            .find(|t| t.name == term)
+                            .or_else(|| curves.iter().find(|t| t.name.starts_with('S')))
+                            .ok_or_else(|| {
+                                "Simulation récepteur : un paramètre S est requis".to_owned()
+                            })?;
+                        let mut curve = base.clone();
+                        curve.name = parameter;
+                        curve.y_unit = "dBm".into();
+                        curve.phase_deg = None;
+                        let gain = curves.iter().find(|t| t.name == term);
+                        if !reference && gain.is_none() {
+                            return Err(format!(
+                                "Simulation récepteur : sélectionner aussi {term}"
+                            ));
+                        }
+                        curve.y = (0..base.x.len())
+                            .map(|i| {
+                                let input = if c.instrument.pna.power_sweep {
+                                    base.x[i]
+                                } else {
+                                    c.power_dbm
+                                };
+                                input + if reference { 0. } else { gain.unwrap().y[i] }
+                            })
+                            .collect();
                         curves.push(curve);
                     }
                     apply_fixture(c, id, &mut curves)?;
                     if !c.instrument.pna.power_sweep
-                        && let Some(Value::Dut {dataset:Some(dataset),..})=inputs.get(&0) {
-                        for data in dataset.curves.iter().filter(|data|!data.parameter.starts_with('S')) {
-                            if c.start_hz<data.frequency_hz[0] || c.stop_hz>*data.frequency_hz.last().unwrap(){continue;}
-                            let x:Vec<_>=(0..c.points).map(|i|c.start_hz+(c.stop_hz-c.start_hz)*i as f64/(c.points-1) as f64).collect();
-                            let y=x.iter().map(|f|data.sample(*f).map(|v|v.0)).collect::<Result<Vec<_>>>()?;
-                            curves.push(rf_core::network::Curve {node:id,name:data.parameter.clone(),x,y,x_unit:"Hz".into(),y_unit:data.unit.clone(),phase_deg:None,
-                                simulated:true,corrected:false,provenance:Some(data.provenance.clone())});
+                        && let Some(Value::Dut {
+                            dataset: Some(dataset),
+                            ..
+                        }) = inputs.get(&0)
+                    {
+                        for data in dataset
+                            .curves
+                            .iter()
+                            .filter(|data| !data.parameter.starts_with('S'))
+                        {
+                            if c.start_hz < data.frequency_hz[0]
+                                || c.stop_hz > *data.frequency_hz.last().unwrap()
+                            {
+                                continue;
+                            }
+                            let x: Vec<_> = (0..c.points)
+                                .map(|i| {
+                                    c.start_hz
+                                        + (c.stop_hz - c.start_hz) * i as f64
+                                            / (c.points - 1) as f64
+                                })
+                                .collect();
+                            let y = x
+                                .iter()
+                                .map(|f| data.sample(*f).map(|v| v.0))
+                                .collect::<Result<Vec<_>>>()?;
+                            curves.push(rf_core::network::Curve {
+                                node: id,
+                                name: data.parameter.clone(),
+                                x,
+                                y,
+                                x_unit: "Hz".into(),
+                                y_unit: data.unit.clone(),
+                                phase_deg: None,
+                                simulated: true,
+                                corrected: false,
+                                provenance: Some(data.provenance.clone()),
+                            });
                         }
                     }
                     if let Some(curve) = curves.iter().rev().find(|t| t.name == c.s_parameter)
@@ -868,7 +936,13 @@ impl Engine {
                 values.insert(
                     (id, 1),
                     Value::Dut {
-                        dataset: node.config.dut.use_dataset.then(||node.config.dut.dataset.clone()).flatten().map(Arc::new),
+                        dataset: node
+                            .config
+                            .dut
+                            .use_dataset
+                            .then(|| node.config.dut.dataset.clone())
+                            .flatten()
+                            .map(Arc::new),
                         dataset_attenuation: node.config.attenuation_db,
                         s11_db: node.config.dut.s11_db,
                         s22_db: node.config.dut.s22_db,
@@ -1110,7 +1184,11 @@ pub fn self_tests() -> Vec<TestResult> {
 }
 
 pub enum Command {
-    InspectPnaPath {node:u64,config:rf_core::Config,hardware:bool},
+    InspectPnaPath {
+        node: u64,
+        config: rf_core::Config,
+        hardware: bool,
+    },
     ExportResults {
         curves: Vec<rf_core::network::Curve>,
         folder: String,
@@ -1188,7 +1266,10 @@ pub enum Command {
 }
 #[derive(Clone, Debug)]
 pub enum Event {
-    PnaPath {node:u64,snapshot:rf_instruments::pna_path::Snapshot},
+    PnaPath {
+        node: u64,
+        snapshot: rf_instruments::pna_path::Snapshot,
+    },
     PnaFixtureData {
         node: u64,
         data: rf_core::network::TwoPort,
@@ -1298,9 +1379,11 @@ impl Worker {
                                 )
                                 .map_err(|e| e.to_string())?;
                             if config.instrument.pna.plan.is_some() {
-                                rf_instruments::pna::configure(s.as_mut(), &config,kind)
-                            } else {rf_instruments::pna::prepare(s.as_mut(), &config)}
-                                .map_err(|e| e.to_string())
+                                rf_instruments::pna::configure(s.as_mut(), &config, kind)
+                            } else {
+                                rf_instruments::pna::prepare(s.as_mut(), &config)
+                            }
+                            .map_err(|e| e.to_string())
                         })();
                         let _ = etx.send(match response {
                             Ok(text) => Event::InstrumentResponse { node, text },
@@ -1445,13 +1528,28 @@ impl Worker {
                             let _ = etx.send(Event::Devices { node, devices });
                         }
                     }
-                    Command::InspectPnaPath {node,config,hardware} => {
-                        let response=(|| -> Result<rf_instruments::pna_path::Snapshot> {
-                            if !hardware {return Err("Activer Matériel pour lire les chemins".into());}
-                            let mut s=ResourceManager.open_resource(&config.resource,Duration::from_millis(config.instrument.timeout_ms)).map_err(|e|e.to_string())?;
-                            rf_instruments::pna_path::inspect(s.as_mut(),&config).map_err(|e|e.to_string())
+                    Command::InspectPnaPath {
+                        node,
+                        config,
+                        hardware,
+                    } => {
+                        let response = (|| -> Result<rf_instruments::pna_path::Snapshot> {
+                            if !hardware {
+                                return Err("Activer Matériel pour lire les chemins".into());
+                            }
+                            let mut s = ResourceManager
+                                .open_resource(
+                                    &config.resource,
+                                    Duration::from_millis(config.instrument.timeout_ms),
+                                )
+                                .map_err(|e| e.to_string())?;
+                            rf_instruments::pna_path::inspect(s.as_mut(), &config)
+                                .map_err(|e| e.to_string())
                         })();
-                        let _=etx.send(match response {Ok(snapshot)=>Event::PnaPath {node,snapshot},Err(error)=>Event::Error(error)});
+                        let _ = etx.send(match response {
+                            Ok(snapshot) => Event::PnaPath { node, snapshot },
+                            Err(error) => Event::Error(error),
+                        });
                     }
                     Command::InspectPna {
                         node,

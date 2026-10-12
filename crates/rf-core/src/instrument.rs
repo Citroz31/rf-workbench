@@ -36,7 +36,8 @@ impl Default for PnaSetup {
 }
 impl PnaSetup {
     pub fn validate(&self) -> Result<(), String> {
-        if !self.path.validate() || !self.reference_ohm.is_finite()
+        if !self.path.validate()
+            || !self.reference_ohm.is_finite()
             || !(0.1..=10000.).contains(&self.reference_ohm)
             || [self.power_start_dbm, self.power_stop_dbm]
                 .iter()
@@ -124,7 +125,10 @@ impl Controls {
     pub fn validate(&self) -> Result<(), String> {
         self.pna.validate()?;
         if let Some(plan) = &self.pna.plan {
-            plan.validate(self.port_count, self.pna.power_sweep.then_some(self.pna.source_port))?;
+            plan.validate(
+                self.port_count,
+                self.pna.power_sweep.then_some(self.pna.source_port),
+            )?;
         }
         if !(1..=4).contains(&self.port_count)
             || self.expected_idn.len() > 256

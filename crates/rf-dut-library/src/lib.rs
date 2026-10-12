@@ -112,7 +112,9 @@ impl Catalog {
         }
         let mut ids = BTreeSet::new();
         for c in &self.entries {
-            if let Some(dataset) = &c.dataset { dataset.validate().map_err(Error::Invalid)?; }
+            if let Some(dataset) = &c.dataset {
+                dataset.validate().map_err(Error::Invalid)?;
+            }
             if c.rf
                 .as_ref()
                 .is_some_and(|rf| !rf.valid() || c.sources.is_empty())
@@ -162,11 +164,14 @@ impl Catalog {
     }
     pub fn include_bundled(&mut self) {
         for entry in Self::default().entries {
-            if let Some(existing)=self.entries.iter_mut().find(|e|e.id==entry.id) {
-                if existing.dataset.is_none() && existing.part_number==entry.part_number && existing.sources==entry.sources {
-                    existing.dataset=entry.dataset;
+            if let Some(existing) = self.entries.iter_mut().find(|e| e.id == entry.id) {
+                if existing.dataset.is_none()
+                    && existing.part_number == entry.part_number
+                    && existing.sources == entry.sources
+                {
+                    existing.dataset = entry.dataset;
                 }
-            }else {
+            } else {
                 self.entries.push(entry);
             }
         }

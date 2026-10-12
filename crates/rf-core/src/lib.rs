@@ -1,13 +1,13 @@
 //! Platform-independent RF data, typed acyclic graphs and versioned bench files.
+pub mod characterization;
 pub mod dsp;
 pub mod dut;
 pub mod flow;
 pub mod frequency;
 pub mod instrument;
 pub mod network;
-pub mod pna_plan;
-pub mod characterization;
 pub mod physical;
+pub mod pna_plan;
 pub use physical::{PhysicalConnection, PhysicalDirection, PhysicalPort, PhysicalPortKind};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -573,8 +573,13 @@ impl Graph {
             }
         }
         if kind.max_rf_ports().is_some() {
-            self.nodes.last_mut().expect("added VNA").config.instrument.pna.plan =
-                Some(pna_plan::Plan::default());
+            self.nodes
+                .last_mut()
+                .expect("added VNA")
+                .config
+                .instrument
+                .pna
+                .plan = Some(pna_plan::Plan::default());
         }
         id
     }

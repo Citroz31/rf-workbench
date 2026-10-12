@@ -493,7 +493,11 @@ impl Workbench {
                 .map(|n| n.id)
         {
             bench.open_instrument(id);
-            if args.iter().any(|a|a=="--instrument-path") && let Some(d)=&mut bench.instrument_dialog {d.tab=4;}
+            if args.iter().any(|a| a == "--instrument-path")
+                && let Some(d) = &mut bench.instrument_dialog
+            {
+                d.tab = 4;
+            }
             if args.iter().any(|a| a == "--instrument-functions")
                 && let Some(d) = &mut bench.instrument_dialog
             {
@@ -589,7 +593,11 @@ impl Workbench {
                 .find(|n| n.kind.max_rf_ports().is_some())
         {
             n.config.instrument.pna.all_s_parameters = false;
-            n.config.instrument.pna.plan.get_or_insert_with(rf_core::pna_plan::Plan::default);
+            n.config
+                .instrument
+                .pna
+                .plan
+                .get_or_insert_with(rf_core::pna_plan::Plan::default);
             let id = n.id;
             bench.apply_pna_layout(id);
         }
@@ -688,10 +696,11 @@ impl Workbench {
             self.preview = false;
         }
         self.curves = r.curves;
-        let nodes:std::collections::BTreeSet<_>=self.curves.iter().map(|c|c.node).collect();
+        let nodes: std::collections::BTreeSet<_> = self.curves.iter().map(|c| c.node).collect();
         for node in nodes {
             if !self.layout.result_panel.initialized_nodes.contains(&node)
-                && !self.layout.result_windows.iter().any(|w|w.node==node) {
+                && !self.layout.result_windows.iter().any(|w| w.node == node)
+            {
                 self.apply_pna_layout(node);
             }
         }
@@ -785,9 +794,12 @@ impl Workbench {
                         d.accept_devices(devices);
                     }
                 }
-                Event::PnaPath {node,snapshot} => {
-                    if let Some(d)=&mut self.instrument_dialog && d.id==node {
-                        d.path=Some(snapshot);d.message="Catalogue RF/IF lu sur l'appareil.".into();
+                Event::PnaPath { node, snapshot } => {
+                    if let Some(d) = &mut self.instrument_dialog
+                        && d.id == node
+                    {
+                        d.path = Some(snapshot);
+                        d.message = "Catalogue RF/IF lu sur l'appareil.".into();
                     }
                 }
                 Event::PnaCapabilities { node, capabilities } => {
