@@ -1,7 +1,7 @@
 use super::*;
 impl Workbench {
     pub(super) fn create_bench(&mut self, graph: rf_core::Graph, suggested: &str) {
-        if self.worker.is_busy() || self.pending_project.is_some() {
+        if self.pending_project.is_some() {
             return;
         }
         self.new_project = Some(crate::new_project::Draft::new(
@@ -102,6 +102,12 @@ impl Workbench {
                 if !draft.error.is_empty() {
                     ui.colored_label(red(), &draft.error);
                 }
+                if self.worker.is_busy() {
+                    ui.label("Arrêter l'exécution courante avant de créer le projet.");
+                    if ui.button("Arrêter l'exécution").clicked() {
+                        self.worker.stop();
+                    }
+                }
                 ui.horizontal(|ui| {
                     create = ui
                         .add_enabled(
@@ -112,13 +118,13 @@ impl Workbench {
                     cancel = ui.button("Annuler").clicked();
                 });
                 if name.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                    create = draft.destination().is_ok();
+                    create = draft.destination().is_ok() && !self.worker.is_busy();
                 }
             });
         if cancel || !open {
             return;
         }
-        if create {
+        if create && !self.worker.is_busy() && self.pending_project.is_none() {
             match self.recover_project().and_then(|_| draft.create()) {
                 Ok((file, path)) => {
                     self.browse_directory = draft.directory;

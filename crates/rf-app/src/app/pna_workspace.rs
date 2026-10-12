@@ -217,7 +217,7 @@ impl Workbench {
         if ui.button("Vérifier le banc").clicked() {
             self.flow_report = Some(rf_runtime::preflight(&self.project.graph));
         }
-        if ui.button("Résultats / nouvelles fenêtres").clicked() {
+        if ui.button("VNA / résultats").clicked() {
             self.results_open = true;
         }
         ui.menu_button("Panneau inférieur", |ui| {

@@ -1652,6 +1652,15 @@ impl eframe::App for Workbench {
         }
     }
 
+    fn raw_input_hook(&mut self, _ctx: &egui::Context, input: &mut egui::RawInput) {
+        // Deterministic pointer fixture for the native placement screenshot only.
+        if self.capture_path.is_some() && self.canvas.placement.is_some() {
+            input
+                .events
+                .push(egui::Event::PointerMoved(egui::pos2(1020., 540.)));
+        }
+    }
+
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let start = Instant::now();
         self.poll();

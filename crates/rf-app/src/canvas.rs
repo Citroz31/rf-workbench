@@ -649,6 +649,9 @@ impl Canvas {
             for node in &g.nodes {
                 let top = self.screen(rect.min, node.position);
                 let card = Rect::from_min_size(top, NODE_SIZE * self.zoom);
+                if !rect.intersects(card) {
+                    continue;
+                }
                 self.paint_node(&painter, node, top, card);
                 self.paint_preview_pins(&painter, node, rect.min);
             }
