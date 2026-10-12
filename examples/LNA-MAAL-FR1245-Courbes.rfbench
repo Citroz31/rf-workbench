@@ -1,0 +1,799 @@
+{
+  "format": "rf-workbench/bench",
+  "version": 2,
+  "project": {
+    "schema_version": 1,
+    "name": "MAAL-FR1245 · courbes publiées +25 °C",
+    "graph": {
+      "nodes": [
+        {
+          "id": 1,
+          "title": "MAAL-FR1245",
+          "kind": "Dut",
+          "position": [
+            40.0,
+            90.0
+          ],
+          "rotation": 0,
+          "config": {
+            "dut": {
+              "dataset": {
+                "label": "MACOM MAAL-FR1245 · courbes typiques +25 °C",
+                "curves": [
+                  {
+                    "parameter": "NF",
+                    "frequency_hz": [
+                      27000000000.0,
+                      27250000000.0,
+                      27500000000.0,
+                      27750000000.0,
+                      28000000000.0,
+                      28250000000.0,
+                      28500000000.0,
+                      28750000000.0,
+                      29000000000.0,
+                      29250000000.0,
+                      29500000000.0,
+                      29750000000.0,
+                      30000000000.0,
+                      30250000000.0,
+                      30500000000.0,
+                      30750000000.0,
+                      31000000000.0,
+                      31250000000.0,
+                      31500000000.0
+                    ],
+                    "values": [
+                      1.171,
+                      1.159,
+                      1.146,
+                      1.147,
+                      1.164,
+                      1.18,
+                      1.195,
+                      1.193,
+                      1.172,
+                      1.15,
+                      1.168,
+                      1.167,
+                      1.116,
+                      1.002,
+                      0.881,
+                      0.879,
+                      0.875,
+                      0.847,
+                      0.755
+                    ],
+                    "unit": "dB",
+                    "phase_deg": null,
+                    "provenance": {
+                      "url": "https://cdn.macom.com/datasheets/MAAL-FR1245.pdf",
+                      "page": 4,
+                      "revision": "V4",
+                      "conditions": "PCB avec deembedding ; TA +25 °C ; VD +1,5 V ; VG -1,5 V ; ID 48 mA.",
+                      "method": "Numérisation du tracé vectoriel vert +25 °C ; axes calibrés, échantillonnage 250 MHz, interpolation linéaire en dB. Incertitude de lecture non quantifiée.",
+                      "approximate": true
+                    }
+                  },
+                  {
+                    "parameter": "S21",
+                    "frequency_hz": [
+                      27000000000.0,
+                      27250000000.0,
+                      27500000000.0,
+                      27750000000.0,
+                      28000000000.0,
+                      28250000000.0,
+                      28500000000.0,
+                      28750000000.0,
+                      29000000000.0,
+                      29250000000.0,
+                      29500000000.0,
+                      29750000000.0,
+                      30000000000.0,
+                      30250000000.0,
+                      30500000000.0,
+                      30750000000.0,
+                      31000000000.0,
+                      31250000000.0,
+                      31500000000.0
+                    ],
+                    "values": [
+                      28.362,
+                      27.931,
+                      27.271,
+                      26.99,
+                      27.103,
+                      27.146,
+                      27.074,
+                      26.933,
+                      26.596,
+                      26.307,
+                      26.233,
+                      25.921,
+                      25.708,
+                      26.07,
+                      26.477,
+                      26.625,
+                      26.672,
+                      26.586,
+                      26.168
+                    ],
+                    "unit": "dB",
+                    "phase_deg": null,
+                    "provenance": {
+                      "url": "https://cdn.macom.com/datasheets/MAAL-FR1245.pdf",
+                      "page": 4,
+                      "revision": "V4",
+                      "conditions": "PCB avec deembedding ; TA +25 °C ; VD +1,5 V ; VG -1,5 V ; ID 48 mA.",
+                      "method": "Numérisation du tracé vectoriel vert +25 °C ; axes calibrés, échantillonnage 250 MHz, interpolation linéaire en dB. Incertitude de lecture non quantifiée.",
+                      "approximate": true
+                    }
+                  },
+                  {
+                    "parameter": "S11",
+                    "frequency_hz": [
+                      27000000000.0,
+                      27250000000.0,
+                      27500000000.0,
+                      27750000000.0,
+                      28000000000.0,
+                      28250000000.0,
+                      28500000000.0,
+                      28750000000.0,
+                      29000000000.0,
+                      29250000000.0,
+                      29500000000.0,
+                      29750000000.0,
+                      30000000000.0,
+                      30250000000.0,
+                      30500000000.0,
+                      30750000000.0,
+                      31000000000.0,
+                      31250000000.0,
+                      31500000000.0
+                    ],
+                    "values": [
+                      -20.274,
+                      -18.842,
+                      -17.719,
+                      -17.989,
+                      -19.022,
+                      -19.51,
+                      -19.01,
+                      -18.588,
+                      -17.248,
+                      -15.621,
+                      -16.48,
+                      -16.452,
+                      -14.291,
+                      -13.475,
+                      -14.87,
+                      -16.705,
+                      -17.575,
+                      -17.506,
+                      -16.43
+                    ],
+                    "unit": "dB",
+                    "phase_deg": null,
+                    "provenance": {
+                      "url": "https://cdn.macom.com/datasheets/MAAL-FR1245.pdf",
+                      "page": 4,
+                      "revision": "V4",
+                      "conditions": "PCB avec deembedding ; TA +25 °C ; VD +1,5 V ; VG -1,5 V ; ID 48 mA.",
+                      "method": "Numérisation du tracé vectoriel vert +25 °C ; axes calibrés, échantillonnage 250 MHz, interpolation linéaire en dB. Incertitude de lecture non quantifiée.",
+                      "approximate": true
+                    }
+                  },
+                  {
+                    "parameter": "S22",
+                    "frequency_hz": [
+                      27000000000.0,
+                      27250000000.0,
+                      27500000000.0,
+                      27750000000.0,
+                      28000000000.0,
+                      28250000000.0,
+                      28500000000.0,
+                      28750000000.0,
+                      29000000000.0,
+                      29250000000.0,
+                      29500000000.0,
+                      29750000000.0,
+                      30000000000.0,
+                      30250000000.0,
+                      30500000000.0,
+                      30750000000.0,
+                      31000000000.0,
+                      31250000000.0,
+                      31500000000.0
+                    ],
+                    "values": [
+                      -10.063,
+                      -9.71,
+                      -10.802,
+                      -12.243,
+                      -12.953,
+                      -12.779,
+                      -12.128,
+                      -11.918,
+                      -11.679,
+                      -10.518,
+                      -10.38,
+                      -10.813,
+                      -9.828,
+                      -8.253,
+                      -8.119,
+                      -8.712,
+                      -9.252,
+                      -9.86,
+                      -10.69
+                    ],
+                    "unit": "dB",
+                    "phase_deg": null,
+                    "provenance": {
+                      "url": "https://cdn.macom.com/datasheets/MAAL-FR1245.pdf",
+                      "page": 4,
+                      "revision": "V4",
+                      "conditions": "PCB avec deembedding ; TA +25 °C ; VD +1,5 V ; VG -1,5 V ; ID 48 mA.",
+                      "method": "Numérisation du tracé vectoriel vert +25 °C ; axes calibrés, échantillonnage 250 MHz, interpolation linéaire en dB. Incertitude de lecture non quantifiée.",
+                      "approximate": true
+                    }
+                  },
+                  {
+                    "parameter": "S12",
+                    "frequency_hz": [
+                      27000000000.0,
+                      27250000000.0,
+                      27500000000.0,
+                      27750000000.0,
+                      28000000000.0,
+                      28250000000.0,
+                      28500000000.0,
+                      28750000000.0,
+                      29000000000.0,
+                      29250000000.0,
+                      29500000000.0,
+                      29750000000.0,
+                      30000000000.0,
+                      30250000000.0,
+                      30500000000.0,
+                      30750000000.0,
+                      31000000000.0,
+                      31250000000.0,
+                      31500000000.0
+                    ],
+                    "values": [
+                      -50.19,
+                      -47.412,
+                      -46.847,
+                      -48.888,
+                      -50.416,
+                      -53.025,
+                      -57.384,
+                      -57.155,
+                      -53.407,
+                      -55.794,
+                      -58.167,
+                      -54.602,
+                      -49.851,
+                      -48.733,
+                      -49.943,
+                      -52.086,
+                      -51.496,
+                      -48.829,
+                      -47.48
+                    ],
+                    "unit": "dB",
+                    "phase_deg": null,
+                    "provenance": {
+                      "url": "https://cdn.macom.com/datasheets/MAAL-FR1245.pdf",
+                      "page": 4,
+                      "revision": "V4",
+                      "conditions": "PCB avec deembedding ; TA +25 °C ; VD +1,5 V ; VG -1,5 V ; ID 48 mA.",
+                      "method": "Numérisation du tracé vectoriel vert +25 °C ; axes calibrés, échantillonnage 250 MHz, interpolation linéaire en dB. Incertitude de lecture non quantifiée.",
+                      "approximate": true
+                    }
+                  }
+                ],
+                "reference_ohm": null
+              },
+              "use_dataset": true,
+              "product_type": "Lna",
+              "s11_db": -20.0,
+              "s22_db": -20.0,
+              "s12_db": -60.0,
+              "output_ip3_dbm": null,
+              "saturation_dbm": null,
+              "attenuation_states": 64,
+              "attenuation_step_db": 0.5,
+              "phase_states": 64,
+              "phase_step_deg": 5.625
+            },
+            "frequency_unit": "Ghz",
+            "step_unit": "Mhz",
+            "if_unit": "Khz",
+            "limits": {
+              "band_hz": [
+                27000000000.0,
+                31500000000.0
+              ],
+              "max_input_dbm": null,
+              "max_output_dbm": null,
+              "output_p1db_dbm": 5.0,
+              "source": ""
+            },
+            "instrument": {
+              "pna": {
+                "plan": null,
+                "path": {
+                  "apply": false,
+                  "configuration": "",
+                  "elements": {}
+                },
+                "reference_ohm": 50.0,
+                "power_sweep": false,
+                "power_start_dbm": -30.0,
+                "power_stop_dbm": -10.0,
+                "source_port": 1,
+                "all_s_parameters": false,
+                "calset": "",
+                "apply_calset": false,
+                "result_path": "",
+                "fixture": {
+                  "enabled": false,
+                  "input_s2p": "",
+                  "output_s2p": "",
+                  "reverse_input": false,
+                  "reverse_output": true,
+                  "provenance": ""
+                }
+              },
+              "port_count": 2,
+              "dc": {
+                "channel": 1,
+                "voltage_v": 0.0,
+                "current_limit_a": 0.1
+              },
+              "expected_idn": "",
+              "timeout_ms": 5000,
+              "channel": 1,
+              "measurement": "",
+              "precision": 32,
+              "configure_sweep": false,
+              "trigger": false,
+              "if_bandwidth_hz": 1000.0,
+              "averaging": false,
+              "averages": 4,
+              "compression_db": 1.0,
+              "read_query": "READ?",
+              "set_command": ""
+            },
+            "dsp": {
+              "rate": 48000.0,
+              "center_hz": 100000000.0,
+              "samples": 1024,
+              "tone_hz": 3000.0,
+              "amplitude": 1.0,
+              "source_unit": "Volt",
+              "factor": 2,
+              "taps": [
+                0.25,
+                0.5,
+                0.25
+              ],
+              "denominator": [
+                1.0,
+                -0.5
+              ],
+              "fft_size": 256,
+              "window": "Hann",
+              "modulation": "QAM",
+              "order": 16,
+              "sps": 4,
+              "noise_db": 30.0,
+              "seed": 42,
+              "bandwidth": 0.01,
+              "phase": 0.0,
+              "frequency_offset": 0.0,
+              "multipath": [
+                {
+                  "re": 1.0,
+                  "im": 0.0
+                }
+              ],
+              "fading": false,
+              "nonlinearity": 0.0,
+              "dc": {
+                "re": 0.0,
+                "im": 0.0
+              },
+              "iq_gain": 1.0,
+              "iq_phase": 0.0,
+              "cable_db": 0.0,
+              "volts_per_fs": null,
+              "delay_s": 0.0,
+              "calibration": [
+                [
+                  1000000.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  6000000000.0,
+                  0.0,
+                  0.0
+                ]
+              ],
+              "uncertainties": [
+                0.01,
+                0.02
+              ],
+              "coverage": 2.0,
+              "impedance": 50.0,
+              "target_unit": "Dbm",
+              "packet_bits": 64,
+              "preamble": [
+                1,
+                0,
+                1,
+                0,
+                1,
+                1,
+                0,
+                1
+              ],
+              "iterations": 8,
+              "rs_parity": 16,
+              "rx_scale": 2048.0,
+              "tx_scale": 16384.0,
+              "io_backend": "RAW",
+              "endpoint": "recording.cf32",
+              "format": "cf32_le",
+              "scpi_query": ":READ:IQ?",
+              "python_executable": "python",
+              "timeout_ms": 2000,
+              "reconnects": 2,
+              "clock": "internal",
+              "trigger": "immediate",
+              "mimo_channels": 1
+            },
+            "resource": "SIM::RF::INSTR",
+            "frequency_hz": 2450000000.0,
+            "power_dbm": -10.0,
+            "loss_db": -26.0,
+            "start_hz": 2400000000.0,
+            "stop_hz": 2500000000.0,
+            "points": 401,
+            "lower_dbm": -15.0,
+            "upper_dbm": -11.0,
+            "trace_query": ":TRAC:DATA? TRACE1",
+            "script": "output = trace\n# Exemple : compenser une perte de câble de 0.5 dB\n# output['amplitude_dbm'] = [x + 0.5 for x in trace['amplitude_dbm']]\n",
+            "sample_rate_hz": 100000000.0,
+            "tone_hz": 1000000.0,
+            "samples": 1024,
+            "resolution_bits": 14,
+            "voltage_v": 1.0,
+            "temperature_c": 25.0,
+            "resistance_ohm": 50.0,
+            "noise_figure_db": 1.2,
+            "s_parameter": "S21",
+            "dut_id": "macom-maal-fr1245",
+            "dut_mode": "RX",
+            "attenuation_db": 0.0,
+            "phase_deg": 0.0
+          },
+          "comment": "",
+          "breakpoint": false,
+          "probe": false
+        },
+        {
+          "id": 2,
+          "title": "PNA-X",
+          "kind": "PnaX",
+          "position": [
+            360.0,
+            90.0
+          ],
+          "rotation": 0,
+          "config": {
+            "dut": {
+              "dataset": null,
+              "use_dataset": false,
+              "product_type": "Generic",
+              "s11_db": -20.0,
+              "s22_db": -20.0,
+              "s12_db": -60.0,
+              "output_ip3_dbm": null,
+              "saturation_dbm": null,
+              "attenuation_states": 64,
+              "attenuation_step_db": 0.5,
+              "phase_states": 64,
+              "phase_step_deg": 5.625
+            },
+            "frequency_unit": "Ghz",
+            "step_unit": "Mhz",
+            "if_unit": "Khz",
+            "limits": {
+              "band_hz": null,
+              "max_input_dbm": null,
+              "max_output_dbm": null,
+              "output_p1db_dbm": null,
+              "source": ""
+            },
+            "instrument": {
+              "pna": {
+                "plan": {
+                  "parameters": [
+                    "S11",
+                    "S12",
+                    "S21",
+                    "S22"
+                  ],
+                  "arrangement": "Quad",
+                  "windows": [
+                    {
+                      "traces": [
+                        {
+                          "parameter": "S11",
+                          "format": "Magnitude",
+                          "automatic": true,
+                          "per_division": 10.0,
+                          "reference": 0.0,
+                          "reference_position": 5.0
+                        }
+                      ],
+                      "active_trace": 0
+                    },
+                    {
+                      "traces": [
+                        {
+                          "parameter": "S12",
+                          "format": "Magnitude",
+                          "automatic": true,
+                          "per_division": 10.0,
+                          "reference": 0.0,
+                          "reference_position": 5.0
+                        }
+                      ],
+                      "active_trace": 0
+                    },
+                    {
+                      "traces": [
+                        {
+                          "parameter": "S21",
+                          "format": "Magnitude",
+                          "automatic": true,
+                          "per_division": 10.0,
+                          "reference": 0.0,
+                          "reference_position": 5.0
+                        }
+                      ],
+                      "active_trace": 0
+                    },
+                    {
+                      "traces": [
+                        {
+                          "parameter": "S22",
+                          "format": "Magnitude",
+                          "automatic": true,
+                          "per_division": 10.0,
+                          "reference": 0.0,
+                          "reference_position": 5.0
+                        }
+                      ],
+                      "active_trace": 0
+                    }
+                  ],
+                  "synchronize_display": true,
+                  "first_window": 1
+                },
+                "path": {
+                  "apply": false,
+                  "configuration": "",
+                  "elements": {}
+                },
+                "reference_ohm": 50.0,
+                "power_sweep": false,
+                "power_start_dbm": -30.0,
+                "power_stop_dbm": -10.0,
+                "source_port": 1,
+                "all_s_parameters": false,
+                "calset": "",
+                "apply_calset": false,
+                "result_path": "",
+                "fixture": {
+                  "enabled": false,
+                  "input_s2p": "",
+                  "output_s2p": "",
+                  "reverse_input": false,
+                  "reverse_output": true,
+                  "provenance": ""
+                }
+              },
+              "port_count": 2,
+              "dc": {
+                "channel": 1,
+                "voltage_v": 0.0,
+                "current_limit_a": 0.1
+              },
+              "expected_idn": "",
+              "timeout_ms": 5000,
+              "channel": 1,
+              "measurement": "",
+              "precision": 32,
+              "configure_sweep": false,
+              "trigger": false,
+              "if_bandwidth_hz": 1000.0,
+              "averaging": false,
+              "averages": 4,
+              "compression_db": 1.0,
+              "read_query": "READ?",
+              "set_command": ""
+            },
+            "dsp": {
+              "rate": 48000.0,
+              "center_hz": 100000000.0,
+              "samples": 1024,
+              "tone_hz": 3000.0,
+              "amplitude": 1.0,
+              "source_unit": "Volt",
+              "factor": 2,
+              "taps": [
+                0.25,
+                0.5,
+                0.25
+              ],
+              "denominator": [
+                1.0,
+                -0.5
+              ],
+              "fft_size": 256,
+              "window": "Hann",
+              "modulation": "QAM",
+              "order": 16,
+              "sps": 4,
+              "noise_db": 30.0,
+              "seed": 42,
+              "bandwidth": 0.01,
+              "phase": 0.0,
+              "frequency_offset": 0.0,
+              "multipath": [
+                {
+                  "re": 1.0,
+                  "im": 0.0
+                }
+              ],
+              "fading": false,
+              "nonlinearity": 0.0,
+              "dc": {
+                "re": 0.0,
+                "im": 0.0
+              },
+              "iq_gain": 1.0,
+              "iq_phase": 0.0,
+              "cable_db": 0.0,
+              "volts_per_fs": null,
+              "delay_s": 0.0,
+              "calibration": [
+                [
+                  1000000.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  6000000000.0,
+                  0.0,
+                  0.0
+                ]
+              ],
+              "uncertainties": [
+                0.01,
+                0.02
+              ],
+              "coverage": 2.0,
+              "impedance": 50.0,
+              "target_unit": "Dbm",
+              "packet_bits": 64,
+              "preamble": [
+                1,
+                0,
+                1,
+                0,
+                1,
+                1,
+                0,
+                1
+              ],
+              "iterations": 8,
+              "rs_parity": 16,
+              "rx_scale": 2048.0,
+              "tx_scale": 16384.0,
+              "io_backend": "RAW",
+              "endpoint": "recording.cf32",
+              "format": "cf32_le",
+              "scpi_query": ":READ:IQ?",
+              "python_executable": "python",
+              "timeout_ms": 2000,
+              "reconnects": 2,
+              "clock": "internal",
+              "trigger": "immediate",
+              "mimo_channels": 1
+            },
+            "resource": "SIM::RF::INSTR",
+            "frequency_hz": 29000000000.0,
+            "power_dbm": -35.0,
+            "loss_db": 3.0,
+            "start_hz": 27000000000.0,
+            "stop_hz": 31500000000.0,
+            "points": 401,
+            "lower_dbm": -15.0,
+            "upper_dbm": -11.0,
+            "trace_query": ":TRAC:DATA? TRACE1",
+            "script": "output = trace\n# Exemple : compenser une perte de câble de 0.5 dB\n# output['amplitude_dbm'] = [x + 0.5 for x in trace['amplitude_dbm']]\n",
+            "sample_rate_hz": 100000000.0,
+            "tone_hz": 1000000.0,
+            "samples": 1024,
+            "resolution_bits": 14,
+            "voltage_v": 1.0,
+            "temperature_c": 25.0,
+            "resistance_ohm": 50.0,
+            "noise_figure_db": 2.5,
+            "s_parameter": "S21",
+            "dut_id": null,
+            "dut_mode": "RX",
+            "attenuation_db": 0.0,
+            "phase_deg": 0.0
+          },
+          "comment": "",
+          "breakpoint": false,
+          "probe": false
+        }
+      ],
+      "edges": [
+        {
+          "from": 1,
+          "to": 2,
+          "from_port": 1,
+          "to_port": 0,
+          "waypoints": [],
+          "auto_routed": false
+        }
+      ],
+      "physical_connections": [],
+      "annotations": []
+    }
+  },
+  "layout": {
+    "canvas_pan": [
+      0.0,
+      0.0
+    ],
+    "canvas_zoom": 1.0,
+    "result_windows": [],
+    "result_panel": {
+      "initialized_nodes": [],
+      "open": true,
+      "floating": false,
+      "columns": 2,
+      "rows": 2,
+      "page": 0,
+      "selected": 0,
+      "rect": [
+        230.0,
+        170.0,
+        1140.0,
+        700.0
+      ]
+    },
+    "library_width": 210.0,
+    "inspector_width": 300.0,
+    "journal_height": 100.0,
+    "primary": "Schematic",
+    "panes": [],
+    "right_width": 360.0,
+    "bottom_height": 250.0,
+    "right_active": null,
+    "bottom_active": null
+  }
+}

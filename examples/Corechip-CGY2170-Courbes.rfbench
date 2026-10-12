@@ -1,0 +1,664 @@
+{
+  "format": "rf-workbench/bench",
+  "version": 2,
+  "project": {
+    "schema_version": 1,
+    "name": "CGY2170YHV/C1 · modules publiés",
+    "graph": {
+      "nodes": [
+        {
+          "id": 1,
+          "title": "CGY2170YHV/C1",
+          "kind": "Dut",
+          "position": [
+            40.0,
+            90.0
+          ],
+          "rotation": 0,
+          "config": {
+            "dut": {
+              "dataset": {
+                "label": "MACOM CGY2170YHV/C1 · modules publiés +25 °C",
+                "curves": [
+                  {
+                    "parameter": "S11",
+                    "frequency_hz": [
+                      8000000000.0,
+                      8500000000.0,
+                      9000000000.0,
+                      9500000000.0,
+                      10000000000.0,
+                      10500000000.0,
+                      11000000000.0,
+                      11500000000.0,
+                      12000000000.0
+                    ],
+                    "values": [
+                      -12.0,
+                      -15.0,
+                      -16.0,
+                      -15.0,
+                      -12.0,
+                      -16.0,
+                      -17.0,
+                      -17.5,
+                      -17.0
+                    ],
+                    "unit": "dB",
+                    "phase_deg": null,
+                    "provenance": {
+                      "url": "https://cdn.macom.com/datasheets/CGY2170YHV-C1.pdf",
+                      "page": 9,
+                      "revision": "V3",
+                      "conditions": "Mesures sur carte à +25 °C ; toutes phases (courbe publiée) ; atténuation de référence pour S21/S12. Mode T/R non détaillé par courbe.",
+                      "method": "Lecture approximative des neuf points du graphique raster à pas 500 MHz ; arrondi visuel, interpolation linéaire. Aucun état individuel ni phase absolue reconstitué.",
+                      "approximate": true
+                    }
+                  },
+                  {
+                    "parameter": "S22",
+                    "frequency_hz": [
+                      8000000000.0,
+                      8500000000.0,
+                      9000000000.0,
+                      9500000000.0,
+                      10000000000.0,
+                      10500000000.0,
+                      11000000000.0,
+                      11500000000.0,
+                      12000000000.0
+                    ],
+                    "values": [
+                      -14.0,
+                      -12.0,
+                      -10.0,
+                      -10.0,
+                      -11.0,
+                      -13.0,
+                      -16.0,
+                      -20.0,
+                      -23.0
+                    ],
+                    "unit": "dB",
+                    "phase_deg": null,
+                    "provenance": {
+                      "url": "https://cdn.macom.com/datasheets/CGY2170YHV-C1.pdf",
+                      "page": 9,
+                      "revision": "V3",
+                      "conditions": "Mesures sur carte à +25 °C ; toutes phases (courbe publiée) ; atténuation de référence pour S21/S12. Mode T/R non détaillé par courbe.",
+                      "method": "Lecture approximative des neuf points du graphique raster à pas 500 MHz ; arrondi visuel, interpolation linéaire. Aucun état individuel ni phase absolue reconstitué.",
+                      "approximate": true
+                    }
+                  },
+                  {
+                    "parameter": "S21",
+                    "frequency_hz": [
+                      8000000000.0,
+                      8500000000.0,
+                      9000000000.0,
+                      9500000000.0,
+                      10000000000.0,
+                      10500000000.0,
+                      11000000000.0,
+                      11500000000.0,
+                      12000000000.0
+                    ],
+                    "values": [
+                      5.6,
+                      5.6,
+                      5.6,
+                      5.7,
+                      5.8,
+                      6.0,
+                      6.25,
+                      6.25,
+                      6.4
+                    ],
+                    "unit": "dB",
+                    "phase_deg": null,
+                    "provenance": {
+                      "url": "https://cdn.macom.com/datasheets/CGY2170YHV-C1.pdf",
+                      "page": 9,
+                      "revision": "V3",
+                      "conditions": "Mesures sur carte à +25 °C ; toutes phases (courbe publiée) ; atténuation de référence pour S21/S12. Mode T/R non détaillé par courbe.",
+                      "method": "Lecture approximative des neuf points du graphique raster à pas 500 MHz ; arrondi visuel, interpolation linéaire. Aucun état individuel ni phase absolue reconstitué.",
+                      "approximate": true
+                    }
+                  },
+                  {
+                    "parameter": "S12",
+                    "frequency_hz": [
+                      8000000000.0,
+                      8500000000.0,
+                      9000000000.0,
+                      9500000000.0,
+                      10000000000.0,
+                      10500000000.0,
+                      11000000000.0,
+                      11500000000.0,
+                      12000000000.0
+                    ],
+                    "values": [
+                      -67.0,
+                      -63.0,
+                      -60.0,
+                      -58.0,
+                      -56.0,
+                      -54.0,
+                      -52.0,
+                      -51.0,
+                      -50.0
+                    ],
+                    "unit": "dB",
+                    "phase_deg": null,
+                    "provenance": {
+                      "url": "https://cdn.macom.com/datasheets/CGY2170YHV-C1.pdf",
+                      "page": 9,
+                      "revision": "V3",
+                      "conditions": "Mesures sur carte à +25 °C ; toutes phases (courbe publiée) ; atténuation de référence pour S21/S12. Mode T/R non détaillé par courbe.",
+                      "method": "Lecture approximative des neuf points du graphique raster à pas 500 MHz ; arrondi visuel, interpolation linéaire. Aucun état individuel ni phase absolue reconstitué.",
+                      "approximate": true
+                    }
+                  }
+                ],
+                "reference_ohm": null
+              },
+              "use_dataset": true,
+              "product_type": "Corechip",
+              "s11_db": -20.0,
+              "s22_db": -20.0,
+              "s12_db": -60.0,
+              "output_ip3_dbm": null,
+              "saturation_dbm": null,
+              "attenuation_states": 64,
+              "attenuation_step_db": 0.5,
+              "phase_states": 64,
+              "phase_step_deg": 5.625
+            },
+            "frequency_unit": "Ghz",
+            "step_unit": "Mhz",
+            "if_unit": "Khz",
+            "limits": {
+              "band_hz": [
+                8000000000.0,
+                12000000000.0
+              ],
+              "max_input_dbm": null,
+              "max_output_dbm": null,
+              "output_p1db_dbm": 13.0,
+              "source": ""
+            },
+            "instrument": {
+              "pna": {
+                "plan": null,
+                "path": {
+                  "apply": false,
+                  "configuration": "",
+                  "elements": {}
+                },
+                "reference_ohm": 50.0,
+                "power_sweep": false,
+                "power_start_dbm": -30.0,
+                "power_stop_dbm": -10.0,
+                "source_port": 1,
+                "all_s_parameters": false,
+                "calset": "",
+                "apply_calset": false,
+                "result_path": "",
+                "fixture": {
+                  "enabled": false,
+                  "input_s2p": "",
+                  "output_s2p": "",
+                  "reverse_input": false,
+                  "reverse_output": true,
+                  "provenance": ""
+                }
+              },
+              "port_count": 2,
+              "dc": {
+                "channel": 1,
+                "voltage_v": 0.0,
+                "current_limit_a": 0.1
+              },
+              "expected_idn": "",
+              "timeout_ms": 5000,
+              "channel": 1,
+              "measurement": "",
+              "precision": 32,
+              "configure_sweep": false,
+              "trigger": false,
+              "if_bandwidth_hz": 1000.0,
+              "averaging": false,
+              "averages": 4,
+              "compression_db": 1.0,
+              "read_query": "READ?",
+              "set_command": ""
+            },
+            "dsp": {
+              "rate": 48000.0,
+              "center_hz": 100000000.0,
+              "samples": 1024,
+              "tone_hz": 3000.0,
+              "amplitude": 1.0,
+              "source_unit": "Volt",
+              "factor": 2,
+              "taps": [
+                0.25,
+                0.5,
+                0.25
+              ],
+              "denominator": [
+                1.0,
+                -0.5
+              ],
+              "fft_size": 256,
+              "window": "Hann",
+              "modulation": "QAM",
+              "order": 16,
+              "sps": 4,
+              "noise_db": 30.0,
+              "seed": 42,
+              "bandwidth": 0.01,
+              "phase": 0.0,
+              "frequency_offset": 0.0,
+              "multipath": [
+                {
+                  "re": 1.0,
+                  "im": 0.0
+                }
+              ],
+              "fading": false,
+              "nonlinearity": 0.0,
+              "dc": {
+                "re": 0.0,
+                "im": 0.0
+              },
+              "iq_gain": 1.0,
+              "iq_phase": 0.0,
+              "cable_db": 0.0,
+              "volts_per_fs": null,
+              "delay_s": 0.0,
+              "calibration": [
+                [
+                  1000000.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  6000000000.0,
+                  0.0,
+                  0.0
+                ]
+              ],
+              "uncertainties": [
+                0.01,
+                0.02
+              ],
+              "coverage": 2.0,
+              "impedance": 50.0,
+              "target_unit": "Dbm",
+              "packet_bits": 64,
+              "preamble": [
+                1,
+                0,
+                1,
+                0,
+                1,
+                1,
+                0,
+                1
+              ],
+              "iterations": 8,
+              "rs_parity": 16,
+              "rx_scale": 2048.0,
+              "tx_scale": 16384.0,
+              "io_backend": "RAW",
+              "endpoint": "recording.cf32",
+              "format": "cf32_le",
+              "scpi_query": ":READ:IQ?",
+              "python_executable": "python",
+              "timeout_ms": 2000,
+              "reconnects": 2,
+              "clock": "internal",
+              "trigger": "immediate",
+              "mimo_channels": 1
+            },
+            "resource": "SIM::RF::INSTR",
+            "frequency_hz": 2450000000.0,
+            "power_dbm": -10.0,
+            "loss_db": -5.8,
+            "start_hz": 2400000000.0,
+            "stop_hz": 2500000000.0,
+            "points": 401,
+            "lower_dbm": -15.0,
+            "upper_dbm": -11.0,
+            "trace_query": ":TRAC:DATA? TRACE1",
+            "script": "output = trace\n# Exemple : compenser une perte de câble de 0.5 dB\n# output['amplitude_dbm'] = [x + 0.5 for x in trace['amplitude_dbm']]\n",
+            "sample_rate_hz": 100000000.0,
+            "tone_hz": 1000000.0,
+            "samples": 1024,
+            "resolution_bits": 14,
+            "voltage_v": 1.0,
+            "temperature_c": 25.0,
+            "resistance_ohm": 50.0,
+            "noise_figure_db": 8.0,
+            "s_parameter": "S21",
+            "dut_id": "macom-cgy2170yhv-c1",
+            "dut_mode": "RX",
+            "attenuation_db": 0.0,
+            "phase_deg": 0.0
+          },
+          "comment": "",
+          "breakpoint": false,
+          "probe": false
+        },
+        {
+          "id": 2,
+          "title": "PNA-X",
+          "kind": "PnaX",
+          "position": [
+            360.0,
+            90.0
+          ],
+          "rotation": 0,
+          "config": {
+            "dut": {
+              "dataset": null,
+              "use_dataset": false,
+              "product_type": "Generic",
+              "s11_db": -20.0,
+              "s22_db": -20.0,
+              "s12_db": -60.0,
+              "output_ip3_dbm": null,
+              "saturation_dbm": null,
+              "attenuation_states": 64,
+              "attenuation_step_db": 0.5,
+              "phase_states": 64,
+              "phase_step_deg": 5.625
+            },
+            "frequency_unit": "Ghz",
+            "step_unit": "Mhz",
+            "if_unit": "Khz",
+            "limits": {
+              "band_hz": null,
+              "max_input_dbm": null,
+              "max_output_dbm": null,
+              "output_p1db_dbm": null,
+              "source": ""
+            },
+            "instrument": {
+              "pna": {
+                "plan": {
+                  "parameters": [
+                    "S11",
+                    "S12",
+                    "S21",
+                    "S22"
+                  ],
+                  "arrangement": "Quad",
+                  "windows": [
+                    {
+                      "traces": [
+                        {
+                          "parameter": "S11",
+                          "format": "Magnitude",
+                          "automatic": true,
+                          "per_division": 10.0,
+                          "reference": 0.0,
+                          "reference_position": 5.0
+                        }
+                      ],
+                      "active_trace": 0
+                    },
+                    {
+                      "traces": [
+                        {
+                          "parameter": "S12",
+                          "format": "Magnitude",
+                          "automatic": true,
+                          "per_division": 10.0,
+                          "reference": 0.0,
+                          "reference_position": 5.0
+                        }
+                      ],
+                      "active_trace": 0
+                    },
+                    {
+                      "traces": [
+                        {
+                          "parameter": "S21",
+                          "format": "Magnitude",
+                          "automatic": true,
+                          "per_division": 10.0,
+                          "reference": 0.0,
+                          "reference_position": 5.0
+                        }
+                      ],
+                      "active_trace": 0
+                    },
+                    {
+                      "traces": [
+                        {
+                          "parameter": "S22",
+                          "format": "Magnitude",
+                          "automatic": true,
+                          "per_division": 10.0,
+                          "reference": 0.0,
+                          "reference_position": 5.0
+                        }
+                      ],
+                      "active_trace": 0
+                    }
+                  ],
+                  "synchronize_display": true,
+                  "first_window": 1
+                },
+                "path": {
+                  "apply": false,
+                  "configuration": "",
+                  "elements": {}
+                },
+                "reference_ohm": 50.0,
+                "power_sweep": false,
+                "power_start_dbm": -30.0,
+                "power_stop_dbm": -10.0,
+                "source_port": 1,
+                "all_s_parameters": false,
+                "calset": "",
+                "apply_calset": false,
+                "result_path": "",
+                "fixture": {
+                  "enabled": false,
+                  "input_s2p": "",
+                  "output_s2p": "",
+                  "reverse_input": false,
+                  "reverse_output": true,
+                  "provenance": ""
+                }
+              },
+              "port_count": 2,
+              "dc": {
+                "channel": 1,
+                "voltage_v": 0.0,
+                "current_limit_a": 0.1
+              },
+              "expected_idn": "",
+              "timeout_ms": 5000,
+              "channel": 1,
+              "measurement": "",
+              "precision": 32,
+              "configure_sweep": false,
+              "trigger": false,
+              "if_bandwidth_hz": 1000.0,
+              "averaging": false,
+              "averages": 4,
+              "compression_db": 1.0,
+              "read_query": "READ?",
+              "set_command": ""
+            },
+            "dsp": {
+              "rate": 48000.0,
+              "center_hz": 100000000.0,
+              "samples": 1024,
+              "tone_hz": 3000.0,
+              "amplitude": 1.0,
+              "source_unit": "Volt",
+              "factor": 2,
+              "taps": [
+                0.25,
+                0.5,
+                0.25
+              ],
+              "denominator": [
+                1.0,
+                -0.5
+              ],
+              "fft_size": 256,
+              "window": "Hann",
+              "modulation": "QAM",
+              "order": 16,
+              "sps": 4,
+              "noise_db": 30.0,
+              "seed": 42,
+              "bandwidth": 0.01,
+              "phase": 0.0,
+              "frequency_offset": 0.0,
+              "multipath": [
+                {
+                  "re": 1.0,
+                  "im": 0.0
+                }
+              ],
+              "fading": false,
+              "nonlinearity": 0.0,
+              "dc": {
+                "re": 0.0,
+                "im": 0.0
+              },
+              "iq_gain": 1.0,
+              "iq_phase": 0.0,
+              "cable_db": 0.0,
+              "volts_per_fs": null,
+              "delay_s": 0.0,
+              "calibration": [
+                [
+                  1000000.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  6000000000.0,
+                  0.0,
+                  0.0
+                ]
+              ],
+              "uncertainties": [
+                0.01,
+                0.02
+              ],
+              "coverage": 2.0,
+              "impedance": 50.0,
+              "target_unit": "Dbm",
+              "packet_bits": 64,
+              "preamble": [
+                1,
+                0,
+                1,
+                0,
+                1,
+                1,
+                0,
+                1
+              ],
+              "iterations": 8,
+              "rs_parity": 16,
+              "rx_scale": 2048.0,
+              "tx_scale": 16384.0,
+              "io_backend": "RAW",
+              "endpoint": "recording.cf32",
+              "format": "cf32_le",
+              "scpi_query": ":READ:IQ?",
+              "python_executable": "python",
+              "timeout_ms": 2000,
+              "reconnects": 2,
+              "clock": "internal",
+              "trigger": "immediate",
+              "mimo_channels": 1
+            },
+            "resource": "SIM::RF::INSTR",
+            "frequency_hz": 10000000000.0,
+            "power_dbm": -35.0,
+            "loss_db": 3.0,
+            "start_hz": 8000000000.0,
+            "stop_hz": 12000000000.0,
+            "points": 401,
+            "lower_dbm": -15.0,
+            "upper_dbm": -11.0,
+            "trace_query": ":TRAC:DATA? TRACE1",
+            "script": "output = trace\n# Exemple : compenser une perte de câble de 0.5 dB\n# output['amplitude_dbm'] = [x + 0.5 for x in trace['amplitude_dbm']]\n",
+            "sample_rate_hz": 100000000.0,
+            "tone_hz": 1000000.0,
+            "samples": 1024,
+            "resolution_bits": 14,
+            "voltage_v": 1.0,
+            "temperature_c": 25.0,
+            "resistance_ohm": 50.0,
+            "noise_figure_db": 2.5,
+            "s_parameter": "S21",
+            "dut_id": null,
+            "dut_mode": "RX",
+            "attenuation_db": 0.0,
+            "phase_deg": 0.0
+          },
+          "comment": "",
+          "breakpoint": false,
+          "probe": false
+        }
+      ],
+      "edges": [
+        {
+          "from": 1,
+          "to": 2,
+          "from_port": 1,
+          "to_port": 0,
+          "waypoints": [],
+          "auto_routed": false
+        }
+      ],
+      "physical_connections": [],
+      "annotations": []
+    }
+  },
+  "layout": {
+    "canvas_pan": [
+      0.0,
+      0.0
+    ],
+    "canvas_zoom": 1.0,
+    "result_windows": [],
+    "result_panel": {
+      "initialized_nodes": [],
+      "open": true,
+      "floating": false,
+      "columns": 2,
+      "rows": 2,
+      "page": 0,
+      "selected": 0,
+      "rect": [
+        230.0,
+        170.0,
+        1140.0,
+        700.0
+      ]
+    },
+    "library_width": 210.0,
+    "inspector_width": 300.0,
+    "journal_height": 100.0,
+    "primary": "Schematic",
+    "panes": [],
+    "right_width": 360.0,
+    "bottom_height": 250.0,
+    "right_active": null,
+    "bottom_active": null
+  }
+}

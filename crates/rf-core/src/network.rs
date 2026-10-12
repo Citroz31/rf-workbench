@@ -55,6 +55,8 @@ impl TwoPort {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Curve {
+    #[serde(default)]
+    pub provenance: Option<crate::characterization::Provenance>,
     pub node: u64,
     pub name: String,
     pub x: Vec<f64>,
@@ -68,13 +70,14 @@ pub struct Curve {
 impl Curve {
     pub fn from_trace(node: u64, t: &crate::NetworkTrace) -> Self {
         Self {
+            provenance: None,
             node,
             name: t.parameter.clone(),
             x: t.frequency_hz.clone(),
             x_unit: "Hz".into(),
             y: t.magnitude_db.clone(),
             y_unit: "dB".into(),
-            phase_deg: Some(t.phase_deg.clone()),
+            phase_deg: (!t.phase_deg.is_empty()).then(|| t.phase_deg.clone()),
             simulated: t.simulated,
             corrected: false,
         }

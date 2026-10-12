@@ -1,6 +1,6 @@
 {
   "format": "rf-workbench/bench",
-  "version": 1,
+  "version": 2,
   "project": {
     "schema_version": 1,
     "name": "QAM16 / AWGN / Viterbi",
@@ -16,8 +16,64 @@
             20.0,
             30.0
           ],
+          "rotation": 0,
           "config": {
+            "dut": {
+              "dataset": null,
+              "use_dataset": false,
+              "product_type": "Generic",
+              "s11_db": -20.0,
+              "s22_db": -20.0,
+              "s12_db": -60.0,
+              "output_ip3_dbm": null,
+              "saturation_dbm": null,
+              "attenuation_states": 64,
+              "attenuation_step_db": 0.5,
+              "phase_states": 64,
+              "phase_step_deg": 5.625
+            },
+            "frequency_unit": "Ghz",
+            "step_unit": "Mhz",
+            "if_unit": "Khz",
+            "limits": {
+              "band_hz": null,
+              "max_input_dbm": null,
+              "max_output_dbm": null,
+              "output_p1db_dbm": null,
+              "source": ""
+            },
             "instrument": {
+              "pna": {
+                "plan": null,
+                "path": {
+                  "apply": false,
+                  "configuration": "",
+                  "elements": {}
+                },
+                "reference_ohm": 50.0,
+                "power_sweep": false,
+                "power_start_dbm": -30.0,
+                "power_stop_dbm": -10.0,
+                "source_port": 1,
+                "all_s_parameters": false,
+                "calset": "",
+                "apply_calset": false,
+                "result_path": "",
+                "fixture": {
+                  "enabled": false,
+                  "input_s2p": "",
+                  "output_s2p": "",
+                  "reverse_input": false,
+                  "reverse_output": true,
+                  "provenance": ""
+                }
+              },
+              "port_count": 2,
+              "dc": {
+                "channel": 1,
+                "voltage_v": 0.0,
+                "current_limit_a": 0.1
+              },
               "expected_idn": "",
               "timeout_ms": 5000,
               "channel": 1,
@@ -141,7 +197,10 @@
             "resistance_ohm": 50.0,
             "noise_figure_db": 2.5,
             "s_parameter": "S21",
-            "dut_id": null
+            "dut_id": null,
+            "dut_mode": "RX",
+            "attenuation_db": 0.0,
+            "phase_deg": 0.0
           },
           "comment": "",
           "breakpoint": false,
@@ -157,8 +216,64 @@
             310.0,
             30.0
           ],
+          "rotation": 0,
           "config": {
+            "dut": {
+              "dataset": null,
+              "use_dataset": false,
+              "product_type": "Generic",
+              "s11_db": -20.0,
+              "s22_db": -20.0,
+              "s12_db": -60.0,
+              "output_ip3_dbm": null,
+              "saturation_dbm": null,
+              "attenuation_states": 64,
+              "attenuation_step_db": 0.5,
+              "phase_states": 64,
+              "phase_step_deg": 5.625
+            },
+            "frequency_unit": "Ghz",
+            "step_unit": "Mhz",
+            "if_unit": "Khz",
+            "limits": {
+              "band_hz": null,
+              "max_input_dbm": null,
+              "max_output_dbm": null,
+              "output_p1db_dbm": null,
+              "source": ""
+            },
             "instrument": {
+              "pna": {
+                "plan": null,
+                "path": {
+                  "apply": false,
+                  "configuration": "",
+                  "elements": {}
+                },
+                "reference_ohm": 50.0,
+                "power_sweep": false,
+                "power_start_dbm": -30.0,
+                "power_stop_dbm": -10.0,
+                "source_port": 1,
+                "all_s_parameters": false,
+                "calset": "",
+                "apply_calset": false,
+                "result_path": "",
+                "fixture": {
+                  "enabled": false,
+                  "input_s2p": "",
+                  "output_s2p": "",
+                  "reverse_input": false,
+                  "reverse_output": true,
+                  "provenance": ""
+                }
+              },
+              "port_count": 2,
+              "dc": {
+                "channel": 1,
+                "voltage_v": 0.0,
+                "current_limit_a": 0.1
+              },
               "expected_idn": "",
               "timeout_ms": 5000,
               "channel": 1,
@@ -282,7 +397,10 @@
             "resistance_ohm": 50.0,
             "noise_figure_db": 2.5,
             "s_parameter": "S21",
-            "dut_id": null
+            "dut_id": null,
+            "dut_mode": "RX",
+            "attenuation_db": 0.0,
+            "phase_deg": 0.0
           },
           "comment": "",
           "breakpoint": false,
@@ -298,8 +416,64 @@
             600.0,
             30.0
           ],
+          "rotation": 0,
           "config": {
+            "dut": {
+              "dataset": null,
+              "use_dataset": false,
+              "product_type": "Generic",
+              "s11_db": -20.0,
+              "s22_db": -20.0,
+              "s12_db": -60.0,
+              "output_ip3_dbm": null,
+              "saturation_dbm": null,
+              "attenuation_states": 64,
+              "attenuation_step_db": 0.5,
+              "phase_states": 64,
+              "phase_step_deg": 5.625
+            },
+            "frequency_unit": "Ghz",
+            "step_unit": "Mhz",
+            "if_unit": "Khz",
+            "limits": {
+              "band_hz": null,
+              "max_input_dbm": null,
+              "max_output_dbm": null,
+              "output_p1db_dbm": null,
+              "source": ""
+            },
             "instrument": {
+              "pna": {
+                "plan": null,
+                "path": {
+                  "apply": false,
+                  "configuration": "",
+                  "elements": {}
+                },
+                "reference_ohm": 50.0,
+                "power_sweep": false,
+                "power_start_dbm": -30.0,
+                "power_stop_dbm": -10.0,
+                "source_port": 1,
+                "all_s_parameters": false,
+                "calset": "",
+                "apply_calset": false,
+                "result_path": "",
+                "fixture": {
+                  "enabled": false,
+                  "input_s2p": "",
+                  "output_s2p": "",
+                  "reverse_input": false,
+                  "reverse_output": true,
+                  "provenance": ""
+                }
+              },
+              "port_count": 2,
+              "dc": {
+                "channel": 1,
+                "voltage_v": 0.0,
+                "current_limit_a": 0.1
+              },
               "expected_idn": "",
               "timeout_ms": 5000,
               "channel": 1,
@@ -423,7 +597,10 @@
             "resistance_ohm": 50.0,
             "noise_figure_db": 2.5,
             "s_parameter": "S21",
-            "dut_id": null
+            "dut_id": null,
+            "dut_mode": "RX",
+            "attenuation_db": 0.0,
+            "phase_deg": 0.0
           },
           "comment": "",
           "breakpoint": false,
@@ -439,8 +616,64 @@
             890.0,
             30.0
           ],
+          "rotation": 0,
           "config": {
+            "dut": {
+              "dataset": null,
+              "use_dataset": false,
+              "product_type": "Generic",
+              "s11_db": -20.0,
+              "s22_db": -20.0,
+              "s12_db": -60.0,
+              "output_ip3_dbm": null,
+              "saturation_dbm": null,
+              "attenuation_states": 64,
+              "attenuation_step_db": 0.5,
+              "phase_states": 64,
+              "phase_step_deg": 5.625
+            },
+            "frequency_unit": "Ghz",
+            "step_unit": "Mhz",
+            "if_unit": "Khz",
+            "limits": {
+              "band_hz": null,
+              "max_input_dbm": null,
+              "max_output_dbm": null,
+              "output_p1db_dbm": null,
+              "source": ""
+            },
             "instrument": {
+              "pna": {
+                "plan": null,
+                "path": {
+                  "apply": false,
+                  "configuration": "",
+                  "elements": {}
+                },
+                "reference_ohm": 50.0,
+                "power_sweep": false,
+                "power_start_dbm": -30.0,
+                "power_stop_dbm": -10.0,
+                "source_port": 1,
+                "all_s_parameters": false,
+                "calset": "",
+                "apply_calset": false,
+                "result_path": "",
+                "fixture": {
+                  "enabled": false,
+                  "input_s2p": "",
+                  "output_s2p": "",
+                  "reverse_input": false,
+                  "reverse_output": true,
+                  "provenance": ""
+                }
+              },
+              "port_count": 2,
+              "dc": {
+                "channel": 1,
+                "voltage_v": 0.0,
+                "current_limit_a": 0.1
+              },
               "expected_idn": "",
               "timeout_ms": 5000,
               "channel": 1,
@@ -564,7 +797,10 @@
             "resistance_ohm": 50.0,
             "noise_figure_db": 2.5,
             "s_parameter": "S21",
-            "dut_id": null
+            "dut_id": null,
+            "dut_mode": "RX",
+            "attenuation_db": 0.0,
+            "phase_deg": 0.0
           },
           "comment": "",
           "breakpoint": false,
@@ -580,8 +816,64 @@
             1180.0,
             30.0
           ],
+          "rotation": 0,
           "config": {
+            "dut": {
+              "dataset": null,
+              "use_dataset": false,
+              "product_type": "Generic",
+              "s11_db": -20.0,
+              "s22_db": -20.0,
+              "s12_db": -60.0,
+              "output_ip3_dbm": null,
+              "saturation_dbm": null,
+              "attenuation_states": 64,
+              "attenuation_step_db": 0.5,
+              "phase_states": 64,
+              "phase_step_deg": 5.625
+            },
+            "frequency_unit": "Ghz",
+            "step_unit": "Mhz",
+            "if_unit": "Khz",
+            "limits": {
+              "band_hz": null,
+              "max_input_dbm": null,
+              "max_output_dbm": null,
+              "output_p1db_dbm": null,
+              "source": ""
+            },
             "instrument": {
+              "pna": {
+                "plan": null,
+                "path": {
+                  "apply": false,
+                  "configuration": "",
+                  "elements": {}
+                },
+                "reference_ohm": 50.0,
+                "power_sweep": false,
+                "power_start_dbm": -30.0,
+                "power_stop_dbm": -10.0,
+                "source_port": 1,
+                "all_s_parameters": false,
+                "calset": "",
+                "apply_calset": false,
+                "result_path": "",
+                "fixture": {
+                  "enabled": false,
+                  "input_s2p": "",
+                  "output_s2p": "",
+                  "reverse_input": false,
+                  "reverse_output": true,
+                  "provenance": ""
+                }
+              },
+              "port_count": 2,
+              "dc": {
+                "channel": 1,
+                "voltage_v": 0.0,
+                "current_limit_a": 0.1
+              },
               "expected_idn": "",
               "timeout_ms": 5000,
               "channel": 1,
@@ -705,7 +997,10 @@
             "resistance_ohm": 50.0,
             "noise_figure_db": 2.5,
             "s_parameter": "S21",
-            "dut_id": null
+            "dut_id": null,
+            "dut_mode": "RX",
+            "attenuation_db": 0.0,
+            "phase_deg": 0.0
           },
           "comment": "",
           "breakpoint": false,
@@ -721,8 +1016,64 @@
             1470.0,
             30.0
           ],
+          "rotation": 0,
           "config": {
+            "dut": {
+              "dataset": null,
+              "use_dataset": false,
+              "product_type": "Generic",
+              "s11_db": -20.0,
+              "s22_db": -20.0,
+              "s12_db": -60.0,
+              "output_ip3_dbm": null,
+              "saturation_dbm": null,
+              "attenuation_states": 64,
+              "attenuation_step_db": 0.5,
+              "phase_states": 64,
+              "phase_step_deg": 5.625
+            },
+            "frequency_unit": "Ghz",
+            "step_unit": "Mhz",
+            "if_unit": "Khz",
+            "limits": {
+              "band_hz": null,
+              "max_input_dbm": null,
+              "max_output_dbm": null,
+              "output_p1db_dbm": null,
+              "source": ""
+            },
             "instrument": {
+              "pna": {
+                "plan": null,
+                "path": {
+                  "apply": false,
+                  "configuration": "",
+                  "elements": {}
+                },
+                "reference_ohm": 50.0,
+                "power_sweep": false,
+                "power_start_dbm": -30.0,
+                "power_stop_dbm": -10.0,
+                "source_port": 1,
+                "all_s_parameters": false,
+                "calset": "",
+                "apply_calset": false,
+                "result_path": "",
+                "fixture": {
+                  "enabled": false,
+                  "input_s2p": "",
+                  "output_s2p": "",
+                  "reverse_input": false,
+                  "reverse_output": true,
+                  "provenance": ""
+                }
+              },
+              "port_count": 2,
+              "dc": {
+                "channel": 1,
+                "voltage_v": 0.0,
+                "current_limit_a": 0.1
+              },
               "expected_idn": "",
               "timeout_ms": 5000,
               "channel": 1,
@@ -846,7 +1197,10 @@
             "resistance_ohm": 50.0,
             "noise_figure_db": 2.5,
             "s_parameter": "S21",
-            "dut_id": null
+            "dut_id": null,
+            "dut_mode": "RX",
+            "attenuation_db": 0.0,
+            "phase_deg": 0.0
           },
           "comment": "",
           "breakpoint": false,
@@ -862,8 +1216,64 @@
             1760.0,
             30.0
           ],
+          "rotation": 0,
           "config": {
+            "dut": {
+              "dataset": null,
+              "use_dataset": false,
+              "product_type": "Generic",
+              "s11_db": -20.0,
+              "s22_db": -20.0,
+              "s12_db": -60.0,
+              "output_ip3_dbm": null,
+              "saturation_dbm": null,
+              "attenuation_states": 64,
+              "attenuation_step_db": 0.5,
+              "phase_states": 64,
+              "phase_step_deg": 5.625
+            },
+            "frequency_unit": "Ghz",
+            "step_unit": "Mhz",
+            "if_unit": "Khz",
+            "limits": {
+              "band_hz": null,
+              "max_input_dbm": null,
+              "max_output_dbm": null,
+              "output_p1db_dbm": null,
+              "source": ""
+            },
             "instrument": {
+              "pna": {
+                "plan": null,
+                "path": {
+                  "apply": false,
+                  "configuration": "",
+                  "elements": {}
+                },
+                "reference_ohm": 50.0,
+                "power_sweep": false,
+                "power_start_dbm": -30.0,
+                "power_stop_dbm": -10.0,
+                "source_port": 1,
+                "all_s_parameters": false,
+                "calset": "",
+                "apply_calset": false,
+                "result_path": "",
+                "fixture": {
+                  "enabled": false,
+                  "input_s2p": "",
+                  "output_s2p": "",
+                  "reverse_input": false,
+                  "reverse_output": true,
+                  "provenance": ""
+                }
+              },
+              "port_count": 2,
+              "dc": {
+                "channel": 1,
+                "voltage_v": 0.0,
+                "current_limit_a": 0.1
+              },
               "expected_idn": "",
               "timeout_ms": 5000,
               "channel": 1,
@@ -987,7 +1397,10 @@
             "resistance_ohm": 50.0,
             "noise_figure_db": 2.5,
             "s_parameter": "S21",
-            "dut_id": null
+            "dut_id": null,
+            "dut_mode": "RX",
+            "attenuation_db": 0.0,
+            "phase_deg": 0.0
           },
           "comment": "",
           "breakpoint": false,
@@ -1003,8 +1416,64 @@
             890.0,
             310.0
           ],
+          "rotation": 0,
           "config": {
+            "dut": {
+              "dataset": null,
+              "use_dataset": false,
+              "product_type": "Generic",
+              "s11_db": -20.0,
+              "s22_db": -20.0,
+              "s12_db": -60.0,
+              "output_ip3_dbm": null,
+              "saturation_dbm": null,
+              "attenuation_states": 64,
+              "attenuation_step_db": 0.5,
+              "phase_states": 64,
+              "phase_step_deg": 5.625
+            },
+            "frequency_unit": "Ghz",
+            "step_unit": "Mhz",
+            "if_unit": "Khz",
+            "limits": {
+              "band_hz": null,
+              "max_input_dbm": null,
+              "max_output_dbm": null,
+              "output_p1db_dbm": null,
+              "source": ""
+            },
             "instrument": {
+              "pna": {
+                "plan": null,
+                "path": {
+                  "apply": false,
+                  "configuration": "",
+                  "elements": {}
+                },
+                "reference_ohm": 50.0,
+                "power_sweep": false,
+                "power_start_dbm": -30.0,
+                "power_stop_dbm": -10.0,
+                "source_port": 1,
+                "all_s_parameters": false,
+                "calset": "",
+                "apply_calset": false,
+                "result_path": "",
+                "fixture": {
+                  "enabled": false,
+                  "input_s2p": "",
+                  "output_s2p": "",
+                  "reverse_input": false,
+                  "reverse_output": true,
+                  "provenance": ""
+                }
+              },
+              "port_count": 2,
+              "dc": {
+                "channel": 1,
+                "voltage_v": 0.0,
+                "current_limit_a": 0.1
+              },
               "expected_idn": "",
               "timeout_ms": 5000,
               "channel": 1,
@@ -1128,7 +1597,10 @@
             "resistance_ohm": 50.0,
             "noise_figure_db": 2.5,
             "s_parameter": "S21",
-            "dut_id": null
+            "dut_id": null,
+            "dut_mode": "RX",
+            "attenuation_db": 0.0,
+            "phase_deg": 0.0
           },
           "comment": "",
           "breakpoint": false,
@@ -1144,8 +1616,64 @@
             1180.0,
             310.0
           ],
+          "rotation": 0,
           "config": {
+            "dut": {
+              "dataset": null,
+              "use_dataset": false,
+              "product_type": "Generic",
+              "s11_db": -20.0,
+              "s22_db": -20.0,
+              "s12_db": -60.0,
+              "output_ip3_dbm": null,
+              "saturation_dbm": null,
+              "attenuation_states": 64,
+              "attenuation_step_db": 0.5,
+              "phase_states": 64,
+              "phase_step_deg": 5.625
+            },
+            "frequency_unit": "Ghz",
+            "step_unit": "Mhz",
+            "if_unit": "Khz",
+            "limits": {
+              "band_hz": null,
+              "max_input_dbm": null,
+              "max_output_dbm": null,
+              "output_p1db_dbm": null,
+              "source": ""
+            },
             "instrument": {
+              "pna": {
+                "plan": null,
+                "path": {
+                  "apply": false,
+                  "configuration": "",
+                  "elements": {}
+                },
+                "reference_ohm": 50.0,
+                "power_sweep": false,
+                "power_start_dbm": -30.0,
+                "power_stop_dbm": -10.0,
+                "source_port": 1,
+                "all_s_parameters": false,
+                "calset": "",
+                "apply_calset": false,
+                "result_path": "",
+                "fixture": {
+                  "enabled": false,
+                  "input_s2p": "",
+                  "output_s2p": "",
+                  "reverse_input": false,
+                  "reverse_output": true,
+                  "provenance": ""
+                }
+              },
+              "port_count": 2,
+              "dc": {
+                "channel": 1,
+                "voltage_v": 0.0,
+                "current_limit_a": 0.1
+              },
               "expected_idn": "",
               "timeout_ms": 5000,
               "channel": 1,
@@ -1269,7 +1797,10 @@
             "resistance_ohm": 50.0,
             "noise_figure_db": 2.5,
             "s_parameter": "S21",
-            "dut_id": null
+            "dut_id": null,
+            "dut_mode": "RX",
+            "attenuation_db": 0.0,
+            "phase_deg": 0.0
           },
           "comment": "",
           "breakpoint": false,
@@ -1285,8 +1816,64 @@
             1470.0,
             310.0
           ],
+          "rotation": 0,
           "config": {
+            "dut": {
+              "dataset": null,
+              "use_dataset": false,
+              "product_type": "Generic",
+              "s11_db": -20.0,
+              "s22_db": -20.0,
+              "s12_db": -60.0,
+              "output_ip3_dbm": null,
+              "saturation_dbm": null,
+              "attenuation_states": 64,
+              "attenuation_step_db": 0.5,
+              "phase_states": 64,
+              "phase_step_deg": 5.625
+            },
+            "frequency_unit": "Ghz",
+            "step_unit": "Mhz",
+            "if_unit": "Khz",
+            "limits": {
+              "band_hz": null,
+              "max_input_dbm": null,
+              "max_output_dbm": null,
+              "output_p1db_dbm": null,
+              "source": ""
+            },
             "instrument": {
+              "pna": {
+                "plan": null,
+                "path": {
+                  "apply": false,
+                  "configuration": "",
+                  "elements": {}
+                },
+                "reference_ohm": 50.0,
+                "power_sweep": false,
+                "power_start_dbm": -30.0,
+                "power_stop_dbm": -10.0,
+                "source_port": 1,
+                "all_s_parameters": false,
+                "calset": "",
+                "apply_calset": false,
+                "result_path": "",
+                "fixture": {
+                  "enabled": false,
+                  "input_s2p": "",
+                  "output_s2p": "",
+                  "reverse_input": false,
+                  "reverse_output": true,
+                  "provenance": ""
+                }
+              },
+              "port_count": 2,
+              "dc": {
+                "channel": 1,
+                "voltage_v": 0.0,
+                "current_limit_a": 0.1
+              },
               "expected_idn": "",
               "timeout_ms": 5000,
               "channel": 1,
@@ -1410,7 +1997,10 @@
             "resistance_ohm": 50.0,
             "noise_figure_db": 2.5,
             "s_parameter": "S21",
-            "dut_id": null
+            "dut_id": null,
+            "dut_mode": "RX",
+            "attenuation_db": 0.0,
+            "phase_deg": 0.0
           },
           "comment": "",
           "breakpoint": false,
@@ -1426,8 +2016,64 @@
             600.0,
             310.0
           ],
+          "rotation": 0,
           "config": {
+            "dut": {
+              "dataset": null,
+              "use_dataset": false,
+              "product_type": "Generic",
+              "s11_db": -20.0,
+              "s22_db": -20.0,
+              "s12_db": -60.0,
+              "output_ip3_dbm": null,
+              "saturation_dbm": null,
+              "attenuation_states": 64,
+              "attenuation_step_db": 0.5,
+              "phase_states": 64,
+              "phase_step_deg": 5.625
+            },
+            "frequency_unit": "Ghz",
+            "step_unit": "Mhz",
+            "if_unit": "Khz",
+            "limits": {
+              "band_hz": null,
+              "max_input_dbm": null,
+              "max_output_dbm": null,
+              "output_p1db_dbm": null,
+              "source": ""
+            },
             "instrument": {
+              "pna": {
+                "plan": null,
+                "path": {
+                  "apply": false,
+                  "configuration": "",
+                  "elements": {}
+                },
+                "reference_ohm": 50.0,
+                "power_sweep": false,
+                "power_start_dbm": -30.0,
+                "power_stop_dbm": -10.0,
+                "source_port": 1,
+                "all_s_parameters": false,
+                "calset": "",
+                "apply_calset": false,
+                "result_path": "",
+                "fixture": {
+                  "enabled": false,
+                  "input_s2p": "",
+                  "output_s2p": "",
+                  "reverse_input": false,
+                  "reverse_output": true,
+                  "provenance": ""
+                }
+              },
+              "port_count": 2,
+              "dc": {
+                "channel": 1,
+                "voltage_v": 0.0,
+                "current_limit_a": 0.1
+              },
               "expected_idn": "",
               "timeout_ms": 5000,
               "channel": 1,
@@ -1551,7 +2197,10 @@
             "resistance_ohm": 50.0,
             "noise_figure_db": 2.5,
             "s_parameter": "S21",
-            "dut_id": null
+            "dut_id": null,
+            "dut_mode": "RX",
+            "attenuation_db": 0.0,
+            "phase_deg": 0.0
           },
           "comment": "",
           "breakpoint": false,
@@ -1664,26 +2313,37 @@
           "auto_routed": false
         }
       ],
+      "physical_connections": [],
       "annotations": []
     }
   },
   "layout": {
+    "canvas_pan": [
+      0.0,
+      0.0
+    ],
+    "canvas_zoom": 1.0,
+    "result_windows": [],
+    "result_panel": {
+      "initialized_nodes": [],
+      "open": true,
+      "floating": false,
+      "columns": 2,
+      "rows": 2,
+      "page": 0,
+      "selected": 0,
+      "rect": [
+        230.0,
+        170.0,
+        1140.0,
+        700.0
+      ]
+    },
     "library_width": 210.0,
     "inspector_width": 300.0,
     "journal_height": 100.0,
     "primary": "Schematic",
-    "panes": [
-      {
-        "view": "Acquisition",
-        "location": "Bottom",
-        "rect": [
-          350.0,
-          250.0,
-          650.0,
-          400.0
-        ]
-      }
-    ],
+    "panes": [],
     "right_width": 360.0,
     "bottom_height": 250.0,
     "right_active": null,

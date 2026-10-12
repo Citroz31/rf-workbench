@@ -44,18 +44,48 @@ impl FixtureJob {
 pub(super) fn extra(
     ui: &mut egui::Ui,
     c: &mut rf_core::Config,
+    kind: Kind,
     node: u64,
-    hardware: bool,
-    busy: bool,
+    status: (bool, bool),
     job: &mut Option<Command>,
     fixtures: &mut FixtureJob,
 ) {
+    let (hardware, busy) = status;
     ui.separator();
     ui.heading("Balayage, chemin RF et calibration");
-    ui.checkbox(
-        &mut c.instrument.pna.power_sweep,
-        "Sweep de puissance à fréquence CW (gain S, application GCA distincte)",
-    );
+    let previous_source = c.instrument.pna.source_port;
+    if ui
+        .checkbox(
+            &mut c.instrument.pna.power_sweep,
+            "Sweep de puissance à fréquence CW (gain S, application GCA distincte)",
+        )
+        .changed()
+        && c.instrument.pna.plan.is_some()
+    {
+        c.instrument.pna.all_s_parameters = false;
+        let source = c.instrument.pna.source_port;
+        let receiver = if source == 1 {
+            2.min(c.instrument.port_count)
+        } else {
+            1
+        };
+        c.instrument.pna.plan = Some(if c.instrument.pna.power_sweep {
+            rf_core::pna_plan::Plan::power(source, receiver)
+        } else {
+            rf_core::pna_plan::Plan::s_parameters(c.instrument.port_count)
+        });
+        c.s_parameter = if c.instrument.pna.power_sweep {
+            format!("S{receiver}{source}")
+        } else {
+            if c.instrument.port_count > 1 {
+                "S21"
+            } else {
+                "S11"
+            }
+            .into()
+        };
+        c.instrument.measurement.clear();
+    }
     if c.instrument.pna.power_sweep {
         crate::frequency_edit::frequency(
             ui,
@@ -82,6 +112,17 @@ pub(super) fn extra(
                 .range(1..=c.instrument.port_count)
                 .prefix("Port source "),
         );
+        if previous_source != c.instrument.pna.source_port && c.instrument.pna.plan.is_some() {
+            let source = c.instrument.pna.source_port;
+            let receiver = if source == 1 {
+                2.min(c.instrument.port_count)
+            } else {
+                1
+            };
+            c.instrument.pna.plan = Some(rf_core::pna_plan::Plan::power(source, receiver));
+            c.s_parameter = format!("S{receiver}{source}");
+            c.instrument.measurement.clear();
+        }
     } else {
         number(
             ui,
@@ -128,11 +169,12 @@ pub(super) fn extra(
     if ui
         .add_enabled(
             hardware && !busy,
-            egui::Button::new("Créer les traces Sij manquantes dans ce canal Standard"),
+            egui::Button::new("Configurer canal / écran / chemins (sans sweep)"),
         )
         .clicked()
     {
         *job = Some(Command::PreparePna {
+            kind,
             node,
             config: c.clone(),
             hardware,
@@ -186,6 +228,162 @@ pub(super) fn limits_ui(ui: &mut egui::Ui, l: &mut rf_core::flow::Limits) {
     ui.text_edit_singleline(&mut l.source);
 }
 impl Workbench {
+    pub(super) fn apply_pna_layout(&mut self, node: u64) {
+        let Some(plan) = self
+            .project
+            .graph
+            .node(node)
+            .and_then(|n| n.config.instrument.pna.plan.clone())
+        else {
+            return;
+        };
+        if self
+            .layout
+            .result_windows
+            .iter()
+            .filter(|w| w.node != node)
+            .count()
+            + plan.windows.len()
+            > 32
+        {
+            self.log(
+                "Limite de 32 graphiques : fermer des fenêtres avant d'appliquer ce plan.".into(),
+                true,
+            );
+            return;
+        }
+        self.layout.result_windows.retain(|w| w.node != node);
+        if !self.layout.result_panel.initialized_nodes.contains(&node) {
+            self.layout.result_panel.initialized_nodes.push(node);
+        }
+        for (wi, planned) in plan.windows.iter().enumerate() {
+            let first = &planned.traces[0];
+            let format = |f: rf_core::pna_plan::Format| match f {
+                rf_core::pna_plan::Format::Magnitude => Format::Magnitude,
+                rf_core::pna_plan::Format::Phase => Format::Phase,
+                rf_core::pna_plan::Format::Smith => Format::Smith,
+                rf_core::pna_plan::Format::Raw => Format::Linear,
+            };
+            self.add_result_window(node, first.parameter.clone(), format(first.format), false);
+            if let Some(w) = self.layout.result_windows.last_mut() {
+                w.traces = planned
+                    .traces
+                    .iter()
+                    .enumerate()
+                    .map(|(i, t)| crate::results::Trace {
+                        node,
+                        parameter: t.parameter.clone(),
+                        format: format(t.format),
+                        corrected: false,
+                        visible: true,
+                        color: wi + i,
+                        scale: crate::results::Scale {
+                            automatic: t.automatic,
+                            per_division: t.per_division,
+                            reference: t.reference,
+                            reference_division: 10. - t.reference_position,
+                        },
+                    })
+                    .collect();
+                w.active_trace = planned.active_trace;
+            }
+        }
+        let (columns, rows) = plan.arrangement.grid();
+        self.layout.result_panel.columns = columns;
+        self.layout.result_panel.rows = rows;
+        self.layout.result_panel.page = 0;
+        self.layout.result_panel.open = true;
+        self.layout.result_panel.floating = false;
+    }
+    fn remember_pna_layout(&mut self) {
+        use rf_core::pna_plan::{Arrangement, DisplayTrace, DisplayWindow, Format as F};
+        for n in self
+            .project
+            .graph
+            .nodes
+            .iter_mut()
+            .filter(|n| n.kind.max_rf_ports().is_some())
+        {
+            let Some(plan) = &mut n.config.instrument.pna.plan else {
+                continue;
+            };
+            let own: Vec<_> = self
+                .layout
+                .result_windows
+                .iter()
+                .filter(|w| {
+                    w.node == n.id
+                        && w.traces.iter().all(|t| {
+                            t.node == n.id
+                                && !t.corrected
+                                && rf_core::pna_plan::valid_parameter(
+                                    &t.parameter,
+                                    n.config.instrument.port_count,
+                                )
+                        })
+                })
+                .collect();
+            if own.is_empty() {
+                continue;
+            }
+            let windows: Vec<_> = own
+                .iter()
+                .map(|w| DisplayWindow {
+                    active_trace: w.active_trace,
+                    traces: w
+                        .traces
+                        .iter()
+                        .map(|t| DisplayTrace {
+                            parameter: t.parameter.clone(),
+                            format: match t.format {
+                                Format::Magnitude => F::Magnitude,
+                                Format::Phase => F::Phase,
+                                Format::Smith => F::Smith,
+                                Format::Linear => F::Raw,
+                            },
+                            automatic: t.scale.automatic,
+                            per_division: t.scale.per_division,
+                            reference: t.scale.reference,
+                            reference_position: 10. - t.scale.reference_division,
+                        })
+                        .collect(),
+                })
+                .collect();
+            let parameters: std::collections::BTreeSet<_> = windows
+                .iter()
+                .flat_map(|w| w.traces.iter().map(|t| t.parameter.clone()))
+                .collect();
+            let mut candidate = plan.clone();
+            candidate.windows = windows;
+            candidate.parameters.retain(|p| parameters.contains(p));
+            for p in parameters {
+                if !candidate.parameters.contains(&p) {
+                    candidate.parameters.push(p);
+                }
+            }
+            candidate.arrangement = match (
+                self.layout.result_panel.columns,
+                self.layout.result_panel.rows,
+            ) {
+                (1, 1) => Arrangement::Single,
+                (2, 1) => Arrangement::Two,
+                _ => Arrangement::Quad,
+            };
+            if candidate
+                .validate(
+                    n.config.instrument.port_count,
+                    n.config
+                        .instrument
+                        .pna
+                        .power_sweep
+                        .then_some(n.config.instrument.pna.source_port),
+                )
+                .is_ok()
+            {
+                *plan = candidate;
+            }
+        }
+    }
     pub(super) fn fixture_preview(&mut self) {
         let (thru, raw) = rf_dsp::fixture::demo();
         let e = rf_dsp::fixture::split(&thru, Some(50.)).expect("fixture demonstration");
@@ -339,7 +537,8 @@ impl Workbench {
             ui.horizontal_wrapped(|ui| {
                 if ui.button("Panel 4 graphes PNA").clicked(){
                     self.layout.result_windows.clear();
-                    for(param,f)in[("S11",Format::Magnitude),("S21",Format::Magnitude),("S11",Format::Smith),("S21",Format::Phase)]{self.add_result_window(n,param.into(),f,c);}
+                    for(param,f)in[("S11",Format::Magnitude),("S12",Format::Magnitude),("S21",Format::Magnitude),("S22",Format::Magnitude)]{self.add_result_window(n,param.into(),f,c);}
+                    if let Some(node)=self.project.graph.nodes.iter_mut().find(|node|node.id==n){node.config.instrument.pna.power_sweep=false;node.config.instrument.pna.all_s_parameters=false;node.config.instrument.pna.plan=Some(rf_core::pna_plan::Plan::s_parameters(node.config.instrument.port_count));}
                     self.layout.result_panel.columns=2;self.layout.result_panel.rows=2;self.layout.result_panel.floating=false;
                 }
                 if ui.button("S11 + S22 ensemble").clicked(){
@@ -349,7 +548,7 @@ impl Workbench {
                 }
                 if ui.button("Fermer tous les graphiques").clicked(){self.layout.result_windows.clear();}
             });
-            ui.small("Pour acquérir S11 et S22 ensemble, activer la matrice Sij dans le bloc. NF/IMD/R1/B1 utilisent les traces FDATA préparées sur l'appareil. Smith requiert une réflexion complexe ; ne pas mélanger Smith et tracés rectangulaires dans un même graphique.");
+            ui.small("Le plan du bloc VNA relie les traces et fenêtres aux acquisitions. NF/IMD utilisent les applications autorisées ; R1/A/B/C/D sont les récepteurs Standard. Smith requiert une réflexion complexe. Les courbes de catalogue sans phase restent en dB.");
             let mut folder=self.project.graph.node(n).map(|n|n.config.instrument.pna.result_path.clone()).unwrap_or_default();
             ui.label("Dossier local des exports de ce bloc");
             if ui.text_edit_singleline(&mut folder).changed()&&let Some(node)=self.project.graph.nodes.iter_mut().find(|node|node.id==n){node.config.instrument.pna.result_path=folder.clone();}
@@ -361,6 +560,7 @@ impl Workbench {
         self.results_open = open;
     }
     pub(super) fn pna_result_windows(&mut self, ctx: &egui::Context) {
+        self.remember_pna_layout();
         let out = crate::vna_panel::show(
             ctx,
             &mut self.layout.result_panel,

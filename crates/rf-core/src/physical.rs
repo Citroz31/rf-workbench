@@ -188,6 +188,15 @@ impl Graph {
             )));
         }
         n.config.instrument.port_count = count;
+        n.config.instrument.pna.source_port = n.config.instrument.pna.source_port.min(count);
+        if let Some(plan) = &mut n.config.instrument.pna.plan {
+            plan.parameters
+                .retain(|p| crate::pna_plan::valid_parameter(p, count));
+            if plan.parameters.is_empty() {
+                plan.parameters.push("S11".into());
+            }
+            plan.rebuild_windows();
+        }
         if !s_parameter_ports(&n.config.s_parameter).is_some_and(|(i, j)| i <= count && j <= count)
         {
             n.config.s_parameter = "S11".into();

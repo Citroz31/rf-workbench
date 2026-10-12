@@ -361,6 +361,7 @@ impl Workbench {
                 0
             },
             component_draft: Component {
+                dataset: None,
                 id: String::new(),
                 manufacturer: "Local".into(),
                 part_number: String::new(),
@@ -492,6 +493,11 @@ impl Workbench {
                 .map(|n| n.id)
         {
             bench.open_instrument(id);
+            if args.iter().any(|a| a == "--instrument-path")
+                && let Some(d) = &mut bench.instrument_dialog
+            {
+                d.tab = 4;
+            }
             if args.iter().any(|a| a == "--instrument-functions")
                 && let Some(d) = &mut bench.instrument_dialog
             {
@@ -586,11 +592,14 @@ impl Workbench {
                 .iter_mut()
                 .find(|n| n.kind.max_rf_ports().is_some())
         {
-            n.config.instrument.pna.all_s_parameters = true;
+            n.config.instrument.pna.all_s_parameters = false;
+            n.config
+                .instrument
+                .pna
+                .plan
+                .get_or_insert_with(rf_core::pna_plan::Plan::default);
             let id = n.id;
-            bench.add_result_window(id, "S11".into(), crate::results::Format::Magnitude, false);
-            bench.add_result_window(id, "S11".into(), crate::results::Format::Smith, false);
-            bench.add_result_window(id, "S21".into(), crate::results::Format::Phase, false);
+            bench.apply_pna_layout(id);
         }
         if args.iter().any(|a| a == "--fixture-ui") {
             bench.fixture_preview();
@@ -687,6 +696,14 @@ impl Workbench {
             self.preview = false;
         }
         self.curves = r.curves;
+        let nodes: std::collections::BTreeSet<_> = self.curves.iter().map(|c| c.node).collect();
+        for node in nodes {
+            if !self.layout.result_panel.initialized_nodes.contains(&node)
+                && !self.layout.result_windows.iter().any(|w| w.node == node)
+            {
+                self.apply_pna_layout(node);
+            }
+        }
         self.network = r.network;
         self.waveform = r.waveform;
         self.measurements = r.measurements;
@@ -749,6 +766,7 @@ impl Workbench {
                 }
                 Event::PnaApplicationData { node, data } => {
                     let curve = rf_core::network::Curve {
+                        provenance: None,
                         node,
                         name: format!("{} · {}", data.measurement, data.parameter),
                         x: data.x.clone(),
@@ -774,6 +792,14 @@ impl Workbench {
                         && d.id == node
                     {
                         d.accept_devices(devices);
+                    }
+                }
+                Event::PnaPath { node, snapshot } => {
+                    if let Some(d) = &mut self.instrument_dialog
+                        && d.id == node
+                    {
+                        d.path = Some(snapshot);
+                        d.message = "Catalogue RF/IF lu sur l'appareil.".into();
                     }
                 }
                 Event::PnaCapabilities { node, capabilities } => {

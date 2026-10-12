@@ -38,7 +38,7 @@ def para(text,small=False):story.append(p(text,small))
 def sub(text):story.append(Paragraph(text,styles['SubGuide']))
 def page(number,title):
     if story:story.append(PageBreak())
-    story.append(p(f'RF WORKBENCH 0.9  /  {number:02}',True));story.append(Paragraph(title,styles['HGuide']))
+    story.append(p(f'RF WORKBENCH 0.10  /  {number:02}',True));story.append(Paragraph(title,styles['HGuide']))
 def steps(items):
     for i,item in enumerate(items,1):para(f'<b>{i:02}.</b> {item}')
 def table(headers,rows,widths=None):
@@ -100,7 +100,7 @@ csv.write_text('provenance,Pin_dBm,Pout_dBm,gain_dB\n'+''.join(f'simulation_peda
 
 page(1,'Guide utilisateur')
 story.append(Paragraph('RF Workbench',styles['CoverGuide']))
-para('<b>Version 0.9 - Windows</b><br/>Bancs graphiques RF, DSP, scripts Python et instrumentation VISA/SCPI.')
+para('<b>Version 0.10 - Windows</b><br/>Bancs graphiques RF, DSP, scripts Python et instrumentation VISA/SCPI.')
 story.append(Spacer(1,12));picture('PA.png','Application native : exemple petit signal PA 36-38 GHz, données simulées.')
 sub('Du premier schéma à la lecture binaire du PNA-X')
 para('Ce guide accompagne le prototype livré. Il décrit les actions disponibles, les unités, les limites et un protocole de caractérisation de PA : gain 20 dB, objectif 40 dBm, OP1dB voisin de 34 dBm, bande 36-38 GHz.')
@@ -108,13 +108,13 @@ para('Les résultats du banc PA fourni sont simulés. Aucun équipement physique
 para('Édition du 12 octobre 2026. Sources : github.com/Citroz31/rf-workbench. Projet ouvert et extensible, sous licence MIT.')
 
 page(2,'Parcours de lecture et périmètre')
-table(['Sujet','Chapitres'],[['Installation, démarrage, projets','3-4'],['Confort, schéma, raccourcis','5-7'],['Connexion, PNA-X et options','8-11'],['Bibliothèque instruments','12-13'],['RF/DSP, mesures, unités','14-16'],['Python, fichiers et exécution','17-18'],['Exemple PA complet','19-22'],['Diagnostic et références','23-24'],['Projets, câblage RF, composants MACOM et DC','25-28'],['Vérification RF, résultats, fixtures et 2×Thru','29-32']],[350,140])
+table(['Sujet','Chapitres'],[['Installation, démarrage, projets','3-4'],['Confort, schéma, raccourcis','5-7'],['Connexion, PNA-X et options','8-11'],['Bibliothèque instruments','12-13'],['RF/DSP, mesures, unités','14-16'],['Python, fichiers et exécution','17-18'],['Exemple PA complet','19-22'],['Diagnostic et références','23-24'],['Projets, câblage RF, composants MACOM et DC','25-28'],['Vérification RF, résultats, fixtures et 2×Thru','29-32'],['DUT externe, rotation et unités','33-34'],['Plan PNA, chemins RF/IF et courbes du catalogue','35-37']],[350,140])
 sub('Fonctionnel dans cette livraison')
 para('66 types de blocs, portage desktop Rust/egui, schéma typé, fenêtres de configuration, démarrage par projet, sauvegarde .rfbench, scripts Python, moteur DSP, acquisition binaire PNA et lecture FDATA des applications existantes autorisées. VISA dynamique, TCP/UDP et adaptateurs SDK complètent la HAL.')
 sub('Frontières à connaître')
 para('La validation locale concerne Windows et des serveurs de test. Un test de protocole ne valide ni le firmware d’un PNA réel, ni les options, ni la justesse métrologique. Les pilotes spécifiques AWG, thermique, capteurs et convertisseurs restent à écrire par modèle ; leurs simulations et console SCPI sont disponibles.')
 para('Les applications GCA/NF/IMD/spectre se préparent sur l’instrument : cette version n’effectue pas leur configuration complète ni leur calibration automatique. Elle détecte les classes valides, récupère les données et propose un réglage de niveau GCA sur un canal existant.')
-para('iOS/Android, synchronisation matérielle PTP/GPSDO/MIMO complète et streaming haut débit sans pertes ne sont pas livrés. Les nouveaux dialogues 0.9 sont en français ; la traduction anglaise des vues historiques reste disponible.')
+para('iOS/Android, synchronisation matérielle PTP/GPSDO/MIMO complète et streaming haut débit sans pertes ne sont pas livrés. Les nouveaux dialogues 0.10 sont en français ; la traduction anglaise des vues historiques reste disponible.')
 
 page(3,'Installer et préparer le laboratoire')
 steps(['Télécharger <b>RF-Workbench-Windows-x64-portable.zip</b> depuis Releases, puis extraire entièrement son contenu dans un dossier de votre compte. Double-cliquer sur <b>rf-workbench.exe</b>, directement à la racine. Aucun CMD, terminal, installation ou compilateur n’est nécessaire. Le ZIP Source code contient seulement les sources.',
@@ -297,7 +297,7 @@ refs=[('Code, versions et CI','https://github.com/Citroz31/rf-workbench'),('Keys
 for label,url in refs:
     para(f'<b>{label}</b><br/><link href="{url}" color="#007E86">{url}</link>')
 sub('Documents du dépôt')
-para('V0.9.md décrit le DUT externe, les familles et les unités ; V0.6.md décrit les alimentations. V0.5.md décrit la nouvelle interface et les acquisitions PNA. V0.4.md précise les 45 opérations DSP/HAL et leurs profils de recherche. ARCHITECTURE.md détaille les frontières natives/SDK. VALIDATION.md sépare tests locaux, CI et matériel non validé.')
+para('V0.10.md décrit le DUT externe, les familles et les unités ; V0.6.md décrit les alimentations. V0.5.md décrit la nouvelle interface et les acquisitions PNA. V0.4.md précise les 45 opérations DSP/HAL et leurs profils de recherche. ARCHITECTURE.md détaille les frontières natives/SDK. VALIDATION.md sépare tests locaux, CI et matériel non validé.')
 para('Les prochaines validations dépendent des modèles, firmware, options et ressources du laboratoire. Les points prioritaires sont les dialectes des autres instruments, les calibrations applicatives, la traçabilité des acquisitions, l’ordonnanceur streaming et les plateformes mobiles.')
 
 
@@ -352,7 +352,7 @@ para('La propagation est linéaire sur les trajets RF modélisés. Les excitatio
 
 page(30,'Panneau VNA et traces indépendantes')
 picture('PNA-PANEL-V08.png','Panneau 2 × 2 : S11 et S22 superposés, S21, Smith et phase. Chaque trace possède sa propre transformation verticale.')
-steps(['Activer la matrice Sij dans Fonctions pour obtenir les traces des ports configurés. En matériel, toutes les traces doivent être résolues avant la lecture ; une trace ambiguë doit être nommée explicitement.',
+steps(['Choisir le plan Paramètres S et cocher les paramètres voulus dans Fonctions ; la matrice Sij complète reste disponible. En matériel, toutes les traces doivent être résolues avant la lecture ; une trace ambiguë doit être nommée explicitement.',
        'Dans VNA / résultats, choisir Nouveau graphique ou un graphique existant, puis la trace et Ajouter dB, phase, Smith ou valeur Y. Le panneau propose 1, 2, 4, 6 ou 8 graphes ; plusieurs pages sont possibles. Fenêtres séparées conserve l’autre mode d’affichage.',
        'Cliquer une légende pour activer la trace. Régler Échelle/div, Référence et Position/div (0 = haut, 5 = milieu, 10 = bas). Auto concerne seulement cette trace. Les graduations visibles suivent la trace active ; les autres tracés gardent leurs propres échelles. Le survol affiche leurs vraies valeurs et unités.',
        'Sauvegarder le .rfbench conserve disposition, dimensions, traces, formats, visibilité, sélection et échelles. Pour NF/IMD/R1/B1, lire FDATA ; aucune phase complexe n’est inventée. Smith exige une réflexion complexe et se combine avec d’autres traces Smith. Les axes Hz et dBm ne sont pas superposés. Exporter JSON conserve les données brutes/corrigées et leurs unités.'])
@@ -381,7 +381,7 @@ steps(['Créer un projet, prendre un bloc VNA puis un bloc DUT dans la palette e
        'Choisir le type LNA, PA, Corechip ou Passif. Renseigner bande, S11, S22, isolation S12 et gain. LNA : NF, OP1dB et OIP3 facultatif ; PA : OP1dB, OIP3 et Psat ; corechip : mode RX/TX, atténuation et phase.',
        'Appliquer au bloc. Avec W, relier P1 à RF IN et RF OUT à P2 (CGY : RX IN/COM RF en RX, COM RF/TX OUT en TX). Le modèle est pris dans le DUT câblé, pas dans le VNA. Changer de référence retire les câbles de ce DUT afin de vérifier les nouvelles broches.',
        'Régler la bande du VNA dans celle du DUT puis Exécuter en simulation. S21 suit gain - atténuation ; S11/S22 suivent les valeurs déclarées. Inverser les deux câbles permute correctement les réflexions et les transmissions.'])
-para('Le modèle est scalaire et constant en fréquence : aucune courbe mesurée constructeur n’est inventée. NF/OIP3/Psat sont documentaires ; pas de génération de bruit ni IM3. Le sweep de puissance applique une compression douce selon OP1dB. Les limites de dommage restent à renseigner séparément.',True)
+para('Le mode scalaire reste constant en fréquence. La version 0.10 ajoute les jeux de courbes publiées décrits au chapitre 37. Les phases absentes ne sont pas inventées ; NF/OIP3/Psat ne constituent pas une génération de bruit ou IM3. Le sweep de puissance applique une compression estimée selon OP1dB. Les limites de dommage restent à renseigner séparément.',True)
 
 page(34,'Rotation, ports et unités de fréquence')
 picture('VNA-DUT-V09.png','Exemple VNA-DUT-Externe.rfbench : ports P1-P3-P4-P2 et DUT tourné de 90 degrés. Les connexions gardent leur identité électrique.')
@@ -392,6 +392,39 @@ steps(['Sélectionner un ou plusieurs blocs puis Ctrl+R : chaque bloc tourne de 
        'Le routage utilise maintenant Ctrl+Shift+R ; les anciennes préférences Ctrl+R sont migrées. Les raccourcis restent personnalisables et sont suspendus pendant la saisie d’un texte.'])
 para('Ces fonctions sont locales et sans dépendance Python ou VISA en simulation. Le projet conserve les unités choisies et les caractéristiques de chaque DUT. Le panneau multitraces continue de conserver une échelle propre à chaque trace.',True)
 
+page(35,'Un plan commun aux mesures et au panneau PNA')
+steps(['Dans Fonctions du bloc PNA, choisir <b>Paramètres S - 4 fenêtres</b>. Le canal est commun ; S11, S12, S21 et S22 sont cochés, une trace en dB par fenêtre, dans cet ordre. Décocher un paramètre adapte le plan.',
+       'Choisir <b>Puissance - gain / réflexion / récepteurs</b> pour un sweep à fréquence CW. Avec source P1, réception P2 : S21 et S11 en dB, R1_1 et B_1 en dBm. Changer le port source reconstruit une sélection compatible. Ce mode Standard est distinct de GCA sous licence.',
+       'Choisir une trace par fenêtre ou Superposer. Définir format, échelle/div, référence et position pour chaque trace ; cliquer sa légende pour l’activer. Les graduations visibles suivent la trace active. Les autres transformations restent indépendantes.',
+       'En Matériel, choisir un canal Standard existant et <b>Configurer canal / écran / chemins (sans sweep)</b>. Le même plan prépare traces, fenêtres, fréquence, points, IFBW, puissance, moyennage et CalSet demandé. Les réglages acceptés sont relus ; un écart bloque le déclenchement.',
+       'Avec Appliquer le balayage et Déclencher cochés, Exécuter applique le plan puis acquiert toutes les traces sur <b>un seul sweep</b>. SDATA complexe pour les S ; FDATA MLOG/dBm pour les récepteurs. Le format de transfert précédent est restauré.'])
+para('La synchronisation remplace les traces affichées dans les numéros de fenêtres choisis, avec des noms RFW réservés. Elle ne fait pas de preset et ne supprime pas les mesures/calibrations. Les autres fenêtres restent présentes ; TILE peut alors montrer plus de quatre fenêtres. Les modifications locales des formats/échelles sont reprises pour la prochaine configuration.',True)
+para('Une lecture des dernières données conserve les réglages matériels. Si un nouveau sweep est demandé sans reconfiguration, les réglages effectifs doivent correspondre au projet. Les canaux avancés NF/IMD/GCA restent ceux autorisés et préparés sur l’appareil.',True)
+
+picture('PNA-PLAN-V010.png','Plan natif : sélection des quatre S et format/échelle par trace.',width=380)
+
+page(36,'Architecture interne et chemins RF / IF')
+steps(['Ouvrir <b>Architecture / chemins</b> dans le bloc PNA-X. Le schéma fonctionnel montre sources, sorties, bypass, combiner, coupleurs/ponts, références R1-R4, récepteurs A-D et IF. Quatre ports : P1, P3, P4, P2.',
+       'En simulation, la référence 423/224 sert à préparer et enregistrer un routage. Elle ne reconstitue pas les pertes calibrées de votre instrument. En Matériel, choisir <b>Lire les chemins RF / IF disponibles</b> : éléments, valeurs acceptées et états sont interrogés sur le canal.',
+       'Cliquer un élément du schéma ou utiliser Tous les éléments RF / IF. Les composants non détectés restent inactifs. Cocher Modifier pour un override ; décocher le retire. Une configuration déjà enregistrée sur le PNA peut être rappelée.',
+       'Cocher Appliquer les chemins avant les réglages de mesure. Lors de la configuration, le rappel précède les réglages fréquence, IFBW, puissance et calibration ; ses overrides sont appliqués et relus.',
+       '<b>Combiner et Port2Src peuvent décrire des jumpers manuels.</b> Le dessin ne déplace pas ces câbles. Lire le texte de connexions physiques rapporté par l’instrument et vérifier le montage avant toute mesure.'])
+para('Les catalogues SENS:PATH:CONF:ELEM:CAT? et ELEM:VAL:CAT? déterminent ce qui est disponible ; aucune option n’est déduite du seul nom N5245B. Les mécaniques et atténuateurs dépendent du canal et des options installées. Les puissances admissibles demandent les limites propres au trajet réellement utilisé.',True)
+para('<link href="https://helpfiles.keysight.com/csg/NA520xA/S1_Settings/Path_Configurator.htm">Documentation Keysight - Path Configurator</link><br/><link href="https://helpfiles.keysight.com/csg/NA520xA/Tutorials/High_Power_PNA-X.htm">Schéma Keysight - mesures haute puissance</link>',True)
+
+picture('PNA-CHEMINS-V010.png','Schéma fonctionnel natif : sources, commutateurs, coupleurs et récepteurs.')
+
+page(37,'Courbes constructeur dans le DUT connecté')
+steps(['Choisir MAAL-FR1245 ou CGY2170YHV/C1 dans le DUT. Activer Simuler avec les courbes publiées / importées. Le jeu est copié dans le DUT et sauvegardé dans le .rfbench ; aucun téléchargement au lancement.',
+       'Câbler le DUT au VNA et choisir la même bande. Les points publiés sont interpolés linéairement en dB, sans extrapolation. Une inversion des câbles permute réflexions et transmissions. Les paramètres additionnels récupérés, par exemple NF, apparaissent dans les résultats simulés.',
+       'Dans le DUT, ouvrir chaque courbe pour voir sa source, sa page, ses conditions, la méthode et les points. Désactiver le jeu revient au modèle scalaire. Les états de corechip ajoutent une atténuation nominale ; les erreurs individuelles ne sont pas reconstituées.'])
+table(['Jeu','Données récupérées'],[['MAAL-FR1245, V4 p. 4','19 fréquences, 27-31,5 GHz ; S11/S12/S21/S22/NF ; tracé +25 °C, PCB avec deembedding.'],['CGY2170YHV/C1, V3 p. 9','9 fréquences, 8-12 GHz ; modules S ; lecture raster approximative, toutes phases, atténuation de référence.']],[180,310])
+para('<b>Aucune phase ou impédance complexe n’est inventée.</b> Ces jeux fournissent des modules : Smith, phase et deembedding sont indisponibles sans données complexes. Importer un fichier local .s2p pour conserver les quatre S complexes et sa référence d’impédance. Une référence différente du VNA doit être renormalisée avant simulation. Un jeu .json sourcé peut aussi être importé depuis le DUT.',True)
+para('Les courbes typiques décrivent une fiche publiée, pas votre exemplaire de DUT. Leur numérisation a une précision limitée ; les paramètres de polarisation et température restent ceux de la source. La compression en sweep de puissance demeure une estimation, sauf modèle spécifique supplémentaire.',True)
+para('<link href="https://cdn.macom.com/datasheets/MAAL-FR1245.pdf">MACOM MAAL-FR1245</link> - <link href="https://cdn.macom.com/datasheets/CGY2170YHV-C1.pdf">MACOM CGY2170YHV/C1</link>. Les nouveaux scénarios sont testés sur des sessions factices ; aucun N5245B physique n’a été connecté pour cette livraison.',True)
+
+picture('PNA-COURBES-V010.png','Simulation du MAAL-FR1245 connecté : S11, S12, S21 et S22 numérisés, phase inconnue.',width=380)
+
 class NumberedCanvas(canvas.Canvas):
     def __init__(self,*a,**k):super().__init__(*a,**k);self.pages=[]
     def showPage(self):self.pages.append(dict(self.__dict__));self._startPage()
@@ -399,12 +432,12 @@ class NumberedCanvas(canvas.Canvas):
         total=len(self.pages)
         for state in self.pages:
             self.__dict__.update(state);self.setStrokeColor(TEAL);self.setLineWidth(.7);self.line(52,802,543,802)
-            self.setFont('Guide',7.4);self.setFillColor(GRAY);self.drawString(52,812,'RF WORKBENCH  /  GUIDE UTILISATEUR  /  0.9')
+            self.setFont('Guide',7.4);self.setFillColor(GRAY);self.drawString(52,812,'RF WORKBENCH  /  GUIDE UTILISATEUR  /  0.10')
             self.drawString(52,27,'Prototype RF et métrologie  |  12 octobre 2026');self.drawRightString(543,27,f'{self._pageNumber} / {total}')
             super().showPage()
         super().save()
 
 output=HERE/'Guide-utilisateur.pdf'
-doc=SimpleDocTemplate(str(output),pagesize=A4,leftMargin=52,rightMargin=53,topMargin=55,bottomMargin=48,title='RF Workbench 0.9 - Guide utilisateur',author='RF Workbench',pageCompression=1)
+doc=SimpleDocTemplate(str(output),pagesize=A4,leftMargin=52,rightMargin=53,topMargin=55,bottomMargin=48,title='RF Workbench 0.10 - Guide utilisateur',author='RF Workbench',pageCompression=1)
 doc.build(story,canvasmaker=NumberedCanvas)
-print(json.dumps({'pdf':str(output),'bytes':output.stat().st_size,'chapters':34,'synthetic_Rapp_p':q},ensure_ascii=False))
+print(json.dumps({'pdf':str(output),'bytes':output.stat().st_size,'chapters':37,'synthetic_Rapp_p':q},ensure_ascii=False))

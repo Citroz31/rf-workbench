@@ -92,6 +92,7 @@ fn power_sweep_hits_user_defined_output_p1db_and_has_power_axis() {
     d.config.limits.output_p1db_dbm = Some(34.);
     let p = g.nodes.iter_mut().find(|n| n.kind == Kind::PnaX).unwrap();
     p.config.instrument.pna.power_sweep = true;
+    p.config.instrument.pna.plan = Some(rf_core::pna_plan::Plan::power(1, 2));
     p.config.instrument.pna.power_start_dbm = 5.;
     p.config.instrument.pna.power_stop_dbm = 25.;
     p.config.points = 21;

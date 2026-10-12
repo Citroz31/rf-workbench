@@ -150,6 +150,18 @@ pub fn graph(ui: &mut egui::Ui, w: &mut Window, data: &[Curve], height: f32) {
     );
     let p = ui.painter_at(rect);
     p.rect_filled(rect, 4., bg());
+    if matches!(active.format, Format::Smith | Format::Phase)
+        && ac.is_some_and(|c| c.phase_deg.as_ref().is_none_or(|p| p.len() != c.y.len()))
+    {
+        p.text(
+            rect.center(),
+            Align2::CENTER_CENTER,
+            "Phase non publiée · données complexes nécessaires",
+            crate::theme::font(12.),
+            muted(),
+        );
+        return;
+    }
     if active.format == Format::Smith {
         smith(&p, rect, w, data);
         return;
@@ -318,6 +330,14 @@ pub fn graph(ui: &mut egui::Ui, w: &mut Window, data: &[Curve], height: f32) {
                     if x_unit == "Hz" { "GHz" } else { x_unit }
                 ));
             }
+        }
+        if let Some(c) = ac
+            && let Some(source) = &c.provenance
+        {
+            hint.push_str(&format!(
+                "{} · page {}\n{}\n{}",
+                source.revision, source.page, source.conditions, source.method
+            ));
         }
         response.on_hover_text(hint);
     }
@@ -609,6 +629,7 @@ mod tests {
             t.scale.per_division = 5.;
         }
         let data = ["S11", "S22"].map(|name| Curve {
+            provenance: None,
             node: 2,
             name: name.into(),
             x: vec![1e9, 2e9, 3e9],

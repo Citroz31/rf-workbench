@@ -21,7 +21,26 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libx11-dev libxi-dev libxcursor-dev libxrandr-dev libxkbcommon-dev libwayland-dev libgl1-mesa-dev
       - uses: Swatinem/rust-cache@v2
-      - run: cargo fmt --all -- --check
+      - name: Check Rust formatting
+        id: formatting
+        continue-on-error: true
+        run: cargo fmt --all -- --check
+      - name: Prepare formatting patch
+        if: steps.formatting.outcome == 'failure'
+        shell: bash
+        run: |
+          cargo fmt --all
+          git diff --binary > rustfmt.patch
+      - uses: actions/upload-artifact@v4
+        if: steps.formatting.outcome == 'failure'
+        with:
+          name: rustfmt-${{ runner.os }}
+          path: rustfmt.patch
+          retention-days: 3
+      - name: Enforce formatting check
+        if: steps.formatting.outcome == 'failure'
+        shell: bash
+        run: exit 1
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
       - run: cargo test -p rf-runtime --test python_integration --locked -- --ignored
