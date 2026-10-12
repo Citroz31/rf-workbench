@@ -419,6 +419,9 @@ fn planned_curves(
         }
     }
     // Restore local checkbox order independently from the one-shot trigger order.
+    if c.instrument.configure_sweep && c.instrument.trigger {
+        crate::pna_display::autoscale_acquired(s, c, c.instrument.pna.plan.as_ref().unwrap())?;
+    }
     let order = rf_core::pna_plan::selected(c);
     curves.sort_by_key(|curve| {
         order

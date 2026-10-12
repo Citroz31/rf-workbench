@@ -235,6 +235,17 @@ fn s_layout_and_acquisition_share_one_channel_and_one_sweep() {
         .position(|c| c == "SENS3:BWID 1000")
         .unwrap();
     assert!(recall < ifbw);
+    let last_data = s
+        .commands
+        .iter()
+        .rposition(|c| c.ends_with(" SDATA"))
+        .unwrap();
+    let last_auto = s
+        .commands
+        .iter()
+        .rposition(|c| c.ends_with(":Y:AUTO"))
+        .unwrap();
+    assert!(last_auto > last_data);
 }
 #[test]
 fn power_plan_reads_gain_and_actual_receiver_fdata_from_one_sweep() {

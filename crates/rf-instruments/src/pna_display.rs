@@ -86,3 +86,26 @@ pub fn apply(s: &mut dyn Session, c: &Config, plan: &Plan) -> Result<()> {
     s.write("DISP:ARR TILE")?;
     pna::check_error(s, "Écran PNA")
 }
+
+/// PNA autoscale is a one-shot operation. Repeat it on the freshly acquired
+/// data after an explicitly configured sweep; preserve manual trace scales.
+pub fn autoscale_acquired(s: &mut dyn Session, c: &Config, plan: &Plan) -> Result<()> {
+    if !plan.synchronize_display {
+        return Ok(());
+    }
+    for (wi, w) in plan.windows.iter().enumerate() {
+        let win = plan.first_window + wi as u32;
+        for (ti, trace) in w.traces.iter().enumerate() {
+            if trace.automatic {
+                s.write(&format!("DISP:WIND{win}:TRAC{}:Y:AUTO", ti + 1))?;
+            }
+        }
+        let trace = &w.traces[w.active_trace];
+        s.write(&format!(
+            "CALC{}:PAR:SEL \"{}\",FAST",
+            c.instrument.channel,
+            name(c.instrument.channel, wi, w.active_trace, &trace.parameter)
+        ))?;
+    }
+    pna::check_error(s, "Autoscale après acquisition")
+}
