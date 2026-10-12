@@ -6,7 +6,7 @@
 - Placement : événements egui de pointeur réels au niveau du moteur UI ; aperçu sans mutation, clic, grille sous pan/zoom, conservation du cadrage, Échap, undo/redo vérifiés.
 - Traces : échelles indépendantes, active conservée et anciens fichiers mono-trace relus. Contrôle des dimensions à la réouverture du panneau.
 - Captures du framebuffer natif : création de projet, placement et panneau 2 × 2 ; SVG natifs, courbes simulées et axes inspectés. Le pilote d’automatisation Windows n’a pas pu activer la fenêtre de test ; aucune campagne de souris physique/DPI multiples n’est revendiquée.
-- Tests Rust et processus Python exécutés localement. Formatage et Clippy sont contrôlés en CI ; la canonicalisation Windows des outils est refusée par le bac à sable local, indépendamment de l’application livrée.
+- 137 tests Rust et 5 intégrations Python réussis localement. Formatage, Clippy strict et suites Windows/Linux/macOS réussis en CI ; la canonicalisation Windows des outils est refusée par le bac à sable local, indépendamment de l’application livrée.
 - Binaire public Windows MSVC et ZIP vérifiés par téléchargement anonyme, contrôle SHA256, lancement sans Python et exemples simulés. Aucun nouveau protocole matériel n’a été ajouté par cette version.
 
 # Validation 0.7 — projets, PNA et fixtures
