@@ -25,7 +25,11 @@ fn physical_color(kind: rf_core::PhysicalPortKind) -> egui::Color32 {
     }
 }
 pub(crate) fn node_size(n: &Node) -> Vec2 {
-    if n.rotation % 2 == 1 { egui::vec2(NODE_SIZE.y, NODE_SIZE.x) } else { NODE_SIZE }
+    if n.rotation % 2 == 1 {
+        egui::vec2(NODE_SIZE.y, NODE_SIZE.x)
+    } else {
+        NODE_SIZE
+    }
 }
 pub(crate) fn rotate_offset(n: &Node, p: Vec2) -> Vec2 {
     match n.rotation % 4 {
@@ -36,14 +40,28 @@ pub(crate) fn rotate_offset(n: &Node, p: Vec2) -> Vec2 {
     }
 }
 pub(crate) fn rotate_vector(n: &Node, v: Vec2) -> Vec2 {
-    match n.rotation % 4 { 1 => egui::vec2(-v.y, v.x), 2 => -v, 3 => egui::vec2(v.y, -v.x), _ => v }
+    match n.rotation % 4 {
+        1 => egui::vec2(-v.y, v.x),
+        2 => -v,
+        3 => egui::vec2(v.y, -v.x),
+        _ => v,
+    }
 }
-pub(crate) fn physical_port_offset(n: &Node, index: usize) -> Vec2 { rotate_offset(n, physical_base_offset(n,index)) }
+pub(crate) fn physical_port_offset(n: &Node, index: usize) -> Vec2 {
+    rotate_offset(n, physical_base_offset(n, index))
+}
 fn physical_base_offset(n: &Node, index: usize) -> Vec2 {
     let ports = n.physical_ports();
     if n.kind.max_rf_ports().is_some() {
-        let slot = n.rf_display_order().iter().position(|i| *i == index).unwrap_or(0);
-        return egui::vec2(25. + slot as f32 * 190. / (ports.len().saturating_sub(1).max(1) as f32), NODE_SIZE.y);
+        let slot = n
+            .rf_display_order()
+            .iter()
+            .position(|i| *i == index)
+            .unwrap_or(0);
+        return egui::vec2(
+            25. + slot as f32 * 190. / (ports.len().saturating_sub(1).max(1) as f32),
+            NODE_SIZE.y,
+        );
     }
     let rf = ports
         .iter()
@@ -64,13 +82,16 @@ fn physical_base_offset(n: &Node, index: usize) -> Vec2 {
 }
 pub(crate) fn physical_port_exit(n: &Node, index: usize) -> Vec2 {
     let p = physical_base_offset(n, index);
-    rotate_vector(n, if p.y == NODE_SIZE.y {
-        egui::vec2(0., 1.)
-    } else if p.x == 0. {
-        egui::vec2(-1., 0.)
-    } else {
-        egui::vec2(1., 0.)
-    })
+    rotate_vector(
+        n,
+        if p.y == NODE_SIZE.y {
+            egui::vec2(0., 1.)
+        } else if p.x == 0. {
+            egui::vec2(-1., 0.)
+        } else {
+            egui::vec2(1., 0.)
+        },
+    )
 }
 fn physical_route(
     from: Pos2,
@@ -87,9 +108,13 @@ fn physical_route(
     let start = from + a * 24. * zoom;
     let end = to + b * 24. * zoom;
     let middle = if a.y != 0. || b.y != 0. {
-        let y = if a.y < 0. && b.y <= 0. { start.y.min(end.y) - 24. * zoom }
-            else if a.y >= 0. && b.y >= 0. { start.y.max(end.y) + 24. * zoom }
-            else { (start.y+end.y)*0.5 };
+        let y = if a.y < 0. && b.y <= 0. {
+            start.y.min(end.y) - 24. * zoom
+        } else if a.y >= 0. && b.y >= 0. {
+            start.y.max(end.y) + 24. * zoom
+        } else {
+            (start.y + end.y) * 0.5
+        };
         vec![Pos2::new(start.x, y), Pos2::new(end.x, y)]
     } else if a.x == b.x {
         let x = if a.x < 0. {
@@ -361,20 +386,39 @@ impl Canvas {
         Ok(())
     }
     pub fn rotate_selection(&mut self, g: &mut Graph, history: &mut History) {
-        if let Some(n) = &mut self.placement { n.rotation = (n.rotation + 1) % 4; return; }
-        let ids = if self.selected_ids.is_empty() { self.selected.into_iter().collect() } else { self.selected_ids.clone() };
-        if !g.nodes.iter().any(|n| ids.contains(&n.id)) { return; }
+        if let Some(n) = &mut self.placement {
+            n.rotation = (n.rotation + 1) % 4;
+            return;
+        }
+        let ids = if self.selected_ids.is_empty() {
+            self.selected.into_iter().collect()
+        } else {
+            self.selected_ids.clone()
+        };
+        if !g.nodes.iter().any(|n| ids.contains(&n.id)) {
+            return;
+        }
         history.record(g.clone());
         self.cancel_wire();
         for n in &mut g.nodes {
             if ids.contains(&n.id) {
-                let before = node_size(n); n.rotation = (n.rotation + 1) % 4;
+                let before = node_size(n);
+                n.rotation = (n.rotation + 1) % 4;
                 let delta = (before - node_size(n)) * 0.5;
-                n.position[0] += delta.x; n.position[1] += delta.y;
+                n.position[0] += delta.x;
+                n.position[1] += delta.y;
             }
         }
-        for e in &mut g.edges { if e.auto_routed && (ids.contains(&e.from) || ids.contains(&e.to)) { e.waypoints.clear(); } }
-        for e in &mut g.physical_connections { if e.auto_routed && (ids.contains(&e.from) || ids.contains(&e.to)) { e.waypoints.clear(); } }
+        for e in &mut g.edges {
+            if e.auto_routed && (ids.contains(&e.from) || ids.contains(&e.to)) {
+                e.waypoints.clear();
+            }
+        }
+        for e in &mut g.physical_connections {
+            if e.auto_routed && (ids.contains(&e.from) || ids.contains(&e.to)) {
+                e.waypoints.clear();
+            }
+        }
         self.routes_dirty = self.auto_route;
     }
     fn paint_node(&self, painter: &egui::Painter, node: &Node, top: Pos2, card: Rect) {
@@ -444,10 +488,23 @@ impl Canvas {
             crate::theme::font(14. * self.zoom),
             text_color(),
         );
-        visuals::rotated_symbol(painter,
-            Rect::from_center_size(top + egui::vec2(size.x * 0.5, if node.rotation % 2 == 1 { 124. } else { 95. }) * self.zoom,
-                (if node.rotation % 2 == 1 { egui::vec2(128., 60.) } else { egui::vec2(174., 80.) }) * self.zoom),
-            node.kind, node.config.instrument.port_count, node.rotation);
+        visuals::rotated_symbol(
+            painter,
+            Rect::from_center_size(
+                top + egui::vec2(
+                    size.x * 0.5,
+                    if node.rotation % 2 == 1 { 124. } else { 95. },
+                ) * self.zoom,
+                (if node.rotation % 2 == 1 {
+                    egui::vec2(128., 60.)
+                } else {
+                    egui::vec2(174., 80.)
+                }) * self.zoom,
+            ),
+            node.kind,
+            node.config.instrument.port_count,
+            node.rotation,
+        );
         painter.text(
             top + egui::vec2(13., size.y - 58.) * self.zoom,
             Align2::LEFT_TOP,
@@ -643,7 +700,15 @@ impl Canvas {
                         .map(|p| self.screen(rect.min, *p))
                         .collect();
                     painter.add(egui::Shape::line(
-                        physical_route(from, to, &wp, self.orthogonal, self.zoom, rotate_vector(a, egui::vec2(1.,0.)), rotate_vector(b, egui::vec2(-1.,0.))),
+                        physical_route(
+                            from,
+                            to,
+                            &wp,
+                            self.orthogonal,
+                            self.zoom,
+                            rotate_vector(a, egui::vec2(1., 0.)),
+                            rotate_vector(b, egui::vec2(-1., 0.)),
+                        ),
                         Stroke::new(2., port(a.kind.outputs()[e.from_port].port)),
                     ));
                 }
@@ -752,7 +817,15 @@ impl Canvas {
                     .iter()
                     .map(|p| self.screen(rect.min, *p))
                     .collect();
-                let points = physical_route(from, to, &waypoints, self.orthogonal, self.zoom, rotate_vector(a, egui::vec2(1.,0.)), rotate_vector(b, egui::vec2(-1.,0.)));
+                let points = physical_route(
+                    from,
+                    to,
+                    &waypoints,
+                    self.orthogonal,
+                    self.zoom,
+                    rotate_vector(a, egui::vec2(1., 0.)),
+                    rotate_vector(b, egui::vec2(-1., 0.)),
+                );
                 let color = port(a.kind.outputs()[e.from_port].port);
                 painter.add(egui::Shape::line(
                     points.clone(),
@@ -1464,7 +1537,9 @@ fn summary(n: &Node) -> String {
         Kind::Limit => format!("[{:.1}, {:.1}] dBm", c.lower_dbm, c.upper_dbm),
     }
 }
-pub(crate) fn port_offset(n: &Node, output: bool, index: usize) -> Vec2 { rotate_offset(n, port_base_offset(n,output,index)) }
+pub(crate) fn port_offset(n: &Node, output: bool, index: usize) -> Vec2 {
+    rotate_offset(n, port_base_offset(n, output, index))
+}
 fn port_base_offset(n: &Node, output: bool, index: usize) -> Vec2 {
     let count = if output {
         n.kind.outputs().len()
@@ -1992,23 +2067,49 @@ mod rotation_tests {
     use super::*;
     #[test]
     fn rotation_keeps_port_identity_center_history_and_serialization() {
-        let mut g = Graph::default(); let v=g.add(Kind::PnaX,[0.,0.]); let d=g.add(Kind::Dut,[400.,0.]);
-        g.set_vna_ports(v,4).unwrap(); g.connect_physical(v,0,d,0).unwrap(); g.connect_physical(v,1,d,1).unwrap();
-        let original=g.clone(); let mut c=Canvas::default(); c.select_only(v); let mut h=History::default();
-        let center=Pos2::from(g.nodes[0].position)+node_size(&g.nodes[0])*0.5;
+        let mut g = Graph::default();
+        let v = g.add(Kind::PnaX, [0., 0.]);
+        let d = g.add(Kind::Dut, [400., 0.]);
+        g.set_vna_ports(v, 4).unwrap();
+        g.connect_physical(v, 0, d, 0).unwrap();
+        g.connect_physical(v, 1, d, 1).unwrap();
+        let original = g.clone();
+        let mut c = Canvas::default();
+        c.select_only(v);
+        let mut h = History::default();
+        let center = Pos2::from(g.nodes[0].position) + node_size(&g.nodes[0]) * 0.5;
         for turn in 1..=4 {
-            c.rotate_selection(&mut g,&mut h);
-            assert_eq!(g.nodes[0].rotation,turn%4);
-            assert_eq!(Pos2::from(g.nodes[0].position)+node_size(&g.nodes[0])*0.5,center);
-            assert_eq!(g.vna_dut(v,"S21").unwrap().unwrap().id,d);
+            c.rotate_selection(&mut g, &mut h);
+            assert_eq!(g.nodes[0].rotation, turn % 4);
+            assert_eq!(
+                Pos2::from(g.nodes[0].position) + node_size(&g.nodes[0]) * 0.5,
+                center
+            );
+            assert_eq!(g.vna_dut(v, "S21").unwrap().unwrap().id, d);
         }
-        assert_eq!(g,original); h.undo(&mut g); assert_eq!(g.nodes[0].rotation,3); h.redo(&mut g); assert_eq!(g,original);
-        let json=serde_json::to_string(&g).unwrap(); assert_eq!(serde_json::from_str::<Graph>(&json).unwrap(),g);
-        let xs:Vec<_>=g.nodes[0].rf_display_order().iter().map(|i|physical_port_offset(&g.nodes[0],*i).x).collect();
-        assert!(xs.windows(2).all(|w|w[0]<w[1]));
-        assert_eq!(g.nodes[0].rf_display_order(),vec![0,2,3,1]);
-        assert_eq!(g.nodes[0].physical_ports()[1].name,"P2");
-        let mut legacy:serde_json::Value=serde_json::from_str(&json).unwrap(); legacy["nodes"][0].as_object_mut().unwrap().remove("rotation");
-        assert_eq!(serde_json::from_value::<Graph>(legacy).unwrap().nodes[0].rotation,0);
+        assert_eq!(g, original);
+        h.undo(&mut g);
+        assert_eq!(g.nodes[0].rotation, 3);
+        h.redo(&mut g);
+        assert_eq!(g, original);
+        let json = serde_json::to_string(&g).unwrap();
+        assert_eq!(serde_json::from_str::<Graph>(&json).unwrap(), g);
+        let xs: Vec<_> = g.nodes[0]
+            .rf_display_order()
+            .iter()
+            .map(|i| physical_port_offset(&g.nodes[0], *i).x)
+            .collect();
+        assert!(xs.windows(2).all(|w| w[0] < w[1]));
+        assert_eq!(g.nodes[0].rf_display_order(), vec![0, 2, 3, 1]);
+        assert_eq!(g.nodes[0].physical_ports()[1].name, "P2");
+        let mut legacy: serde_json::Value = serde_json::from_str(&json).unwrap();
+        legacy["nodes"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("rotation");
+        assert_eq!(
+            serde_json::from_value::<Graph>(legacy).unwrap().nodes[0].rotation,
+            0
+        );
     }
 }

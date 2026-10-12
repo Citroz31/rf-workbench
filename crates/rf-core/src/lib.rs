@@ -1,8 +1,8 @@
 //! Platform-independent RF data, typed acyclic graphs and versioned bench files.
 pub mod dsp;
 pub mod dut;
-pub mod frequency;
 pub mod flow;
+pub mod frequency;
 pub mod instrument;
 pub mod network;
 pub mod physical;
@@ -706,7 +706,8 @@ impl Graph {
             let c = &node.config;
             c.instrument.validate().map_err(Error::Invalid)?;
             c.limits.validate().map_err(Error::Invalid)?;
-            if node.rotation > 3 || node.id == u64::MAX
+            if node.rotation > 3
+                || node.id == u64::MAX
                 || node
                     .position
                     .iter()
@@ -731,7 +732,8 @@ impl Graph {
                         && (-160.0..=30.0).contains(&c.power_dbm)
                 }
                 Kind::Dut => {
-                    c.dut.valid() && c.attenuation_db.is_finite()
+                    c.dut.valid()
+                        && c.attenuation_db.is_finite()
                         && (0. ..=160.).contains(&c.attenuation_db)
                         && c.phase_deg.is_finite()
                         && (-360. ..=360.).contains(&c.phase_deg)

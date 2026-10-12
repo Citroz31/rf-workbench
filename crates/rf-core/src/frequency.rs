@@ -10,20 +10,46 @@ pub enum Unit {
 impl Unit {
     pub const ALL: [Self; 4] = [Self::Hz, Self::Khz, Self::Mhz, Self::Ghz];
     pub fn factor(self) -> f64 {
-        match self { Self::Hz => 1., Self::Khz => 1e3, Self::Mhz => 1e6, Self::Ghz => 1e9 }
+        match self {
+            Self::Hz => 1.,
+            Self::Khz => 1e3,
+            Self::Mhz => 1e6,
+            Self::Ghz => 1e9,
+        }
     }
     pub fn label(self) -> &'static str {
-        match self { Self::Hz => "Hz", Self::Khz => "kHz", Self::Mhz => "MHz", Self::Ghz => "GHz" }
+        match self {
+            Self::Hz => "Hz",
+            Self::Khz => "kHz",
+            Self::Mhz => "MHz",
+            Self::Ghz => "GHz",
+        }
     }
 }
 /// Keep endpoints; choose enough intervals to never exceed the requested step.
 pub fn points_for_step(start: f64, stop: f64, step: f64) -> Option<usize> {
-    if !start.is_finite() || !stop.is_finite() || !step.is_finite() || start <= 0. || stop <= start || step <= 0. { return None; }
+    if !start.is_finite()
+        || !stop.is_finite()
+        || !step.is_finite()
+        || start <= 0.
+        || stop <= start
+        || step <= 0.
+    {
+        return None;
+    }
     let intervals = (stop - start) / step;
     // Avoid an extra point for rounding noise at integral interval counts.
     let rounded = intervals.round();
-    let intervals = if (intervals - rounded).abs() <= 1e-10 * intervals.max(1.) { rounded } else { intervals.ceil() };
-    Some((intervals as usize).saturating_add(1).clamp(2, crate::MAX_POINTS))
+    let intervals = if (intervals - rounded).abs() <= 1e-10 * intervals.max(1.) {
+        rounded
+    } else {
+        intervals.ceil()
+    };
+    Some(
+        (intervals as usize)
+            .saturating_add(1)
+            .clamp(2, crate::MAX_POINTS),
+    )
 }
 #[cfg(test)]
 mod tests {

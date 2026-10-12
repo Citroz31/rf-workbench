@@ -227,8 +227,23 @@ fn parse(text: &str) -> Result<Chord, String> {
 impl Preferences {
     pub fn upgrade(mut self) -> Self {
         if !self.shortcuts.iter().any(|b| b.action == Action::Rotate) {
-            let used = self.shortcuts.iter().filter(|b| b.action != Action::Route).flat_map(|b| b.keys.split(',')).any(|s| parse(s.trim()).ok() == parse("Ctrl+Shift+R").ok());
-            if let Some(b) = self.shortcuts.iter_mut().find(|b| b.action == Action::Route && b.keys == "Ctrl+R") { b.keys = if used { String::new() } else { "Ctrl+Shift+R".into() }; }
+            let used = self
+                .shortcuts
+                .iter()
+                .filter(|b| b.action != Action::Route)
+                .flat_map(|b| b.keys.split(','))
+                .any(|s| parse(s.trim()).ok() == parse("Ctrl+Shift+R").ok());
+            if let Some(b) = self
+                .shortcuts
+                .iter_mut()
+                .find(|b| b.action == Action::Route && b.keys == "Ctrl+R")
+            {
+                b.keys = if used {
+                    String::new()
+                } else {
+                    "Ctrl+Shift+R".into()
+                };
+            }
         }
         for action in Action::ALL {
             if !self.shortcuts.iter().any(|b| b.action == action) {
@@ -406,11 +421,30 @@ mod tests {
     }
     #[test]
     fn old_route_binding_migrates_to_make_room_for_rotation() {
-        let mut p=Preferences::default(); p.shortcuts.retain(|b|b.action!=Action::Rotate);
-        p.shortcuts.iter_mut().find(|b|b.action==Action::Route).unwrap().keys="Ctrl+R".into();
-        let p=p.upgrade(); p.validate().unwrap();
-        assert_eq!(p.action(&event(Key::R,egui::Modifiers { ctrl:true, command:true, ..Default::default() }),false),Some(Action::Rotate));
-        assert_eq!(p.action(&event(Key::R,egui::Modifiers::CTRL),true),None);
+        let mut p = Preferences::default();
+        p.shortcuts.retain(|b| b.action != Action::Rotate);
+        p.shortcuts
+            .iter_mut()
+            .find(|b| b.action == Action::Route)
+            .unwrap()
+            .keys = "Ctrl+R".into();
+        let p = p.upgrade();
+        p.validate().unwrap();
+        assert_eq!(
+            p.action(
+                &event(
+                    Key::R,
+                    egui::Modifiers {
+                        ctrl: true,
+                        command: true,
+                        ..Default::default()
+                    }
+                ),
+                false
+            ),
+            Some(Action::Rotate)
+        );
+        assert_eq!(p.action(&event(Key::R, egui::Modifiers::CTRL), true), None);
     }
     #[test]
     fn invalid_and_reserved_keys_are_rejected() {

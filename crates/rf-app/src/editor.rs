@@ -1,5 +1,7 @@
 //! Reusable editing operations and bounded obstacle-aware Manhattan routing.
-use crate::canvas::{ node_size, rotate_vector, physical_port_exit, physical_port_offset, port_offset};
+use crate::canvas::{
+    node_size, physical_port_exit, physical_port_offset, port_offset, rotate_vector,
+};
 use eframe::egui::{Pos2, Rect};
 use rf_core::{Graph, Kind};
 use std::cmp::Reverse;
