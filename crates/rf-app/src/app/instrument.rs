@@ -536,6 +536,15 @@ fn optional_dut(ui: &mut egui::Ui, label: &str, value: &mut Option<f64>) {
     });
 }
 
+fn dut_number(ui: &mut egui::Ui, label: &str, value: &mut f64, speed: f64, unit: &str) -> bool {
+    ui.horizontal(|ui| {
+        ui.label(label);
+        ui.add(egui::DragValue::new(value).speed(speed).suffix(unit))
+            .changed()
+    })
+    .inner
+}
+
 #[cfg(test)]
 mod dut_tests {
     use super::*;
@@ -569,13 +578,4 @@ mod dut_tests {
         assert_eq!(c.attenuation_db, 0.);
         assert!(c.dut.valid());
     }
-}
-
-fn dut_number(ui: &mut egui::Ui, label: &str, value: &mut f64, speed: f64, unit: &str) -> bool {
-    ui.horizontal(|ui| {
-        ui.label(label);
-        ui.add(egui::DragValue::new(value).speed(speed).suffix(unit))
-            .changed()
-    })
-    .inner
 }

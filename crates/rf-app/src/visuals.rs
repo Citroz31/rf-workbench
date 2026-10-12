@@ -587,7 +587,7 @@ pub fn icon_button(ui: &mut egui::Ui, icon: Icon, tooltip: &str, selected: bool)
 pub fn rotated_symbol(p: &egui::Painter, rect: Rect, kind: Kind, count: u8, turns: u8) {
     let start = p.ctx().graphics_mut(|g| g.entry(p.layer_id()).next_idx());
     symbol_with_ports(p, rect, kind, count);
-    if turns % 4 == 0 {
+    if turns.is_multiple_of(4) {
         return;
     }
     p.ctx().graphics_mut(|g| {
