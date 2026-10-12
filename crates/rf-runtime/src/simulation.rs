@@ -144,7 +144,7 @@ pub(crate) fn execute(
                                         *s22_db
                                     }
                                 }
-                                _ => return 0.,
+                                _ => 0.,
                             }
                         } else if c.instrument.pna.power_sweep {
                             let power = c.instrument.pna.power_start_dbm
