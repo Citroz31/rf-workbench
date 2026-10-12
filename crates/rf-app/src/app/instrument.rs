@@ -142,7 +142,7 @@ impl Workbench {
                                     ui.columns(3,|cols|{crate::frequency_edit::frequency(&mut cols[0],"Début",&mut c.start_hz,&mut c.frequency_unit);crate::frequency_edit::frequency(&mut cols[1],"Fin",&mut c.stop_hz,&mut c.frequency_unit);cols[2].label("Points");cols[2].add(egui::DragValue::new(&mut c.points).range(2..=rf_core::MAX_POINTS));});ui.columns(2,|cols|{crate::frequency_edit::frequency(&mut cols[0],"IF bandwidth",&mut c.instrument.if_bandwidth_hz,&mut c.if_unit);cols[1].checkbox(&mut c.instrument.averaging,"Moyennage");cols[1].add(egui::DragValue::new(&mut c.instrument.averages).range(1..=65536).suffix(" acquisitions"));});
                                 });
                                 if !c.instrument.pna.power_sweep { crate::frequency_edit::sweep_step(ui,c); }
-                                super::pna_workspace::extra(ui,c,d.kind,d.id,self.hardware,self.worker.is_busy(),&mut job,&mut self.fixture_job);
+                                super::pna_workspace::extra(ui,c,d.kind,d.id,(self.hardware,self.worker.is_busy()),&mut job,&mut self.fixture_job);
                                 ui.label("Axe lu en REAL64 sur l'appareil ; données SDATA réelles/imaginaires en REAL32/64, little endian. Format de transfert restauré après lecture.");
                             }
                             Kind::Dut=>{dut_settings(ui,c,&self.catalog);dataset_editor(ui,c,&mut d.dataset_path,&mut d.message);}

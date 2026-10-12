@@ -107,11 +107,13 @@ pub fn plan_editor(ui: &mut egui::Ui, c: &mut Config) {
             (Arrangement::Two, "2 fenêtres"),
             (Arrangement::Quad, "4 fenêtres · 2 × 2"),
         ] {
-            ui.selectable_value(&mut plan.arrangement, a, label);
+            if ui.selectable_value(&mut plan.arrangement, a, label).clicked() {
+                plan.rebuild_windows();
+            }
         }
     });
     ui.horizontal_wrapped(|ui| {
-        if ui.button("Une trace par fenêtre").clicked() {
+        if ui.button("Répartir les traces").clicked() {
             plan.rebuild_windows();
         }
         if ui.button("Superposer les traces").clicked() {

@@ -139,6 +139,19 @@ impl Plan {
                 active_trace: 0,
             })
             .collect();
+        let (columns, rows) = self.arrangement.grid();
+        let slots = columns * rows;
+        if self.windows.len() > slots {
+            let traces: Vec<_> = self.windows.iter().flat_map(|w| w.traces.clone()).collect();
+            let group_size = traces.len().div_ceil(slots);
+            self.windows = traces
+                .chunks(group_size)
+                .map(|traces| DisplayWindow {
+                    traces: traces.to_vec(),
+                    active_trace: 0,
+                })
+                .collect();
+        }
     }
     pub fn validate(&self, ports: u8, power_source: Option<u8>) -> Result<(), String> {
         let mut seen = std::collections::BTreeSet::new();
@@ -165,8 +178,8 @@ impl Plan {
                             || !t.reference_position.is_finite()
                             || !(0. ..=10.).contains(&t.reference_position)
                             || t.format == Format::Smith
-                                && !crate::physical::s_parameter_ports(&t.parameter)
-                                    .is_some_and(|(r, s)| r == s)
+                                && crate::physical::s_parameter_ports(&t.parameter)
+                                    .is_none_or(|(r, s)| r != s)
                             || !t.parameter.starts_with('S')
                                 && matches!(t.format, Format::Phase | Format::Smith)
                     })
@@ -242,6 +255,21 @@ impl PathSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn layout_changes_regroup_traces_without_changing_their_scales() {
+        let mut plan = Plan::default();
+        plan.windows[0].traces[0].per_division = 5.;
+        plan.arrangement = Arrangement::Two;
+        plan.rebuild_windows();
+        assert_eq!(plan.windows.len(), 2);
+        assert!(plan.windows.iter().all(|w| w.traces.len() == 2));
+        assert_eq!(plan.windows[0].traces[0].per_division, 5.);
+        plan.arrangement = Arrangement::Single;
+        plan.rebuild_windows();
+        assert_eq!(plan.windows.len(), 1);
+        assert_eq!(plan.windows[0].traces.len(), 4);
+        plan.validate(2, None).unwrap();
+    }
     #[test]
     fn defaults_and_power_plans_have_a_single_channel_and_valid_excitation() {
         let p = Plan::default();

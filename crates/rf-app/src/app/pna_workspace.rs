@@ -46,11 +46,11 @@ pub(super) fn extra(
     c: &mut rf_core::Config,
     kind: Kind,
     node: u64,
-    hardware: bool,
-    busy: bool,
+    status: (bool, bool),
     job: &mut Option<Command>,
     fixtures: &mut FixtureJob,
 ) {
+    let (hardware, busy) = status;
     ui.separator();
     ui.heading("Balayage, chemin RF et calibration");
     let previous_source = c.instrument.pna.source_port;
