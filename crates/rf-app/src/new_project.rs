@@ -13,6 +13,7 @@ pub struct Draft {
     pub layout: Layout,
     pub error: String,
     pub folders: bool,
+    pub focus_name: bool,
 }
 impl Draft {
     pub fn new(graph: Graph, suggested: &str, directory: String) -> Self {
@@ -24,6 +25,7 @@ impl Draft {
             layout: Layout::default(),
             error: String::new(),
             folders: false,
+            focus_name: true,
         }
     }
     pub fn destination(&self) -> Result<PathBuf, String> {

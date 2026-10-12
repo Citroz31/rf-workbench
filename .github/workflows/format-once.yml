@@ -23,3 +23,5 @@ jobs:
           if git diff --cached --quiet; then exit 0; fi
           git commit -m 'Format RF Workbench v0.8 interface sources'
           git push origin HEAD:main
+
+# Final ergonomic refinements and pointer rendering.

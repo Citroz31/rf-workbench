@@ -2,7 +2,7 @@ use super::*;
 impl Workbench {
     pub(super) fn network_view(&mut self, ui: &mut egui::Ui) {
         ui.heading("Paramètres S / résultats PNA");
-        if ui.button("Ouvrir des fenêtres de résultats…").clicked() {
+        if ui.button("Configurer le panneau VNA…").clicked() {
             self.results_open = true;
         }
         let curves: Vec<_> = self.curves.iter().filter(|c| c.x_unit == "Hz").collect();
