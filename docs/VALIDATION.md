@@ -163,3 +163,12 @@ Les tests réseau utilisent des serveurs locaux : réponses texte fragmentées, 
 La validation interactive de l'application par automatisation Windows n'a pas été terminée : l'autorisation de lancement a expiré. La capture a été produite par le rendu natif de l'application elle-même. Aucun test manuel de déplacement, de connexion ou de DPI multiple n'est déclaré réussi.
 
 Linux/macOS disposent d'une matrice CI mais n'ont pas été exécutés localement. iOS/Android n'ont pas de paquet exécutable dans cette livraison. Les résultats GitHub Actions doivent être lus dans le dépôt après publication ; la présence de la configuration ne prouve pas leur réussite.
+# Validation 0.9 — 12 octobre 2026
+
+Validation locale Windows sans élévation : **146 tests Rust**, **5 intégrations avec un vrai processus Python**, puis **20 autotests de l'exécutable**. Les huit projets du ZIP ont été exécutés depuis System32 avec PATH vide et Python indisponible. Le manifeste embarqué est `asInvoker`, `uiAccess=false` ; le ZIP contient le même EXE à sa racine.
+
+Tests ajoutés : DUT externe et gain/atténuation modifiés entre deux exécutions, S11/S22/S12 déclarés, inversion des câbles, VNA isolé sans DUT implicite, incompatibilité de bande, identité des ports P1/P3/P4/P2, rotation autour du centre avec historique et sérialisation, sortie des câbles des blocs tournés, migration Ctrl+R et conversion des pas/unités. Les tests existants de panneau multitraces et d'interaction réelle egui passent.
+
+Captures natives relues : DUT, VNA/DUT tourné et réglages du pas avec unités. Guide PDF : **34 pages**, rendu de toutes les pages, contrôle des marges, titres et pagination. Le workflow GitHub effectue formatage, Clippy strict, tests et compilation Windows/Linux/macOS ; la publication Windows teste le binaire MSVC et vérifie les téléchargements publics EXE/ZIP/checksums sans authentification.
+
+Les simulations sont scalaires et constantes en fréquence. NF/OIP3/Psat sont documentaires ; compression OP1dB douce optionnelle. Aucun N5245B ni autre instrument physique n'a été connecté pour ces essais.
