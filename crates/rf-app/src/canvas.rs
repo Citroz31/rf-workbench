@@ -1242,26 +1242,26 @@ impl Canvas {
                     }
                     let physical_block = !node.physical_ports().is_empty();
                     if !physical_block || self.selected_ids.contains(&node.id) {
-                    painter.text(
-                        position
-                            + if physical_block {
-                                egui::vec2(if output { 9. } else { -9. }, 0.) * self.zoom
+                        painter.text(
+                            position
+                                + if physical_block {
+                                    egui::vec2(if output { 9. } else { -9. }, 0.) * self.zoom
+                                } else {
+                                    egui::vec2(if output { -9. } else { 9. }, -9.) * self.zoom
+                                },
+                            if physical_block && output {
+                                Align2::LEFT_CENTER
+                            } else if physical_block {
+                                Align2::RIGHT_CENTER
+                            } else if output {
+                                Align2::RIGHT_BOTTOM
                             } else {
-                                egui::vec2(if output { -9. } else { 9. }, -9.) * self.zoom
+                                Align2::LEFT_BOTTOM
                             },
-                        if physical_block && output {
-                            Align2::LEFT_CENTER
-                        } else if physical_block {
-                            Align2::RIGHT_CENTER
-                        } else if output {
-                            Align2::RIGHT_BOTTOM
-                        } else {
-                            Align2::LEFT_BOTTOM
-                        },
-                        terminal.name,
-                        crate::theme::font(9. * self.zoom),
-                        port(terminal.port),
-                    );
+                            terminal.name,
+                            crate::theme::font(9. * self.zoom),
+                            port(terminal.port),
+                        );
                     }
                     let terminal_hit = ui.interact(
                         Rect::from_center_size(position, egui::vec2(20., 20.)),
@@ -2072,11 +2072,22 @@ mod rotation_tests {
     use super::*;
     #[test]
     fn opposed_vertical_pins_leave_cards_before_turning() {
-        let a=Pos2::new(25.,208.);let b=Pos2::new(520.,0.);
-        let path=physical_route(a,b,&[],true,1.,egui::vec2(0.,1.),egui::vec2(0.,-1.));
-        let boxes=[Rect::from_min_size(Pos2::ZERO,NODE_SIZE).shrink(0.1),Rect::from_min_size(Pos2::new(400.,0.),egui::vec2(208.,240.)).shrink(0.1)];
-        assert!(path.windows(2).all(|w|boxes.iter().all(|r|!r.contains((w[0]+w[1].to_vec2())*0.5))));
-        assert!(path.windows(2).all(|w|w[0].x==w[1].x||w[0].y==w[1].y));
+        let a = Pos2::new(25., 208.);
+        let b = Pos2::new(520., 0.);
+        let path = physical_route(a, b, &[], true, 1., egui::vec2(0., 1.), egui::vec2(0., -1.));
+        let boxes = [
+            Rect::from_min_size(Pos2::ZERO, NODE_SIZE).shrink(0.1),
+            Rect::from_min_size(Pos2::new(400., 0.), egui::vec2(208., 240.)).shrink(0.1),
+        ];
+        assert!(path.windows(2).all(|w| {
+            boxes
+                .iter()
+                .all(|r| !r.contains((w[0] + w[1].to_vec2()) * 0.5))
+        }));
+        assert!(
+            path.windows(2)
+                .all(|w| w[0].x == w[1].x || w[0].y == w[1].y)
+        );
     }
     #[test]
     fn rotation_keeps_port_identity_center_history_and_serialization() {

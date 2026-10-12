@@ -506,7 +506,9 @@ fn dut_settings(ui: &mut egui::Ui, c: &mut rf_core::Config, catalog: &Catalog) {
             }
         }
         ui.separator();
-        ui.collapsing("Fiche constructeur et conditions", |ui| component_details(ui, component));
+        ui.collapsing("Fiche constructeur et conditions", |ui| {
+            component_details(ui, component)
+        });
     } else {
         dut_number(
             ui,
@@ -570,5 +572,10 @@ mod dut_tests {
 }
 
 fn dut_number(ui: &mut egui::Ui, label: &str, value: &mut f64, speed: f64, unit: &str) -> bool {
-    ui.horizontal(|ui| { ui.label(label); ui.add(egui::DragValue::new(value).speed(speed).suffix(unit)).changed() }).inner
+    ui.horizontal(|ui| {
+        ui.label(label);
+        ui.add(egui::DragValue::new(value).speed(speed).suffix(unit))
+            .changed()
+    })
+    .inner
 }
