@@ -3,6 +3,7 @@ on:
   push:
     paths:
       - '.github/workflows/format-once.yml'
+      - 'crates/rf-app/**'
 permissions:
   contents: write
 jobs:

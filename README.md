@@ -4,6 +4,10 @@
 
 Application locale Windows x64, sans installation, sans compte et sans serveur. Double-cliquer sur `rf-workbench.exe` ; Python et VISA sont facultatifs pour les exemples simulés. Le manifeste Windows impose `asInvoker` : aucune élévation demandée par le programme. Données enregistrées dans le profil utilisateur (`%LOCALAPPDATA%/RF Workbench`), indépendamment du dossier de lancement. Aucun compte, télémétrie ou téléchargement automatique. L'exécutable est actuellement non signé : une validation IT peut être nécessaire selon la politique de l'entreprise. Voir [la procédure portable](docs/PORTABLE.md).
 
+**Version 0.8 :** création avec nom obligatoire et dossier choisi, fichier `.rfbench` enregistré dès validation. Cliquer un bloc le prend au curseur : aperçu sur la grille, clic pour poser, Échap pour annuler, sans recadrage automatique. Panneau VNA avec dispositions 1/2/4/6/8 graphes et plusieurs traces par graphique. La trace active définit les graduations ; chaque trace garde sa propre échelle/div, référence et autoscale. [Fonctions 0.8](docs/V0.8.md) · [Guide PDF](docs/Guide-utilisateur.pdf).
+
+![Panneau VNA à quatre graphes et traces indépendantes](docs/PNA-PANEL-V08.png)
+
 **Version 0.7 :** vrais projets indépendants `.rfbench` avec accueil et fichiers récents, remise à zéro du moteur, vérification des bandes RF et puissances déclarées. PNA-X **N5245B** : sweep fréquence/puissance, IFBW, matrice S jusqu'à 4 ports, CalSet existant, exports et plusieurs fenêtres dB/phase/Smith. Panneau inférieur masquable. Fixtures `.s2p`, Reverse entrée/sortie, mesure 2×Thru et extraction native IFFT/gating/FFT inspirée de scikit-RF P370 NZC. [Fonctions, méthode et limites 0.7](docs/V0.7.md) · [Guide PDF](docs/Guide-utilisateur.pdf).
 
 ![Résultats PNA dans plusieurs fenêtres](docs/RESULTS-V07.png)

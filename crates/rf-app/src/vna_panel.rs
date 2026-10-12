@@ -413,7 +413,7 @@ pub fn show(
     if panel.floating {
         for w in windows.iter_mut() {
             let mut open = true;
-            egui::Window::new(format!("VNA · graphique {}", w.id))
+            let shown = egui::Window::new(format!("VNA · graphique {}", w.id))
                 .id(egui::Id::new(("vna-floating", w.id, revision)))
                 .open(&mut open)
                 .default_pos([w.rect[0], w.rect[1]])
@@ -425,7 +425,12 @@ pub fn show(
                         configure = Some(w.id);
                     }
                     graph(ui, w, data, (ui.available_height() - 5.).max(150.));
+                    ui.min_rect().size()
                 });
+            if let Some(shown)=shown {
+                let size=shown.inner.unwrap_or(egui::vec2(w.rect[2],w.rect[3]));
+                w.rect=[shown.response.rect.min.x,shown.response.rect.min.y,size.x,size.y];
+            }
             if !open {
                 closed.push(w.id);
             }
@@ -544,11 +549,50 @@ pub fn show(
                     panel.selected = w.id;
                 }
             }
+            ui.min_rect().size()
         });
     panel.open = open;
     if let Some(shown) = shown {
         let r = shown.response.rect;
-        panel.rect = [r.min.x, r.min.y, r.width(), r.height()];
+        let size=shown.inner.unwrap_or(egui::vec2(panel.rect[2],panel.rect[3]));
+        panel.rect = [r.min.x, r.min.y, size.x, size.y];
     }
     Output { configure, closed }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn capture(w:&mut Window,data:&[Curve])->Vec<Pos2> {
+        let ctx=egui::Context::default();
+        let frame=ctx.run(egui::RawInput {screen_rect:Some(Rect::from_min_size(Pos2::ZERO,egui::vec2(800.,500.))),..Default::default()},|ctx| {
+            egui::CentralPanel::default().show(ctx,|ui|graph(ui,w,data,350.));
+        });
+        frame.shapes.into_iter().find_map(|s|if let egui::Shape::Path(p)=s.shape {
+            if p.points.len()>=4 && matches!(p.stroke.color,egui::epaint::ColorMode::Solid(c) if c==color(1)) {Some(p.points)}else{None}
+        }else{None}).expect("S22 curve drawn")
+    }
+    #[test]
+    fn actual_rendered_s22_does_not_move_when_s11_scale_or_active_trace_changes() {
+        let mut w=Window::new(1,2,"S11".into(),Format::Magnitude,false);
+        w.add_trace(2,"S22".into(),Format::Magnitude,false);
+        for t in &mut w.traces{t.scale.automatic=false;t.scale.reference=-20.;t.scale.per_division=5.;}
+        let data=["S11","S22"].map(|name|Curve{node:2,name:name.into(),x:vec![1e9,2e9,3e9],x_unit:"Hz".into(),y:vec![-10.,-20.,-30.],y_unit:"dB".into(),phase_deg:None,simulated:true,corrected:false});
+        w.active_trace=0;let first=capture(&mut w,&data);
+        w.traces[0].scale.reference=-60.;w.traces[0].scale.per_division=20.;
+        assert_eq!(capture(&mut w,&data),first);
+        w.active_trace=1;assert_eq!(capture(&mut w,&data),first);
+    }
+    #[test]
+    fn saving_and_reopening_a_panel_does_not_accumulate_window_frame_margins() {
+        let mut panel=Panel::default();let mut windows=vec![Window::new(1,2,"S11".into(),Format::Magnitude,false)];
+        let render=|panel:&mut Panel,windows:&mut [Window]| {
+            let ctx=egui::Context::default();
+            for _ in 0..3 {let _=ctx.run(egui::RawInput{screen_rect:Some(Rect::from_min_size(Pos2::ZERO,egui::vec2(1600.,1000.))),..Default::default()},|ctx|{show(ctx,panel,windows,&[],0);});}
+        };
+        render(&mut panel,&mut windows);let before=[panel.rect[2],panel.rect[3]];
+        let json=serde_json::to_string(&panel).unwrap();panel=serde_json::from_str(&json).unwrap();
+        render(&mut panel,&mut windows);
+        assert!((panel.rect[2]-before[0]).abs()<1. && (panel.rect[3]-before[1]).abs()<1.,"{before:?} -> {:?}",panel.rect);
+    }
 }
