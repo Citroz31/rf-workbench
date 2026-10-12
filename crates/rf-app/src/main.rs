@@ -8,6 +8,8 @@ mod file_browser;
 mod help;
 mod i18n;
 mod paths;
+mod new_project;
+mod vna_panel;
 mod plot;
 #[cfg(test)]
 mod plot_tests;

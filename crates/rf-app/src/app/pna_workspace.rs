@@ -271,72 +271,94 @@ impl Workbench {
             .max()
             .unwrap_or(0)
             + 1;
-        self.layout.result_windows.push(Window {
-            id,
-            node,
-            parameter,
-            format,
-            corrected,
-            rect: [
-                250. + ((id - 1) % 2) as f32 * 560.,
-                210. + (((id - 1) / 2) % 2) as f32 * 340.,
-                540.,
-                290.,
-            ],
-        });
+        let mut window=Window::new(id,node,parameter,format,corrected);
+        window.rect=[250.+((id-1)%2) as f32*560.,210.+(((id-1)/2)%2) as f32*340.,540.,290.];
+        window.ensure_traces();
+        self.layout.result_windows.push(window);
+        self.layout.result_panel.open=true;
+        self.layout.result_panel.selected=id;
+        self.result_target=Some(id);
     }
     pub(super) fn result_manager(&mut self, ctx: &egui::Context) {
-        if !self.results_open {
-            return;
-        }
-        let mut open = true;
-        egui::Window::new("Résultats · ajouter une vue").id(egui::Id::new("result-manager")).open(&mut open).default_size([630.,480.]).resizable(true).show(ctx,|ui|{
-            ui.label("Chaque vue possède son bloc, sa trace et son format ; position et taille sont conservées dans le projet.");
+        if !self.results_open { return; }
+        let mut open=true;
+        let mut delete=None;
+        egui::Window::new("VNA · graphiques et traces").id(egui::Id::new("result-manager"))
+            .open(&mut open).default_size([720.,580.]).resizable(true).show(ctx,|ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.checkbox(&mut self.layout.result_panel.open,"Afficher le panneau VNA");
+                ui.checkbox(&mut self.layout.result_panel.floating,"Fenêtres séparées");
+            });
+            ui.small("Chaque trace conserve sa propre échelle. La trace active définit les graduations visibles ; cliquer sa légende dans le graphique.");
             let mut choices:Vec<(u64,String,bool)>=self.curves.iter().map(|c|(c.node,c.name.clone(),c.corrected)).collect();
-            for n in self.project.graph.nodes.iter().filter(|n|n.kind.max_rf_ports().is_some()){for i in 1..=n.config.instrument.port_count {for j in 1..=n.config.instrument.port_count{let item=(n.id,format!("S{i}{j}"),false);if !choices.contains(&item){choices.push(item);}}}}
-            if choices.is_empty(){ui.label("Ajouter un PNA ou acquérir une trace d'application instrument.");return;}
+            for n in self.project.graph.nodes.iter().filter(|n|n.kind.max_rf_ports().is_some()) {
+                for i in 1..=n.config.instrument.port_count {for j in 1..=n.config.instrument.port_count {
+                    let item=(n.id,format!("S{i}{j}"),false);if !choices.contains(&item){choices.push(item);}
+                }}
+            }
+            if choices.is_empty(){ui.label("Ajouter un VNA ou acquérir une trace instrument.");return;}
             self.result_selection=self.result_selection.min(choices.len()-1);
-            egui::ComboBox::from_id_salt("result-choice").selected_text(format!("Bloc {} · {}{}",choices[self.result_selection].0,choices[self.result_selection].1,if choices[self.result_selection].2{" corrigé"}else{" brut"})).show_ui(ui,|ui|{for(i,(id,p,c))in choices.iter().enumerate(){ui.selectable_value(&mut self.result_selection,i,format!("Bloc {id} · {p} · {}",if *c{"corrigé"}else{"brut"}));}});
+            ui.separator();ui.label("Trace à ajouter");
+            egui::ComboBox::from_id_salt("result-choice").selected_text(format!("Bloc {} · {}{}",choices[self.result_selection].0,choices[self.result_selection].1,if choices[self.result_selection].2{" corrigé"}else{""})).show_ui(ui,|ui| {
+                for(i,(id,p,c))in choices.iter().enumerate(){ui.selectable_value(&mut self.result_selection,i,format!("Bloc {id} · {p} · {}",if *c{"corrigé"}else{"brut"}));}
+            });
+            egui::ComboBox::from_id_salt("result-target").selected_text(self.result_target.map_or("Nouveau graphique".into(),|id|format!("Graphique {id}"))).show_ui(ui,|ui| {
+                ui.selectable_value(&mut self.result_target,None,"Nouveau graphique");
+                for w in &self.layout.result_windows{ui.selectable_value(&mut self.result_target,Some(w.id),format!("Graphique {}",w.id));}
+            });
             let(n,p,c)=choices[self.result_selection].clone();
-            let mut folder=self.project.graph.node(n).map(|n|n.config.instrument.pna.result_path.clone()).unwrap_or_default();
-            ui.label("Dossier local des exports de ce bloc");if ui.text_edit_singleline(&mut folder).changed()&&let Some(node)=self.project.graph.nodes.iter_mut().find(|node|node.id==n){node.config.instrument.pna.result_path=folder.clone();}
-            if ui.add_enabled(!self.worker.is_busy()&&!folder.trim().is_empty()&&!self.curves.is_empty(),egui::Button::new("Exporter les résultats bruts/corrigés JSON")).clicked(){self.submit(Command::ExportResults{curves:self.curves.iter().filter(|c|c.node==n).cloned().collect(),folder,project:self.project.name.clone()});}
-
-            ui.horizontal_wrapped(|ui|{for(label,format)in [("Magnitude / dB",Format::Magnitude),("Phase / degrés",Format::Phase),("Smith",Format::Smith),("Valeurs Y / unités instrument",Format::Linear)]{if ui.button(label).clicked(){self.add_result_window(n,p.clone(),format,c);}}});
-            ui.label(format!("{} fenêtre(s) ouvertes (32 maximum)",self.layout.result_windows.len()));
-            ui.small("R1/B1, IMD, NF : sélectionner une trace existante dans Options PNA puis Lire FDATA. Ses unités et son axe restent ceux de l'affichage instrument ; aucune unité dBm n'est inventée pour un récepteur non calibré.");
-            ui.horizontal_wrapped(|ui|{if ui.button("S11 dB + Smith + S21 phase").clicked(){for(p,f)in[("S11",Format::Magnitude),("S11",Format::Smith),("S21",Format::Phase)]{self.add_result_window(n,p.into(),f,c);}}
-            if ui.button("Fermer toutes les vues").clicked(){self.layout.result_windows.clear();}});
-        });
-        self.results_open = open;
-    }
-    pub(super) fn pna_result_windows(&mut self, ctx: &egui::Context) {
-        let windows = self.layout.result_windows.clone();
-        let mut close = Vec::new();
-        for w in windows {
-            let mut open = true;
-            let curve =
-                self.curves.iter().rev().find(|c| {
-                    c.node == w.node && c.name == w.parameter && c.corrected == w.corrected
+            ui.horizontal_wrapped(|ui| {
+                for(label,format)in[("Ajouter dB",Format::Magnitude),("Ajouter phase",Format::Phase),("Ajouter Smith",Format::Smith),("Ajouter valeur Y",Format::Linear)] {
+                    if ui.button(label).clicked() {
+                        if let Some(w)=self.layout.result_windows.iter_mut().find(|w|Some(w.id)==self.result_target){w.add_trace(n,p.clone(),format,c);}
+                        else {self.add_result_window(n,p.clone(),format,c);}
+                        self.layout.result_panel.open=true;
+                    }
+                }
+                if ui.button("Créer un autre graphique").clicked(){self.result_target=None;}
+            });
+            if let Some(w)=self.layout.result_windows.iter_mut().find(|w|Some(w.id)==self.result_target) {
+                w.ensure_traces();ui.separator();ui.heading(format!("Graphique {} · {} traces",w.id,w.traces.len()));
+                let mut remove=None;
+                egui::ScrollArea::vertical().max_height(200.).show(ui,|ui| {
+                    for(i,t)in w.traces.iter_mut().enumerate(){ui.horizontal_wrapped(|ui| {
+                        ui.checkbox(&mut t.visible,"");
+                        if ui.selectable_label(w.active_trace==i,egui::RichText::new(format!("{} · bloc {}",t.parameter,t.node)).color(crate::vna_panel::color(t.color))).clicked(){w.active_trace=i;}
+                        egui::ComboBox::from_id_salt(("format",w.id,i)).selected_text(format!("{:?}",t.format)).show_ui(ui,|ui|{for f in [Format::Magnitude,Format::Phase,Format::Smith,Format::Linear]{ui.selectable_value(&mut t.format,f,format!("{f:?}"));}});
+                        if ui.small_button("Retirer").clicked(){remove=Some(i);}
+                    });}
                 });
-            let shown=egui::Window::new(format!("{} · {:?} · bloc {}{}",w.parameter,w.format,w.node,if w.corrected{" · corrigé"}else{""})).id(egui::Id::new(("rf-result",w.id,self.layout_revision))).open(&mut open).default_pos([w.rect[0],w.rect[1]]).default_size([w.rect[2],w.rect[3]]).min_size([240.,180.]).resizable(true).show(ctx,|ui|{
-            if let Some(c)=&curve{ui.small(if c.simulated{"SIMULATION · modèle illustratif (S12 = −60 dB ; ports non câblés ouverts)"}else{"INSTRUMENT / fichier importé"});render_curve(ui,c,w.format,self.z0);}else{ui.label("Aucune donnée pour cette trace. Activer la matrice Sij, vérifier le câblage puis Exécuter. Les ports hors du modèle ne sont pas simulés.");}
+                if let Some(i)=remove {w.traces.remove(i);if w.traces.is_empty(){delete=Some(w.id);}else{w.active_trace=w.active_trace.min(w.traces.len()-1);}}
+                if !w.traces.is_empty(){crate::vna_panel::scale_controls(ui,w,&self.curves);}
+                if ui.button("Fermer ce graphique").clicked(){delete=Some(w.id);}
+            }
+            ui.separator();
+            ui.horizontal_wrapped(|ui| {
+                if ui.button("Panel 4 graphes PNA").clicked(){
+                    self.layout.result_windows.clear();
+                    for(param,f)in[("S11",Format::Magnitude),("S21",Format::Magnitude),("S11",Format::Smith),("S21",Format::Phase)]{self.add_result_window(n,param.into(),f,c);}
+                    self.layout.result_panel.columns=2;self.layout.result_panel.rows=2;self.layout.result_panel.floating=false;
+                }
+                if ui.button("S11 + S22 ensemble").clicked(){
+                    self.add_result_window(n,"S11".into(),Format::Magnitude,c);
+                    self.layout.result_windows.last_mut().unwrap().add_trace(n,"S22".into(),Format::Magnitude,c);
+                    self.layout.result_panel.columns=1;self.layout.result_panel.rows=1;
+                }
+                if ui.button("Fermer tous les graphiques").clicked(){self.layout.result_windows.clear();}
+            });
+            ui.small("Pour acquérir S11 et S22 ensemble, activer la matrice Sij dans le bloc. NF/IMD/R1/B1 utilisent les traces FDATA préparées sur l'appareil. Smith requiert une réflexion complexe ; ne pas mélanger Smith et tracés rectangulaires dans un même graphique.");
+            let mut folder=self.project.graph.node(n).map(|n|n.config.instrument.pna.result_path.clone()).unwrap_or_default();
+            ui.label("Dossier local des exports de ce bloc");
+            if ui.text_edit_singleline(&mut folder).changed()&&let Some(node)=self.project.graph.nodes.iter_mut().find(|node|node.id==n){node.config.instrument.pna.result_path=folder.clone();}
+            if ui.add_enabled(!self.worker.is_busy()&&!folder.trim().is_empty()&&!self.curves.is_empty(),egui::Button::new("Exporter les résultats JSON")).clicked(){self.submit(Command::ExportResults{curves:self.curves.iter().filter(|c|c.node==n).cloned().collect(),folder,project:self.project.name.clone()});}
         });
-            if let Some(shown) = shown
-                && let Some(saved) = self.layout.result_windows.iter_mut().find(|p| p.id == w.id)
-            {
-                let r = shown.response.rect;
-                saved.rect = [r.min.x, r.min.y, r.width(), r.height()];
-            }
-            if !open {
-                close.push(w.id);
-            }
-        }
-        self.layout
-            .result_windows
-            .retain(|w| !close.contains(&w.id));
-        // Fixtures are a separate workspace, independent from the results manager.
-        if !self.results_open {}
+        if let Some(id)=delete{self.layout.result_windows.retain(|w|w.id!=id);}
+        self.results_open=open;
+    }
+    pub(super) fn pna_result_windows(&mut self, ctx:&egui::Context) {
+        let out=crate::vna_panel::show(ctx,&mut self.layout.result_panel,&mut self.layout.result_windows,&self.curves,self.layout_revision);
+        if let Some(id)=out.configure{self.layout.result_panel.selected=id;self.result_target=Some(id);self.results_open=true;}
+        self.layout.result_windows.retain(|w|!out.closed.contains(&w.id));
     }
     pub(super) fn poll_fixture(&mut self) {
         let Some(rx) = &self.fixture_job.receiver else {
@@ -441,42 +463,6 @@ impl Workbench {
         self.fixture_job = j;
         if let Some(cmd) = command {
             self.submit(cmd);
-        }
-    }
-}
-fn render_curve(ui: &mut egui::Ui, c: &rf_core::network::Curve, format: Format, z0: f64) {
-    let height = (ui.available_height() - 25.).clamp(150., 600.);
-    let scale = if c.x_unit == "Hz" { 1e9 } else { 1. };
-    let xlabel = if c.x_unit == "Hz" { "GHz" } else { &c.x_unit };
-    match format {
-        Format::Smith => {
-            if c.x_unit != "Hz" || !matches!(c.name.as_str(), "S11" | "S22" | "S33" | "S44") {
-                ui.label("Smith requiert un paramètre de réflexion complexe sur axe fréquence.");
-                return;
-            }
-            if let Some(phase) = &c.phase_deg {
-                crate::analysis::smith(
-                    ui,
-                    &NetworkTrace {
-                        frequency_hz: c.x.clone(),
-                        magnitude_db: c.y.clone(),
-                        phase_deg: phase.clone(),
-                        parameter: c.name.clone(),
-                        simulated: c.simulated,
-                    },
-                    z0,
-                );
-            }
-        }
-        Format::Phase => {
-            if let Some(p) = &c.phase_deg {
-                plot::series(ui, &c.x, p, height, xlabel, "Phase (°)", scale);
-            } else {
-                ui.label("Cette donnée d'affichage scalaire ne contient pas de phase.");
-            }
-        }
-        _ => {
-            plot::series(ui, &c.x, &c.y, height, xlabel, &c.y_unit, scale);
         }
     }
 }

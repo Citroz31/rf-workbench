@@ -327,7 +327,7 @@ impl Workbench {
             });
         if let Some(c) = chosen {
             self.add_block(Kind::Dut);
-            if let Some(n) = self.project.graph.nodes.last_mut() {
+            if let Some(n) = &mut self.canvas.placement {
                 n.title = format!("{} {}", c.manufacturer, c.part_number);
                 n.config.dut_id = Some(c.id);
                 n.config.loss_db =

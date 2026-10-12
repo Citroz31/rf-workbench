@@ -108,10 +108,12 @@ pub struct Workbench {
     flow_report: Option<rf_core::flow::Report>,
     results_open: bool,
     result_selection: usize,
+    result_target: Option<u64>,
     fixture_job: pna_workspace::FixtureJob,
     data_directory: crate::paths::DataDirectory,
     welcome: bool,
     project_dialog: Option<bool>,
+    new_project: Option<crate::new_project::Draft>,
     browse_directory: String,
     file_browser: crate::file_browser::Browser,
     instrument_dialog: Option<instrument::Dialog>,
@@ -120,7 +122,6 @@ pub struct Workbench {
     layout: Layout,
     studio_path: String,
     layout_name: String,
-    workspace_name: String,
     setup_rename: Option<professional::RenameSetup>,
     buffers: Vec<Buffer>,
     debug_snapshot: Option<Snapshot>,
@@ -283,6 +284,7 @@ impl Workbench {
             flow_report: None,
             results_open: false,
             result_selection: 0,
+            result_target: None,
             fixture_job: Default::default(),
             welcome: !args.iter().any(|a| {
                 a.starts_with("--demo-")
@@ -301,6 +303,7 @@ impl Workbench {
                     .contains(&a.as_str())
             }),
             project_dialog: None,
+            new_project: None,
             file_browser: Default::default(),
             browse_directory: data_directory.path().to_string_lossy().into_owned(),
             data_directory,
@@ -311,7 +314,6 @@ impl Workbench {
             studio,
             studio_path,
             layout_name: "Banc RF".into(),
-            workspace_name: "Nouveau banc".into(),
             buffers: Vec::new(),
             debug_snapshot: None,
             buffer_key: None,
@@ -471,6 +473,8 @@ impl Workbench {
         if args.iter().any(|a| a == "--welcome") {
             bench.welcome = true;
         }
+        if args.iter().any(|a| a == "--new-project-ui") { bench.create_bench(rf_core::Graph::default(), "Banc RF"); }
+        if args.iter().any(|a| a == "--placement-ui") { bench.add_block(Kind::PnaX); }
         if args.iter().any(|a| a == "--project-ui") {
             bench.project_dialog = Some(false);
         }
@@ -866,21 +870,12 @@ impl Workbench {
             self.log("Limite de 1000 blocs atteinte".into(), true);
             return;
         }
-        self.history.record(self.project.graph.clone());
-        let n = self.project.graph.nodes.len() as f32;
-        let id = self
-            .project
-            .graph
-            .add(kind, [36. + (n % 4.) * 294., 40. + (n / 4.).floor() * 280.]);
-        if kind == Kind::PnaX
-            && let Some(n) = self.project.graph.nodes.iter_mut().find(|n| n.id == id)
-        {
-            n.config.instrument.expected_idn = "N5245B".into();
-        }
-        self.canvas.select_only(id);
+        let mut draft = rf_core::Graph::default();
+        let id = draft.add(kind, [0., 0.]);
+        let mut node = draft.node(id).unwrap().clone();
+        if kind == Kind::PnaX { node.config.instrument.expected_idn = "N5245B".into(); }
+        self.canvas.begin_placement(node);
         self.studio.used(kind);
-        self.canvas.completed.clear();
-        self.canvas.fit();
         self.view = View::Schematic;
     }
     fn action(&mut self, action: Action) {
@@ -1736,6 +1731,7 @@ impl eframe::App for Workbench {
             self.rename_setup_window(ctx);
             self.project_window(ctx);
         }
+        self.new_project_window(ctx);
         if self.canvas.routes_dirty && self.routing_job.is_none() {
             self.canvas.routes_dirty = false;
             self.start_routing(false, true, false);

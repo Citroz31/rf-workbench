@@ -109,6 +109,8 @@ mod tests {
             format: crate::results::Format::Smith,
             rect: [300., 200., 500., 300.],
             corrected: true,
+            traces: Vec::new(),
+            active_trace: 0,
         });
         let file = BenchFile::new(project, layout);
         let json = file.json().unwrap();

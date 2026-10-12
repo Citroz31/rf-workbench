@@ -1,32 +1,69 @@
 use super::*;
 impl Workbench {
-    fn create_bench(&mut self, graph: rf_core::Graph, name: &str) {
-        if self.worker.is_busy() || name.trim().is_empty() {
-            return;
+    pub(super) fn create_bench(&mut self, graph: rf_core::Graph, suggested: &str) {
+        if self.worker.is_busy() || self.pending_project.is_some() { return; }
+        self.new_project = Some(crate::new_project::Draft::new(graph, suggested,
+            self.browse_directory.clone()));
+    }
+    pub(super) fn new_project_window(&mut self, ctx: &egui::Context) {
+        let Some(mut draft) = self.new_project.take() else { return };
+        let mut open = true;
+        let mut create = false;
+        let mut cancel = false;
+        egui::Window::new("Créer un nouveau projet").id(egui::Id::new("new-project"))
+            .open(&mut open).resizable(true).collapsible(false).default_width(540.)
+            .anchor(egui::Align2::CENTER_CENTER, [0.,0.]).show(ctx, |ui| {
+                ui.label("Nom du projet *");
+                let name=ui.add(egui::TextEdit::singleline(&mut draft.name)
+                    .id_salt("new-project-name").hint_text("Ex. Caractérisation PA bande Ka")
+                    .char_limit(128).desired_width(f32::INFINITY));
+                if !draft.suggested_name.is_empty() {
+                    ui.horizontal_wrapped(|ui| { ui.small("Suggestion :");
+                        if ui.small_button(&draft.suggested_name).clicked() {
+                            draft.name=draft.suggested_name.replace(['/', '\\'], " - ");
+                        }
+                    });
+                }
+                ui.add_space(8.);ui.label("Dossier d'enregistrement *");
+                ui.add(egui::TextEdit::singleline(&mut draft.directory).desired_width(f32::INFINITY));
+                ui.horizontal(|ui| {
+                    if ui.button("Choisir un dossier…").clicked(){draft.folders=!draft.folders;}
+                    if ui.button("Dossier local par défaut").clicked(){draft.directory=self.data_directory.path().display().to_string();}
+                });
+                if draft.folders {
+                    ui.horizontal(|ui| { if ui.button("Dossier parent").clicked()
+                        && let Some(parent)=std::path::Path::new(&draft.directory).parent() {
+                            draft.directory=parent.display().to_string();
+                        }
+                    });
+                    if self.file_browser.update(&draft.directory){ctx.request_repaint_after(Duration::from_millis(50));}
+                    egui::ScrollArea::vertical().max_height(170.).show(ui,|ui| {
+                        if let Some(e)=&self.file_browser.error{ui.colored_label(red(),e);}
+                        for (p,is_dir) in self.file_browser.entries.clone(){
+                            if is_dir && ui.button(format!("▸ {}",p.file_name().unwrap_or_default().to_string_lossy())).clicked(){draft.directory=p.display().to_string();}
+                        }
+                    });
+                }
+                ui.separator();
+                match draft.destination() {
+                    Ok(path)=>{ui.small("Le fichier sera créé immédiatement :");ui.monospace(path.display().to_string());}
+                    Err(e)=>{ui.small(e);}
+                }
+                if !draft.error.is_empty(){ui.colored_label(red(),&draft.error);}
+                ui.horizontal(|ui| {
+                    create=ui.add_enabled(draft.destination().is_ok()&&!self.worker.is_busy(),egui::Button::new("Créer et enregistrer")).clicked();
+                    cancel=ui.button("Annuler").clicked();
+                });
+                if name.lost_focus() && ui.input(|i|i.key_pressed(egui::Key::Enter)){create=draft.destination().is_ok();}
+            });
+        if cancel || !open { return; }
+        if create {
+            match self.recover_project().and_then(|_|draft.create()) {
+                Ok((file,path))=>{self.browse_directory=draft.directory;self.request_project(file,path,true);return;}
+                Err(e)=>draft.error=e,
+            }
         }
-        let mut check = Workspace::new(name.into(), Project::default());
-        if let Err(e) = check.rename(name) {
-            self.log(e, true);
-            return;
-        }
-        let project = Project {
-            schema_version: rf_core::SCHEMA_VERSION,
-            name: name.trim().into(),
-            graph,
-        };
-        let stamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis();
-        let path = std::path::Path::new(&self.browse_directory)
-            .join(format!("project-{stamp}.rfbench"))
-            .to_string_lossy()
-            .into_owned();
-        self.request_project(
-            crate::bench_file::BenchFile::new(project, Layout::default()),
-            path,
-            true,
-        );
+        self.new_project=Some(draft);
     }
     pub(super) fn remember_project(&mut self) {
         self.registry
@@ -80,7 +117,7 @@ impl Workbench {
         if self.worker.is_busy() || self.pending_project.is_some() {
             return;
         }
-        if let Err(e) = self.recover_project() {
+        if !is_new && let Err(e) = self.recover_project() {
             self.log(
                 format!("Sauvegarder le projet avant de changer : {e}"),
                 true,
@@ -118,6 +155,7 @@ impl Workbench {
         self.instrument_dialog = None;
         self.setup_rename = None;
         self.project_dialog = None;
+        self.new_project = None;
         self.network = None;
         self.waveform = None;
         self.buffers.clear();
@@ -131,6 +169,7 @@ impl Workbench {
         self.trace = rf_instruments::simulate_trace(&rf_core::Config::default(), 2.45e9, -13., 0)
             .expect("fresh preview");
         self.result_selection = 0;
+        self.result_target = None;
         self.clock = Instant::now();
         self.measurements.clear();
         self.tests.clear();
@@ -156,14 +195,14 @@ impl Workbench {
         self.logs.clear();
         self.active_project = true;
         self.welcome = false;
-        self.last_saved = if is_new {
+        self.last_saved = if is_new && !std::path::Path::new(&self.project_path).is_file() {
             String::new()
         } else {
             crate::bench_file::BenchFile::new(self.project.clone(), self.layout.clone())
                 .json()
                 .unwrap_or_default()
         };
-        if !is_new {
+        if !is_new || std::path::Path::new(&self.project_path).is_file() {
             self.remember_project();
         }
         if is_new {
@@ -183,10 +222,10 @@ impl Workbench {
             ui.heading("Créer ou ouvrir un banc de mesure");
             if self.active_project && ui.button("Revenir au projet courant").clicked(){self.welcome=false;}
             ui.label("Un fichier .rfbench conserve le schéma, les réglages des blocs et la disposition des panneaux.");
-             ui.add_space(20.);ui.label("Nom du nouveau projet");ui.add(egui::TextEdit::singleline(&mut self.workspace_name).char_limit(80).desired_width(500.));
+             ui.add_space(20.);
             ui.horizontal_wrapped(|ui|{
                 if ui.add_sized([230.,55.],egui::Button::new("+ Nouveau projet vide")).clicked(){
-                    self.create_bench(rf_core::Graph::default(),&self.workspace_name.clone());
+                    self.create_bench(rf_core::Graph::default(),"Banc RF");
                 }
                 if ui.add_sized([230.,55.],egui::Button::new("Ouvrir un projet…")).clicked(){self.project_dialog=Some(false);}
             });
@@ -201,7 +240,7 @@ impl Workbench {
                  }
                  for (label,text) in [("LNA MAAL-FR1245",include_str!("../../../../examples/LNA-MAAL-FR1245.rfbench")),("Core chip CGY2170",include_str!("../../../../examples/Corechip-CGY2170YHV-C1.rfbench"))] {
                      if ui.button(label).clicked() {match crate::bench_file::BenchFile::parse(text) {
-                         Ok(b)=>{self.create_bench(b.project.graph,&b.project.name);if let Some((file,_,_))=&mut self.pending_project {file.layout=b.layout;}}
+                         Ok(b)=>{self.create_bench(b.project.graph,&b.project.name);if let Some(draft)=&mut self.new_project {draft.layout=b.layout;}}
                          Err(e)=>self.log(e,true),
                      }}
                  }

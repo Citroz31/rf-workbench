@@ -29,6 +29,7 @@ pub struct Layout {
     pub canvas_pan: [f32; 2],
     pub canvas_zoom: f32,
     pub result_windows: Vec<crate::results::Window>,
+    pub result_panel: crate::results::Panel,
     pub library_width: f32,
     pub inspector_width: f32,
     pub journal_height: f32,
@@ -45,6 +46,7 @@ impl Default for Layout {
             canvas_pan: [0., 0.],
             canvas_zoom: 1.,
             result_windows: Vec::new(),
+            result_panel: crate::results::Panel::default(),
             library_width: 210.,
             inspector_width: 300.,
             journal_height: 100.,
@@ -78,6 +80,7 @@ impl Layout {
     }
     pub fn validate(&self) -> Result<(), String> {
         crate::results::validate(&self.result_windows)?;
+        self.result_panel.validate()?;
         if !self.canvas_zoom.is_finite()
             || !(0.2..=2.).contains(&self.canvas_zoom)
             || self
