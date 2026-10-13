@@ -51,7 +51,11 @@ impl Dialog {
             kind: n.kind,
             config: n.config.clone(),
             title: n.title.clone(),
-            tab: if n.kind == Kind::Dut || n.kind.max_rf_ports().is_some() { 1 } else { 0 },
+            tab: if n.kind == Kind::Dut || n.kind.max_rf_ports().is_some() {
+                1
+            } else {
+                0
+            },
             pna_page: Default::default(),
             capabilities: None,
             devices: Vec::new(),
@@ -135,7 +139,7 @@ impl Workbench {
                         ui.separator();ui.label(if self.hardware{"Mode Matériel activé : les boutons de connexion contactent l'équipement."}else{"Mode Simulation : activer Matériel dans la barre d'outils pour identifier un équipement réel."});
                     }
                     1=>{
-                        ui.heading("Réglages du bloc");
+                        if d.kind.max_rf_ports().is_none() { ui.heading("Réglages du bloc"); }
                         match d.kind {
                             Kind::Pna|Kind::PnaX|Kind::UsbVna=>{
                                 crate::pna_setup::settings(ui, d.pna_page, c, d.kind);
@@ -302,13 +306,20 @@ if ui.button("Consigne du profil").clicked(){d.command=c.instrument.set_command.
                     }
                     d.message = "Réglages mémorisés dans le bloc.".into();
                     if configure_vna {
-                        job = Some(Command::PreparePna { kind: d.kind, node: d.id, config: d.config.clone(), hardware: self.hardware });
+                        job = Some(Command::PreparePna {
+                            kind: d.kind,
+                            node: d.id,
+                            config: d.config.clone(),
+                            hardware: self.hardware,
+                        });
                     }
                 }
                 Err(e) => d.message = e,
             }
         }
-        if let Some(job) = job { self.submit(job); }
+        if let Some(job) = job {
+            self.submit(job);
+        }
         if open && !close && self.project.graph.node(d.id).is_some() {
             self.instrument_dialog = Some(d);
         }

@@ -3,15 +3,20 @@ impl Workbench {
     pub(super) fn palette_search(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             let width = (ui.available_width() - 24. - ui.spacing().item_spacing.x).max(20.);
-            let search = ui.add_sized([width, 24.],
+            let search = ui.add_sized(
+                [width, 24.],
                 egui::TextEdit::singleline(&mut self.search)
                     .hint_text("Rechercher · Ctrl+F")
-                    .desired_width(width));
+                    .desired_width(width),
+            );
             if ui.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::F)) {
                 search.request_focus();
             }
-            if ui.add_enabled(!self.search.is_empty(), egui::Button::new("×"))
-                .on_hover_text("Effacer la recherche").clicked() {
+            if ui
+                .add_enabled(!self.search.is_empty(), egui::Button::new("×"))
+                .on_hover_text("Effacer la recherche")
+                .clicked()
+            {
                 self.search.clear();
                 search.request_focus();
             }

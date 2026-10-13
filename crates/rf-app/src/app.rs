@@ -1238,60 +1238,69 @@ impl Workbench {
         });
     }
     fn sidebar(&mut self, ctx: &egui::Context) {
-        self.layout.library_width = crate::bounded_ui::library(ctx, self.layout.library_width, self.layout_revision, |ui| {
+        self.layout.library_width = crate::bounded_ui::library(
+            ctx,
+            self.layout.library_width,
+            self.layout_revision,
+            |ui| {
                 ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
                 caption(ui, "BIBLIOTHÈQUE DE BLOCS");
                 self.palette_search(ui);
-                egui::ScrollArea::vertical().auto_shrink([false, false]).min_scrolled_width(0.).show(ui, |ui| {
-                    let hits = crate::editor::search(&self.search);
-                    if !self.search.trim().is_empty() {
-                        caption(ui, "Résultats");
-                        for k in hits {
-                            self.palette_item(ui, k);
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .min_scrolled_width(0.)
+                    .show(ui, |ui| {
+                        let hits = crate::editor::search(&self.search);
+                        if !self.search.trim().is_empty() {
+                            caption(ui, "Résultats");
+                            for k in hits {
+                                self.palette_item(ui, k);
+                            }
+                            if crate::editor::search(&self.search).is_empty() {
+                                ui.label("Aucun composant trouvé. Essayer PNA, DAC, alimentation…");
+                            }
+                        } else {
+                            for (name, list) in [
+                                ("Favoris", self.studio.favorites.clone()),
+                                ("Récents", self.studio.recent.clone()),
+                            ] {
+                                egui::CollapsingHeader::new(t(name))
+                                    .default_open(true)
+                                    .show(ui, |ui| {
+                                        for k in list {
+                                            self.palette_item(ui, k);
+                                        }
+                                    });
+                            }
+                            for category in [
+                                "Instruments RF",
+                                "Alimentations DC",
+                                "Électronique & conversion",
+                                "Thermique",
+                                "Composants DUT",
+                                "Analyse & automatisation",
+                                "Sources / HAL",
+                                "DSP / canal",
+                                "Modulation / synchronisation",
+                                "Codage canal",
+                                "Mesures DSP",
+                                "Calibration / unités",
+                            ] {
+                                egui::CollapsingHeader::new(t(category))
+                                    .default_open(true)
+                                    .show(ui, |ui| {
+                                        for k in Kind::ALL
+                                            .into_iter()
+                                            .filter(|k| k.category() == category)
+                                        {
+                                            self.palette_item(ui, k);
+                                        }
+                                    });
+                            }
                         }
-                        if crate::editor::search(&self.search).is_empty() {
-                            ui.label("Aucun composant trouvé. Essayer PNA, DAC, alimentation…");
-                        }
-                    } else {
-                        for (name, list) in [
-                            ("Favoris", self.studio.favorites.clone()),
-                            ("Récents", self.studio.recent.clone()),
-                        ] {
-                            egui::CollapsingHeader::new(t(name))
-                                .default_open(true)
-                                .show(ui, |ui| {
-                                    for k in list {
-                                        self.palette_item(ui, k);
-                                    }
-                                });
-                        }
-                        for category in [
-                            "Instruments RF",
-                            "Alimentations DC",
-                            "Électronique & conversion",
-                            "Thermique",
-                            "Composants DUT",
-                            "Analyse & automatisation",
-                            "Sources / HAL",
-                            "DSP / canal",
-                            "Modulation / synchronisation",
-                            "Codage canal",
-                            "Mesures DSP",
-                            "Calibration / unités",
-                        ] {
-                            egui::CollapsingHeader::new(t(category))
-                                .default_open(true)
-                                .show(ui, |ui| {
-                                    for k in
-                                        Kind::ALL.into_iter().filter(|k| k.category() == category)
-                                    {
-                                        self.palette_item(ui, k);
-                                    }
-                                });
-                        }
-                    }
-                });
-            });
+                    });
+            },
+        );
     }
     fn inspector(&mut self, ctx: &egui::Context) {
         let mut configure = None;

@@ -511,21 +511,21 @@ pub fn show(
                 .min_size([240., 220.])
                 .show(ctx, |ui| {
                     let (size, ()) = crate::bounded_ui::fill(ui, "floating-content", |ui| {
-                    scale_controls(ui, w, data);
-                    if ui.button("Configurer les traces…").clicked() {
-                        configure = Some(w.id);
-                    }
-                    let choices = graph
-                        .node(w.node)
-                        .map(|n| crate::vna_keys::parameters(&n.config))
-                        .unwrap_or_default();
-                    graph_with_options(
-                        ui,
-                        w,
-                        data,
-                        (ui.available_height() - 5.).max(150.),
-                        &choices,
-                    );
+                        scale_controls(ui, w, data);
+                        if ui.button("Configurer les traces…").clicked() {
+                            configure = Some(w.id);
+                        }
+                        let choices = graph
+                            .node(w.node)
+                            .map(|n| crate::vna_keys::parameters(&n.config))
+                            .unwrap_or_default();
+                        graph_with_options(
+                            ui,
+                            w,
+                            data,
+                            (ui.available_height() - 5.).max(150.),
+                            &choices,
+                        );
                     });
                     size
                 });
@@ -560,132 +560,185 @@ pub fn show(
         .min_size([420., 300.])
         .show(ctx, |ui| {
             let (size, ()) = crate::bounded_ui::fill(ui, "panel-content", |ui| {
-            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
-            let selected = windows.iter().position(|w| w.id == panel.selected).unwrap_or(0);
-            panel.selected = windows[selected].id;
-            ui.horizontal_wrapped(|ui| {
-                for (menu, keys) in [
-                    ("Instrument", &[crate::vna_keys::Key::Trace, crate::vna_keys::Key::Channel, crate::vna_keys::Key::Display, crate::vna_keys::Key::Setup][..]),
-                    ("Response", &[crate::vna_keys::Key::Meas, crate::vna_keys::Key::Format, crate::vna_keys::Key::Scale, crate::vna_keys::Key::AvgBw, crate::vna_keys::Key::Cal, crate::vna_keys::Key::Marker, crate::vna_keys::Key::Search][..]),
-                    ("Stimulus", &[crate::vna_keys::Key::Freq, crate::vna_keys::Key::Power, crate::vna_keys::Key::Sweep, crate::vna_keys::Key::Trigger][..]),
-                    ("Utility", &[crate::vna_keys::Key::SaveRecall, crate::vna_keys::Key::System, crate::vna_keys::Key::Help][..]),
-                ] {
-                    ui.menu_button(menu, |ui| {
-                        for key in keys {
-                            if ui.button(key.label()).clicked() {
-                                let window = &mut windows[selected];
-                                if let Some(node) = graph.node(window.node) { crate::vna_keys::open(panel, window, &node.config, *key, None); }
+                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
+                let selected = windows
+                    .iter()
+                    .position(|w| w.id == panel.selected)
+                    .unwrap_or(0);
+                panel.selected = windows[selected].id;
+                ui.horizontal_wrapped(|ui| {
+                    for (menu, keys) in [
+                        (
+                            "Instrument",
+                            &[
+                                crate::vna_keys::Key::Trace,
+                                crate::vna_keys::Key::Channel,
+                                crate::vna_keys::Key::Display,
+                                crate::vna_keys::Key::Setup,
+                            ][..],
+                        ),
+                        (
+                            "Response",
+                            &[
+                                crate::vna_keys::Key::Meas,
+                                crate::vna_keys::Key::Format,
+                                crate::vna_keys::Key::Scale,
+                                crate::vna_keys::Key::AvgBw,
+                                crate::vna_keys::Key::Cal,
+                                crate::vna_keys::Key::Marker,
+                                crate::vna_keys::Key::Search,
+                            ][..],
+                        ),
+                        (
+                            "Stimulus",
+                            &[
+                                crate::vna_keys::Key::Freq,
+                                crate::vna_keys::Key::Power,
+                                crate::vna_keys::Key::Sweep,
+                                crate::vna_keys::Key::Trigger,
+                            ][..],
+                        ),
+                        (
+                            "Utility",
+                            &[
+                                crate::vna_keys::Key::SaveRecall,
+                                crate::vna_keys::Key::System,
+                                crate::vna_keys::Key::Help,
+                            ][..],
+                        ),
+                    ] {
+                        ui.menu_button(menu, |ui| {
+                            for key in keys {
+                                if ui.button(key.label()).clicked() {
+                                    let window = &mut windows[selected];
+                                    if let Some(node) = graph.node(window.node) {
+                                        crate::vna_keys::open(
+                                            panel,
+                                            window,
+                                            &node.config,
+                                            *key,
+                                            None,
+                                        );
+                                    }
+                                    ui.close();
+                                }
+                            }
+                            if menu == "Instrument" && ui.button("Quick Start…").clicked() {
+                                menu_actions.push(crate::vna_keys::Action::Instrument(
+                                    windows[selected].node,
+                                ));
                                 ui.close();
                             }
-                        }
-                        if menu == "Instrument" && ui.button("Quick Start…").clicked() {
-                            menu_actions.push(crate::vna_keys::Action::Instrument(windows[selected].node));
-                            ui.close();
-                        }
-                    });
-                }
-                if ui.button("Quick Start…").clicked() { menu_actions.push(crate::vna_keys::Action::Instrument(windows[selected].node)); }
-            });
-            ui.horizontal_wrapped(|ui| {
-                ui.label("Disposition");
-                egui::ComboBox::from_id_salt("vna-layout")
-                    .selected_text(format!("{} × {}", panel.columns, panel.rows))
-                    .show_ui(ui, |ui| {
-                        for (label, cols, rows) in [
-                            ("1 graphique", 1, 1),
-                            ("2 côte à côte", 2, 1),
-                            ("2 superposés", 1, 2),
-                            ("4 graphiques", 2, 2),
-                            ("6 graphiques", 3, 2),
-                            ("8 graphiques", 4, 2),
-                        ] {
-                            if ui
-                                .selectable_label(
-                                    panel.columns == cols && panel.rows == rows,
-                                    label,
-                                )
-                                .clicked()
-                            {
-                                panel.columns = cols;
-                                panel.rows = rows;
-                                panel.page = 0;
+                        });
+                    }
+                    if ui.button("Quick Start…").clicked() {
+                        menu_actions
+                            .push(crate::vna_keys::Action::Instrument(windows[selected].node));
+                    }
+                });
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Disposition");
+                    egui::ComboBox::from_id_salt("vna-layout")
+                        .selected_text(format!("{} × {}", panel.columns, panel.rows))
+                        .show_ui(ui, |ui| {
+                            for (label, cols, rows) in [
+                                ("1 graphique", 1, 1),
+                                ("2 côte à côte", 2, 1),
+                                ("2 superposés", 1, 2),
+                                ("4 graphiques", 2, 2),
+                                ("6 graphiques", 3, 2),
+                                ("8 graphiques", 4, 2),
+                            ] {
+                                if ui
+                                    .selectable_label(
+                                        panel.columns == cols && panel.rows == rows,
+                                        label,
+                                    )
+                                    .clicked()
+                                {
+                                    panel.columns = cols;
+                                    panel.rows = rows;
+                                    panel.page = 0;
+                                }
                             }
-                        }
-                    });
-                let pages = windows.len().div_ceil(panel.columns * panel.rows);
-                panel.page = panel.page.min(pages - 1);
-                if ui
-                    .add_enabled(panel.page > 0, egui::Button::new("◀"))
-                    .clicked()
-                {
-                    panel.page -= 1;
-                }
-                ui.label(format!("Page {}/{}", panel.page + 1, pages));
-                if ui
-                    .add_enabled(panel.page + 1 < pages, egui::Button::new("▶"))
-                    .clicked()
-                {
-                    panel.page += 1;
-                }
-                if ui.button("Traces…").clicked() {
-                    configure = Some(panel.selected);
-                }
-                ui.checkbox(&mut panel.keys_visible, "Touches VNA");
-            });
-            let selected = windows
-                .iter()
-                .position(|w| w.id == panel.selected)
-                .unwrap_or(0);
-            panel.selected = windows[selected].id;
-            let active = &windows[selected].traces[windows[selected].active_trace];
-            ui.small(format!(
-                "Graphique {} · trace {} · {} · Ch {}",
-                panel.selected,
-                windows[selected].active_trace + 1,
-                active.parameter,
-                graph
-                    .node(windows[selected].node)
-                    .map_or(1, |n| n.config.instrument.channel)
-            ));
-            ui.separator();
-            let count = panel.columns * panel.rows;
-            let (area, _) = ui.allocate_exact_size(
-                egui::vec2(ui.available_width(), ui.available_height().max(1.)),
-                Sense::hover(),
-            );
-            let side_width = if panel.keys_visible { (area.width() * 0.36).clamp(155., 290.) } else { 0. };
-            let plot_width = (area.width() - side_width - if panel.keys_visible { 8. } else { 0. }).max(1.);
-            let width = (plot_width - 8. * (panel.columns - 1) as f32) / panel.columns as f32;
-            let height = (area.height() - 8. * (panel.rows - 1) as f32) / panel.rows as f32;
-            for slot in 0..count {
-                let Some(w) = windows.get_mut(panel.page * count + slot) else {
-                    continue;
+                        });
+                    let pages = windows.len().div_ceil(panel.columns * panel.rows);
+                    panel.page = panel.page.min(pages - 1);
+                    if ui
+                        .add_enabled(panel.page > 0, egui::Button::new("◀"))
+                        .clicked()
+                    {
+                        panel.page -= 1;
+                    }
+                    ui.label(format!("Page {}/{}", panel.page + 1, pages));
+                    if ui
+                        .add_enabled(panel.page + 1 < pages, egui::Button::new("▶"))
+                        .clicked()
+                    {
+                        panel.page += 1;
+                    }
+                    if ui.button("Traces…").clicked() {
+                        configure = Some(panel.selected);
+                    }
+                    ui.checkbox(&mut panel.keys_visible, "Touches VNA");
+                });
+                let selected = windows
+                    .iter()
+                    .position(|w| w.id == panel.selected)
+                    .unwrap_or(0);
+                panel.selected = windows[selected].id;
+                let active = &windows[selected].traces[windows[selected].active_trace];
+                ui.small(format!(
+                    "Graphique {} · trace {} · {} · Ch {}",
+                    panel.selected,
+                    windows[selected].active_trace + 1,
+                    active.parameter,
+                    graph
+                        .node(windows[selected].node)
+                        .map_or(1, |n| n.config.instrument.channel)
+                ));
+                ui.separator();
+                let count = panel.columns * panel.rows;
+                let (area, _) = ui.allocate_exact_size(
+                    egui::vec2(ui.available_width(), ui.available_height().max(1.)),
+                    Sense::hover(),
+                );
+                let side_width = if panel.keys_visible {
+                    (area.width() * 0.36).clamp(155., 290.)
+                } else {
+                    0.
                 };
-                let rect = Rect::from_min_size(
-                    area.min
-                        + egui::vec2(
-                            (slot % panel.columns) as f32 * (width + 8.),
-                            (slot / panel.columns) as f32 * (height + 8.),
+                let plot_width =
+                    (area.width() - side_width - if panel.keys_visible { 8. } else { 0. }).max(1.);
+                let width = (plot_width - 8. * (panel.columns - 1) as f32) / panel.columns as f32;
+                let height = (area.height() - 8. * (panel.rows - 1) as f32) / panel.rows as f32;
+                for slot in 0..count {
+                    let Some(w) = windows.get_mut(panel.page * count + slot) else {
+                        continue;
+                    };
+                    let rect = Rect::from_min_size(
+                        area.min
+                            + egui::vec2(
+                                (slot % panel.columns) as f32 * (width + 8.),
+                                (slot / panel.columns) as f32 * (height + 8.),
+                            ),
+                        egui::vec2(width, height),
+                    );
+                    ui.painter().rect_stroke(
+                        rect,
+                        3.,
+                        Stroke::new(
+                            1.,
+                            if panel.selected == w.id {
+                                color(w.traces[w.active_trace].color)
+                            } else {
+                                border()
+                            },
                         ),
-                    egui::vec2(width, height),
-                );
-                ui.painter().rect_stroke(
-                    rect,
-                    3.,
-                    Stroke::new(
-                        1.,
-                        if panel.selected == w.id {
-                            color(w.traces[w.active_trace].color)
-                        } else {
-                            border()
-                        },
-                    ),
-                    StrokeKind::Inside,
-                );
-                let mut clicked = false;
-                crate::bounded_ui::region(
-                    ui, rect.shrink(5.), ("vna-graph", w.id),
-                    |ui| {
+                        StrokeKind::Inside,
+                    );
+                    let mut clicked = false;
+                    crate::bounded_ui::region(ui, rect.shrink(5.), ("vna-graph", w.id), |ui| {
                         let before = w.active_trace;
                         let choices = graph
                             .node(w.node)
@@ -697,21 +750,18 @@ pub fn show(
                                 (i.pointer.primary_clicked() || i.pointer.secondary_clicked())
                                     && i.pointer.hover_pos().is_some_and(|p| rect.contains(p))
                             });
-                    },
-                );
-                if clicked {
-                    panel.selected = w.id;
+                    });
+                    if clicked {
+                        panel.selected = w.id;
+                    }
                 }
-            }
-            if panel.keys_visible {
-                let rect = Rect::from_min_max(area.min + egui::vec2(plot_width + 8., 0.), area.max);
-                crate::bounded_ui::region(
-                    ui, rect, "vna-controls",
-                    |ui| {
+                if panel.keys_visible {
+                    let rect =
+                        Rect::from_min_max(area.min + egui::vec2(plot_width + 8., 0.), area.max);
+                    crate::bounded_ui::region(ui, rect, "vna-controls", |ui| {
                         crate::vna_keys::side(ui, panel, windows, graph);
-                    },
-                );
-            }
+                    });
+                }
             });
             size
         });
@@ -930,30 +980,66 @@ mod tests {
         let ctx = egui::Context::default();
         let mut g = rf_core::Graph::default();
         let id = g.add(rf_core::Kind::PnaX, [0., 0.]);
-        let mut panel = Panel { rect: [25., 25., 1000., 600.], ..Default::default() };
-        let mut windows = ["S11", "S12", "S21", "S22"].iter().enumerate()
-            .map(|(i,p)| Window::new(i as u64 + 1, id, (*p).into(), Format::Magnitude, false)).collect::<Vec<_>>();
+        let mut panel = Panel {
+            rect: [25., 25., 1000., 600.],
+            ..Default::default()
+        };
+        let mut windows = ["S11", "S12", "S21", "S22"]
+            .iter()
+            .enumerate()
+            .map(|(i, p)| Window::new(i as u64 + 1, id, (*p).into(), Format::Magnitude, false))
+            .collect::<Vec<_>>();
         let mut render = |events| {
-            let _ = ctx.run(egui::RawInput {
-                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(1280., 800.))),
-                events, ..Default::default()
-            }, |ctx| { show(ctx, &mut panel, &mut windows, &[], 0, &mut g, false); });
-            (egui::vec2(panel.rect[2], panel.rect[3]), ctx.memory(|m| m.area_rect(egui::Id::new(("vna-panel", 0u64))).unwrap()))
+            let _ = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(1280., 800.))),
+                    events,
+                    ..Default::default()
+                },
+                |ctx| {
+                    show(ctx, &mut panel, &mut windows, &[], 0, &mut g, false);
+                },
+            );
+            (
+                egui::vec2(panel.rect[2], panel.rect[3]),
+                ctx.memory(|m| m.area_rect(egui::Id::new(("vna-panel", 0u64))).unwrap()),
+            )
         };
         let mut before = egui::Vec2::ZERO;
-        for _ in 0..60 { before = render(vec![]).0; }
-        assert!(before.x <= 1002. && before.y <= 602., "Idle growth: {before:?}");
+        for _ in 0..60 {
+            before = render(vec![]).0;
+        }
+        assert!(
+            before.x <= 1002. && before.y <= 602.,
+            "Idle growth: {before:?}"
+        );
         let start = render(vec![]).1.right_bottom() - egui::vec2(2., 2.);
         render(vec![egui::Event::PointerMoved(start)]);
-        render(vec![egui::Event::PointerButton { pos: start, button: egui::PointerButton::Primary, pressed: true, modifiers: egui::Modifiers::NONE }]);
+        render(vec![egui::Event::PointerButton {
+            pos: start,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::NONE,
+        }]);
         let end = start - egui::vec2(350., 180.);
         render(vec![egui::Event::PointerMoved(end)]);
-        render(vec![egui::Event::PointerButton { pos: end, button: egui::PointerButton::Primary, pressed: false, modifiers: egui::Modifiers::NONE }]);
+        render(vec![egui::Event::PointerButton {
+            pos: end,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: egui::Modifiers::NONE,
+        }]);
         let resized = render(vec![]).0;
-        assert!(resized.x < before.x - 300. && resized.y < before.y - 140., "Resize ignored: {before:?} -> {resized:?}");
+        assert!(
+            resized.x < before.x - 300. && resized.y < before.y - 140.,
+            "Resize ignored: {before:?} -> {resized:?}"
+        );
         for _ in 0..60 {
             let size = render(vec![]).0;
-            assert!((size - resized).length() < 2., "Window regrew: {resized:?} -> {size:?}");
+            assert!(
+                (size - resized).length() < 2.,
+                "Window regrew: {resized:?} -> {size:?}"
+            );
         }
     }
 }

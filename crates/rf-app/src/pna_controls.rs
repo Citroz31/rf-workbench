@@ -6,9 +6,12 @@ use rf_core::{
 };
 use rf_instruments::pna_path::{Element, Snapshot};
 
-
 pub fn trace_editor(ui: &mut egui::Ui, c: &mut Config) {
-    let plan = c.instrument.pna.plan.get_or_insert_with(|| Plan::s_parameters(c.instrument.port_count));
+    let plan = c
+        .instrument
+        .pna
+        .plan
+        .get_or_insert_with(|| Plan::s_parameters(c.instrument.port_count));
     trace_editor_plan(ui, plan);
 }
 fn trace_editor_plan(ui: &mut egui::Ui, plan: &mut Plan) {
@@ -30,7 +33,10 @@ fn trace_editor_plan(ui: &mut egui::Ui, plan: &mut Plan) {
                                     (Format::Raw, "Puissance dBm / valeur Y"),
                                 ] {
                                     if (t.parameter.starts_with('S') || format == Format::Raw)
-                                        && (format != Format::Smith || rf_core::physical::s_parameter_ports(&t.parameter).is_some_and(|(r,s)| r == s)) {
+                                        && (format != Format::Smith
+                                            || rf_core::physical::s_parameter_ports(&t.parameter)
+                                                .is_some_and(|(r, s)| r == s))
+                                    {
                                         ui.selectable_value(&mut t.format, format, label);
                                     }
                                 }
