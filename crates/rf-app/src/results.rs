@@ -6,7 +6,7 @@ pub enum Format {
     Smith,
     Linear,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Window {
     pub id: u64,
     pub node: u64,
@@ -19,7 +19,7 @@ pub struct Window {
     #[serde(default)]
     pub active_trace: usize,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Scale {
     pub automatic: bool,
@@ -74,7 +74,7 @@ impl Scale {
             && (0. ..=10.).contains(&self.reference_division)
     }
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Trace {
     pub node: u64,
     pub parameter: String,
@@ -83,6 +83,8 @@ pub struct Trace {
     pub visible: bool,
     pub scale: Scale,
     pub color: usize,
+    #[serde(default)]
+    pub marker: Option<f64>,
 }
 impl Window {
     pub fn new(id: u64, node: u64, parameter: String, format: Format, corrected: bool) -> Self {
@@ -107,6 +109,7 @@ impl Window {
                 visible: true,
                 scale: Scale::default(),
                 color: 0,
+                marker: None,
             });
         }
         self.active_trace = self.active_trace.min(self.traces.len() - 1);
@@ -134,12 +137,19 @@ impl Window {
             visible: true,
             scale: Scale::default(),
             color: self.active_trace,
+            marker: None,
         });
     }
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Panel {
+    pub hotkey: crate::vna_keys::Key,
+    pub keys_visible: bool,
+    #[serde(skip)]
+    pub editor: Option<crate::vna_keys::Editor>,
+    #[serde(skip)]
+    pub undo: Vec<crate::vna_keys::Snapshot>,
     pub initialized_nodes: Vec<u64>,
     pub open: bool,
     pub floating: bool,
@@ -152,6 +162,10 @@ pub struct Panel {
 impl Default for Panel {
     fn default() -> Self {
         Self {
+            hotkey: crate::vna_keys::Key::Freq,
+            keys_visible: true,
+            editor: None,
+            undo: Vec::new(),
             initialized_nodes: Vec::new(),
             open: true,
             floating: false,
@@ -194,6 +208,7 @@ pub fn validate(w: &[Window]) -> Result<(), String> {
                         || t.parameter.len() > 256
                         || !t.scale.valid()
                         || t.color > 255
+                        || t.marker.is_some_and(|x| !x.is_finite())
                 })
         })
     {

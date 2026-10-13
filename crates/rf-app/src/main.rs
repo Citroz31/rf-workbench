@@ -21,6 +21,7 @@ mod studio;
 mod theme;
 mod visuals;
 mod vna_panel;
+mod vna_keys;
 
 fn main() -> eframe::Result<()> {
     let args: Vec<String> = std::env::args().collect();

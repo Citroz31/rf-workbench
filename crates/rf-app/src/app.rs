@@ -1202,17 +1202,16 @@ impl Workbench {
             .width_range(150. ..=600.)
             .show(ctx, |ui| {
                 caption(ui, "BIBLIOTHÈQUE DE BLOCS");
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.search)
-                        .hint_text(pair("Recherche floue…", "Fuzzy search…"))
-                        .desired_width(f32::INFINITY),
-                );
+                self.palette_search(ui);
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     let hits = crate::editor::search(&self.search);
                     if !self.search.trim().is_empty() {
                         caption(ui, "Résultats");
                         for k in hits {
                             self.palette_item(ui, k);
+                        }
+                        if crate::editor::search(&self.search).is_empty() {
+                            ui.label("Aucun composant trouvé. Essayer PNA, DAC, alimentation…");
                         }
                     } else {
                         for (name, list) in [

@@ -1,8 +1,8 @@
 use crate::{theme::*, visuals};
 use eframe::egui::{self, Align2, Id, Pos2, Rect, Sense, Stroke, StrokeKind, Vec2};
 use rf_core::{Graph, Kind, Node, PhysicalPortKind};
-// Approximately 1 mm in egui screen points at the usual 96 logical DPI.
-const PIN_MAGNET_MARGIN: f32 = 96. / 25.4;
+// Screen-space radius, independent of zoom. Cursor attraction occurs only on entry.
+const PIN_MAGNET_MARGIN: f32 = 14.;
 use std::collections::BTreeSet;
 pub const NODE_SIZE: Vec2 = egui::vec2(240., 208.);
 #[derive(Clone, Copy)]
@@ -196,6 +196,7 @@ pub struct Canvas {
     fit: bool,
     auto_fit: bool,
     last_size: Option<Vec2>,
+    magnet_latch: Option<(u64, usize, bool)>,
 }
 impl Default for Canvas {
     fn default() -> Self {
@@ -225,6 +226,7 @@ impl Default for Canvas {
             fit: true,
             auto_fit: true,
             last_size: None,
+            magnet_latch: None,
         }
     }
 }
@@ -281,6 +283,7 @@ impl Canvas {
         self.tool = tool;
     }
     pub fn cancel_wire(&mut self) {
+        self.magnet_latch = None;
         self.wiring = None;
         self.physical_wiring = None;
         self.waypoints.clear();
@@ -362,6 +365,17 @@ impl Canvas {
             }
         }
         nearest
+    }
+    fn attract_pointer(&mut self, ctx: &egui::Context, target: Option<SnapTarget>) {
+        let key = target.map(|t| (t.node, t.index, t.physical));
+        if key != self.magnet_latch {
+            self.magnet_latch = key;
+            if let Some(target) = target
+                && ctx.input(|i| !i.pointer.any_down() && i.focused)
+            {
+                ctx.send_viewport_cmd(egui::ViewportCommand::CursorPosition(target.position));
+            }
+        }
     }
     fn screen(&self, origin: Pos2, p: [f32; 2]) -> Pos2 {
         origin + self.pan + egui::vec2(p[0], p[1]) * self.zoom
@@ -806,6 +820,7 @@ impl Canvas {
             .input(|i| i.pointer.hover_pos())
             .filter(|p| rect.contains(*p))
             .and_then(|p| self.nearest_target(g, rect.min, p));
+        self.attract_pointer(ui.ctx(), snap_target);
         let mut error = None;
         let mut disconnect = None;
         let mut cable_hover = false;
@@ -1727,7 +1742,7 @@ mod tests {
             + Vec2::from(g.node(d).unwrap().position)
             + physical_port_offset(g.node(d).unwrap(), 1);
         assert!(
-            c.nearest_target(&g, origin, out + egui::vec2(12., 0.))
+            c.nearest_target(&g, origin, out + egui::vec2(26., 0.))
                 .is_none()
         );
         c.zoom = 0.5;
@@ -1738,6 +1753,20 @@ mod tests {
             c.nearest_target(&g, origin, out + egui::vec2(6., 0.))
                 .is_some()
         );
+    }
+    #[test]
+    fn cursor_attraction_is_entry_only_and_can_be_escaped_or_cancelled() {
+        let ctx=egui::Context::default();
+        let mut c=Canvas::default();
+        let target=SnapTarget{node:2,index:1,physical:true,position:Pos2::new(260.,180.)};
+        let mut frame=|target| ctx.run(egui::RawInput{focused:true,..Default::default()},|ctx| c.attract_pointer(ctx,target));
+        let moves=|out:egui::FullOutput| out.viewport_output.values().flat_map(|v|v.commands.iter()).filter(|v| matches!(v,egui::ViewportCommand::CursorPosition(_))).count();
+        assert_eq!(moves(frame(Some(target))),1);
+        assert_eq!(moves(frame(Some(target))),0);
+        assert_eq!(moves(frame(None)),0);
+        assert_eq!(moves(frame(Some(target))),1);
+        c.cancel_wire();
+        assert!(c.magnet_latch.is_none());
     }
     #[test]
     fn cursor_placement_commits_only_on_click_respects_grid_pan_zoom_and_undo() {

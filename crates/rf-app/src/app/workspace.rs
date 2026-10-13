@@ -1,5 +1,20 @@
 use super::*;
 impl Workbench {
+    pub(super) fn palette_search(&mut self, ui: &mut egui::Ui) {
+        ui.label(crate::i18n::pair("Rechercher un composant · Ctrl+F", "Find a component · Ctrl+F"));
+        ui.horizontal(|ui| {
+            let search = ui.add(egui::TextEdit::singleline(&mut self.search)
+                .hint_text("PNA, DAC, CAN, E36313A…")
+                .desired_width((ui.available_width() - 28.).max(70.)));
+            if ui.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::F)) {
+                search.request_focus();
+            }
+            if ui.add_enabled(!self.search.is_empty(), egui::Button::new("×")).on_hover_text("Effacer la recherche").clicked() {
+                self.search.clear();
+                search.request_focus();
+            }
+        });
+    }
     pub(super) fn network_view(&mut self, ui: &mut egui::Ui) {
         ui.heading("Paramètres S / résultats PNA");
         if ui.button("Configurer le panneau VNA…").clicked() {
@@ -119,10 +134,13 @@ impl Workbench {
         ui.horizontal(|ui| {
             caption(ui, "INSTRUMENTS & SYMBOLES");
             ui.label(
-                RichText::new(crate::i18n::t("Clique un élément pour l'ajouter au schéma"))
+                RichText::new(crate::i18n::t("Choisir un élément, puis cliquer dans la grille pour le placer"))
                     .color(muted()),
             );
         });
+        self.palette_search(ui);
+        let hits = crate::editor::search(&self.search);
+        ui.label(format!("{} composants", hits.len()));
         let columns = (ui.available_width() / 200.).floor().max(1.) as usize;
         let width = (ui.available_width() - 10. * (columns - 1) as f32) / columns as f32;
         let mut add = None;
@@ -130,10 +148,7 @@ impl Workbench {
             egui::Grid::new("visual-library")
                 .spacing([10., 10.])
                 .show(ui, |ui| {
-                    for (i, k) in Kind::ALL
-                        .into_iter()
-                        .filter(|k| crate::editor::search(&self.search).contains(k))
-                        .enumerate()
+                    for (i, k) in hits.into_iter().enumerate()
                     {
                         let (rect, response) =
                             ui.allocate_exact_size(egui::vec2(width, 165.), egui::Sense::click());
