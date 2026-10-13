@@ -330,9 +330,10 @@ fn graph_with_options(
         ));
         if let Some(marker) = t.marker
             && (first..=last).contains(&marker)
-            && let Some((i, _)) = c.x.iter().enumerate().min_by(|(_, a), (_, b)| {
-                (*a - marker).abs().total_cmp(&(*b - marker).abs())
-            })
+            && let Some((i, _)) =
+                c.x.iter()
+                    .enumerate()
+                    .min_by(|(_, a), (_, b)| (*a - marker).abs().total_cmp(&(*b - marker).abs()))
         {
             let at = point(i);
             cp.circle_filled(at, 4., color(t.color));
