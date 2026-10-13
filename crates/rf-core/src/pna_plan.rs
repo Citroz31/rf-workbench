@@ -5,15 +5,21 @@ use serde::{Deserialize, Serialize};
 pub enum Arrangement {
     Single,
     Two,
+    TwoVertical,
     #[default]
     Quad,
+    Six,
+    Eight,
 }
 impl Arrangement {
     pub fn grid(self) -> (usize, usize) {
         match self {
             Self::Single => (1, 1),
             Self::Two => (2, 1),
+            Self::TwoVertical => (1, 2),
             Self::Quad => (2, 2),
+            Self::Six => (3, 2),
+            Self::Eight => (4, 2),
         }
     }
 }
@@ -111,6 +117,8 @@ impl Plan {
             ],
             ..Self::s_parameters(2)
         };
+        let mut seen = std::collections::BTreeSet::new();
+        plan.parameters.retain(|p| seen.insert(p.clone()));
         plan.rebuild_windows();
         plan
     }

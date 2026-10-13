@@ -497,11 +497,13 @@ impl Workbench {
                 && let Some(d) = &mut bench.instrument_dialog
             {
                 d.tab = 4;
+                d.pna_page = crate::pna_setup::Page::Paths;
             }
             if args.iter().any(|a| a == "--instrument-functions")
                 && let Some(d) = &mut bench.instrument_dialog
             {
                 d.tab = 1;
+                d.pna_page = crate::pna_setup::Page::QuickStart;
                 d.config.instrument.configure_sweep = true;
             }
         }
@@ -1236,14 +1238,11 @@ impl Workbench {
         });
     }
     fn sidebar(&mut self, ctx: &egui::Context) {
-        let shown = egui::SidePanel::left(egui::Id::new(("library", self.layout_revision)))
-            .resizable(true)
-            .default_width(self.layout.library_width)
-            .width_range(150. ..=600.)
-            .show(ctx, |ui| {
+        self.layout.library_width = crate::bounded_ui::library(ctx, self.layout.library_width, self.layout_revision, |ui| {
+                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
                 caption(ui, "BIBLIOTHÈQUE DE BLOCS");
                 self.palette_search(ui);
-                egui::ScrollArea::vertical().show(ui, |ui| {
+                egui::ScrollArea::vertical().auto_shrink([false, false]).min_scrolled_width(0.).show(ui, |ui| {
                     let hits = crate::editor::search(&self.search);
                     if !self.search.trim().is_empty() {
                         caption(ui, "Résultats");
@@ -1293,7 +1292,6 @@ impl Workbench {
                     }
                 });
             });
-        self.layout.library_width = shown.response.rect.width().clamp(150., 600.);
     }
     fn inspector(&mut self, ctx: &egui::Context) {
         let mut configure = None;

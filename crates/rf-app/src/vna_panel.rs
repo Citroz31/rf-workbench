@@ -508,7 +508,9 @@ pub fn show(
                 .default_pos([w.rect[0], w.rect[1]])
                 .default_size([w.rect[2], w.rect[3]])
                 .resizable(true)
+                .min_size([240., 220.])
                 .show(ctx, |ui| {
+                    let (size, ()) = crate::bounded_ui::fill(ui, "floating-content", |ui| {
                     scale_controls(ui, w, data);
                     if ui.button("Configurer les traces…").clicked() {
                         configure = Some(w.id);
@@ -524,7 +526,8 @@ pub fn show(
                         (ui.available_height() - 5.).max(150.),
                         &choices,
                     );
-                    ui.min_rect().size()
+                    });
+                    size
                 });
             if let Some(shown) = shown {
                 let size = shown.inner.unwrap_or(egui::vec2(w.rect[2], w.rect[3]));
@@ -546,6 +549,7 @@ pub fn show(
             actions,
         };
     }
+    let mut menu_actions = Vec::new();
     let mut open = panel.open;
     let shown = egui::Window::new("VNA · panneau de résultats")
         .id(egui::Id::new(("vna-panel", revision)))
@@ -553,8 +557,35 @@ pub fn show(
         .resizable(true)
         .default_pos([panel.rect[0], panel.rect[1]])
         .default_size([panel.rect[2], panel.rect[3]])
-        .min_size([850., 480.])
+        .min_size([420., 300.])
         .show(ctx, |ui| {
+            let (size, ()) = crate::bounded_ui::fill(ui, "panel-content", |ui| {
+            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
+            let selected = windows.iter().position(|w| w.id == panel.selected).unwrap_or(0);
+            panel.selected = windows[selected].id;
+            ui.horizontal_wrapped(|ui| {
+                for (menu, keys) in [
+                    ("Instrument", &[crate::vna_keys::Key::Trace, crate::vna_keys::Key::Channel, crate::vna_keys::Key::Display, crate::vna_keys::Key::Setup][..]),
+                    ("Response", &[crate::vna_keys::Key::Meas, crate::vna_keys::Key::Format, crate::vna_keys::Key::Scale, crate::vna_keys::Key::AvgBw, crate::vna_keys::Key::Cal, crate::vna_keys::Key::Marker, crate::vna_keys::Key::Search][..]),
+                    ("Stimulus", &[crate::vna_keys::Key::Freq, crate::vna_keys::Key::Power, crate::vna_keys::Key::Sweep, crate::vna_keys::Key::Trigger][..]),
+                    ("Utility", &[crate::vna_keys::Key::SaveRecall, crate::vna_keys::Key::System, crate::vna_keys::Key::Help][..]),
+                ] {
+                    ui.menu_button(menu, |ui| {
+                        for key in keys {
+                            if ui.button(key.label()).clicked() {
+                                let window = &mut windows[selected];
+                                if let Some(node) = graph.node(window.node) { crate::vna_keys::open(panel, window, &node.config, *key, None); }
+                                ui.close();
+                            }
+                        }
+                        if menu == "Instrument" && ui.button("Quick Start…").clicked() {
+                            menu_actions.push(crate::vna_keys::Action::Instrument(windows[selected].node));
+                            ui.close();
+                        }
+                    });
+                }
+                if ui.button("Quick Start…").clicked() { menu_actions.push(crate::vna_keys::Action::Instrument(windows[selected].node)); }
+            });
             ui.horizontal_wrapped(|ui| {
                 ui.label("Disposition");
                 egui::ComboBox::from_id_salt("vna-layout")
@@ -596,7 +627,7 @@ pub fn show(
                 {
                     panel.page += 1;
                 }
-                if ui.button("Ajouter / configurer les traces…").clicked() {
+                if ui.button("Traces…").clicked() {
                     configure = Some(panel.selected);
                 }
                 ui.checkbox(&mut panel.keys_visible, "Touches VNA");
@@ -619,11 +650,11 @@ pub fn show(
             ui.separator();
             let count = panel.columns * panel.rows;
             let (area, _) = ui.allocate_exact_size(
-                egui::vec2(ui.available_width(), ui.available_height().max(160.)),
+                egui::vec2(ui.available_width(), ui.available_height().max(1.)),
                 Sense::hover(),
             );
-            let side_width = if panel.keys_visible { 300. } else { 0. };
-            let plot_width = (area.width() - side_width).max(200.);
+            let side_width = if panel.keys_visible { (area.width() * 0.36).clamp(155., 290.) } else { 0. };
+            let plot_width = (area.width() - side_width - if panel.keys_visible { 8. } else { 0. }).max(1.);
             let width = (plot_width - 8. * (panel.columns - 1) as f32) / panel.columns as f32;
             let height = (area.height() - 8. * (panel.rows - 1) as f32) / panel.rows as f32;
             for slot in 0..count {
@@ -652,10 +683,8 @@ pub fn show(
                     StrokeKind::Inside,
                 );
                 let mut clicked = false;
-                ui.scope_builder(
-                    egui::UiBuilder::new()
-                        .max_rect(rect.shrink(5.))
-                        .id_salt(("vna-graph", w.id)),
+                crate::bounded_ui::region(
+                    ui, rect.shrink(5.), ("vna-graph", w.id),
                     |ui| {
                         let before = w.active_trace;
                         let choices = graph
@@ -676,16 +705,15 @@ pub fn show(
             }
             if panel.keys_visible {
                 let rect = Rect::from_min_max(area.min + egui::vec2(plot_width + 8., 0.), area.max);
-                ui.scope_builder(
-                    egui::UiBuilder::new()
-                        .max_rect(rect)
-                        .id_salt("vna-controls"),
+                crate::bounded_ui::region(
+                    ui, rect, "vna-controls",
                     |ui| {
                         crate::vna_keys::side(ui, panel, windows, graph);
                     },
                 );
             }
-            ui.min_rect().size()
+            });
+            size
         });
     panel.open = open;
     if let Some(shown) = shown {
@@ -695,7 +723,8 @@ pub fn show(
             .unwrap_or(egui::vec2(panel.rect[2], panel.rect[3]));
         panel.rect = [r.min.x, r.min.y, size.x, size.y];
     }
-    let actions = crate::vna_keys::popup(ctx, panel, windows, graph, data, busy);
+    let mut actions = crate::vna_keys::popup(ctx, panel, windows, graph, data, busy);
+    actions.extend(menu_actions);
     Output {
         configure,
         closed,
@@ -895,5 +924,36 @@ mod tests {
             "{before:?} -> {:?}",
             panel.rect
         );
+    }
+    #[test]
+    fn panel_can_shrink_at_1280_pixels_and_stays_stable_with_hotkeys() {
+        let ctx = egui::Context::default();
+        let mut g = rf_core::Graph::default();
+        let id = g.add(rf_core::Kind::PnaX, [0., 0.]);
+        let mut panel = Panel { rect: [25., 25., 1000., 600.], ..Default::default() };
+        let mut windows = ["S11", "S12", "S21", "S22"].iter().enumerate()
+            .map(|(i,p)| Window::new(i as u64 + 1, id, (*p).into(), Format::Magnitude, false)).collect::<Vec<_>>();
+        let mut render = |events| {
+            let _ = ctx.run(egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(1280., 800.))),
+                events, ..Default::default()
+            }, |ctx| { show(ctx, &mut panel, &mut windows, &[], 0, &mut g, false); });
+            (egui::vec2(panel.rect[2], panel.rect[3]), ctx.memory(|m| m.area_rect(egui::Id::new(("vna-panel", 0u64))).unwrap()))
+        };
+        let mut before = egui::Vec2::ZERO;
+        for _ in 0..60 { before = render(vec![]).0; }
+        assert!(before.x <= 1002. && before.y <= 602., "Idle growth: {before:?}");
+        let start = render(vec![]).1.right_bottom() - egui::vec2(2., 2.);
+        render(vec![egui::Event::PointerMoved(start)]);
+        render(vec![egui::Event::PointerButton { pos: start, button: egui::PointerButton::Primary, pressed: true, modifiers: egui::Modifiers::NONE }]);
+        let end = start - egui::vec2(350., 180.);
+        render(vec![egui::Event::PointerMoved(end)]);
+        render(vec![egui::Event::PointerButton { pos: end, button: egui::PointerButton::Primary, pressed: false, modifiers: egui::Modifiers::NONE }]);
+        let resized = render(vec![]).0;
+        assert!(resized.x < before.x - 300. && resized.y < before.y - 140., "Resize ignored: {before:?} -> {resized:?}");
+        for _ in 0..60 {
+            let size = render(vec![]).0;
+            assert!((size - resized).length() < 2., "Window regrew: {resized:?} -> {size:?}");
+        }
     }
 }

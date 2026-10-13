@@ -2,135 +2,20 @@
 use eframe::egui::{self, Align2, Color32, FontId, Rect, Sense, Stroke, StrokeKind, Vec2};
 use rf_core::{
     Config,
-    pna_plan::{Arrangement, Format, PathSettings, Plan},
+    pna_plan::{Format, PathSettings, Plan},
 };
 use rf_instruments::pna_path::{Element, Snapshot};
 
-pub fn plan_editor(ui: &mut egui::Ui, c: &mut Config) {
-    ui.heading("Plan de mesure et panneau PNA");
-    ui.small(format!(
-        "Channel {} commun aux acquisitions et aux graphiques",
-        c.instrument.channel
-    ));
-    ui.horizontal_wrapped(|ui| {
-        if ui.button("Paramètres S · 4 fenêtres").clicked() {
-            c.instrument.pna.power_sweep = false;
-            c.instrument.pna.all_s_parameters = false;
-            c.instrument.pna.plan = Some(Plan::s_parameters(c.instrument.port_count));
-            c.s_parameter = "S21".into();
-            if c.instrument.port_count == 1 {
-                c.s_parameter = "S11".into();
-            }
-            c.instrument.measurement.clear();
-        }
-        if ui
-            .button("Puissance · gain / réflexion / récepteurs")
-            .clicked()
-        {
-            let source = c.instrument.pna.source_port.min(c.instrument.port_count);
-            let receiver = if source == 1 {
-                2.min(c.instrument.port_count)
-            } else {
-                1
-            };
-            c.instrument.pna.power_sweep = true;
-            c.instrument.pna.all_s_parameters = false;
-            c.s_parameter = format!("S{receiver}{source}");
-            c.instrument.measurement.clear();
-            c.instrument.pna.plan = Some(Plan::power(source, receiver));
-        }
-    });
-    let enabled = c.instrument.pna.plan.is_some();
-    let mut use_plan = enabled;
-    if ui
-        .checkbox(
-            &mut use_plan,
-            "Utiliser ce plan commun (interface, simulation, instrument)",
-        )
-        .changed()
-    {
-        c.instrument.pna.plan = use_plan.then(|| Plan::s_parameters(c.instrument.port_count));
-    }
-    let Some(plan) = &mut c.instrument.pna.plan else {
-        return;
-    };
-    let mut changed = false;
-    ui.horizontal_wrapped(|ui| {
-        let mut options = Vec::new();
-        for i in 1..=c.instrument.port_count {
-            for j in 1..=c.instrument.port_count {
-                if !c.instrument.pna.power_sweep || j == c.instrument.pna.source_port {
-                    options.push(format!("S{i}{j}"));
-                }
-            }
-        }
-        // Receiver names match the PNA catalogue's underscore notation.
-        if c.instrument.pna.power_sweep {
-            let s = c.instrument.pna.source_port;
-            options.push(format!("R{s}_{s}"));
-            for i in 1..=c.instrument.port_count {
-                options.push(format!("{}_{s}", ["A", "B", "C", "D"][usize::from(i - 1)]));
-            }
-        }
-        for p in options {
-            let mut selected = plan.parameters.contains(&p);
-            if ui.checkbox(&mut selected, &p).changed() {
-                if selected {
-                    plan.parameters.push(p);
-                } else {
-                    plan.parameters.retain(|value| value != &p);
-                }
-                changed = true;
-            }
-        }
-    });
-    if changed {
-        let order = |p: &String| match p.as_str() {
-            "S11" => 0,
-            "S12" => 1,
-            "S21" => 2,
-            "S22" => 3,
-            _ => 4,
-        };
-        plan.parameters.sort_by_key(order);
-        plan.rebuild_windows();
-        if !plan.parameters.contains(&c.s_parameter)
-            && let Some(p) = plan.parameters.iter().find(|p| p.starts_with('S'))
-        {
-            c.s_parameter = p.clone();
-            c.instrument.measurement.clear();
-        }
-    }
-    ui.horizontal_wrapped(|ui| {
-        for (a, label) in [
-            (Arrangement::Single, "1 fenêtre"),
-            (Arrangement::Two, "2 fenêtres"),
-            (Arrangement::Quad, "4 fenêtres · 2 × 2"),
-        ] {
-            if ui
-                .selectable_value(&mut plan.arrangement, a, label)
-                .clicked()
-            {
-                plan.rebuild_windows();
-            }
-        }
-    });
-    ui.horizontal_wrapped(|ui| {
-        if ui.button("Répartir les traces").clicked() {
-            plan.rebuild_windows();
-        }
-        if ui.button("Superposer les traces").clicked() {
-            let traces = plan.windows.iter().flat_map(|w| w.traces.clone()).collect();
-            plan.windows = vec![rf_core::pna_plan::DisplayWindow {
-                traces,
-                active_trace: 0,
-            }];
-            plan.arrangement = Arrangement::Single;
-        }
-    });
+
+pub fn trace_editor(ui: &mut egui::Ui, c: &mut Config) {
+    let plan = c.instrument.pna.plan.get_or_insert_with(|| Plan::s_parameters(c.instrument.port_count));
+    trace_editor_plan(ui, plan);
+}
+fn trace_editor_plan(ui: &mut egui::Ui, plan: &mut Plan) {
     for (wi, w) in plan.windows.iter_mut().enumerate() {
         egui::CollapsingHeader::new(format!("Fenêtre {} · {} trace(s)", wi + 1, w.traces.len()))
             .id_salt(("pna-plan-window", wi))
+            .default_open(true)
             .show(ui, |ui| {
                 for (ti, t) in w.traces.iter_mut().enumerate() {
                     ui.horizontal_wrapped(|ui| {
@@ -144,7 +29,8 @@ pub fn plan_editor(ui: &mut egui::Ui, c: &mut Config) {
                                     (Format::Smith, "Smith"),
                                     (Format::Raw, "Puissance dBm / valeur Y"),
                                 ] {
-                                    if t.parameter.starts_with('S') || format == Format::Raw {
+                                    if (t.parameter.starts_with('S') || format == Format::Raw)
+                                        && (format != Format::Smith || rf_core::physical::s_parameter_ports(&t.parameter).is_some_and(|(r,s)| r == s)) {
                                         ui.selectable_value(&mut t.format, format, label);
                                     }
                                 }
@@ -174,25 +60,6 @@ pub fn plan_editor(ui: &mut egui::Ui, c: &mut Config) {
                     });
                 }
             });
-    }
-    ui.checkbox(
-        &mut plan.synchronize_display,
-        "Synchroniser l'écran de l'appareil lors de la configuration",
-    );
-    ui.add(
-        egui::DragValue::new(&mut plan.first_window)
-            .range(1..=1024)
-            .prefix("Première fenêtre instrument "),
-    );
-    ui.small("Les traces affichées dans ces numéros de fenêtres seront remplacées. Les mesures et calibrations existantes sont conservées. Les autres fenêtres restent présentes ; TILE peut donc afficher plus de quatre fenêtres.");
-    if let Err(error) = plan.validate(
-        c.instrument.port_count,
-        c.instrument
-            .pna
-            .power_sweep
-            .then_some(c.instrument.pna.source_port),
-    ) {
-        ui.colored_label(Color32::LIGHT_RED, error);
     }
 }
 
@@ -486,7 +353,8 @@ mod tests {
                 |ctx| {
                     egui::CentralPanel::default().show(ctx, |ui| {
                         egui::ScrollArea::vertical().show(ui, |ui| {
-                            plan_editor(ui, &mut c);
+                            crate::pna_setup::quick_start(ui, &mut c);
+                            trace_editor(ui, &mut c);
                             path_editor(ui, &mut c, None, false);
                         });
                     });

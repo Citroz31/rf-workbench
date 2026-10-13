@@ -279,12 +279,15 @@ pub fn side(ui: &mut egui::Ui, panel: &mut Panel, windows: &mut [Window], graph:
     };
     let c = &node.config;
     let trace = &window.traces[window.active_trace];
-    ui.horizontal_top(|ui| {
-        ui.allocate_ui_with_layout(egui::vec2(158., ui.available_height()), egui::Layout::top_down(egui::Align::Min), |ui| {
+    let area = ui.available_rect_before_wrap();
+    let hard_width = if area.width() >= 230. { 116. } else { 62. };
+    let soft = egui::Rect::from_min_max(area.min, egui::pos2(area.right() - hard_width - 8., area.bottom()));
+    let hard = egui::Rect::from_min_max(egui::pos2(soft.right() + 8., area.top()), area.max);
+    crate::bounded_ui::region(ui, soft, "softkeys-region", |ui| {
             ui.heading(panel.hotkey.label());
             ui.small(format!("Ch {} · Tr {} · {}", c.instrument.channel, window.active_trace + 1, trace.parameter));
             ui.separator();
-            egui::ScrollArea::vertical().id_salt("vna-softkeys").show(ui, |ui| {
+            egui::ScrollArea::vertical().auto_shrink([false, false]).min_scrolled_width(0.).min_scrolled_height(0.).id_salt("vna-softkeys").show(ui, |ui| {
                 if panel.hotkey == Key::Freq {
                     let unit = c.frequency_unit;
                     for (label, value, field) in [("Start", c.start_hz, Field::Start), ("Stop", c.stop_hz, Field::Stop),
@@ -292,7 +295,7 @@ pub fn side(ui: &mut egui::Ui, panel: &mut Panel, windows: &mut [Window], graph:
                         ("Step", (c.stop_hz-c.start_hz)/(c.points-1) as f64, Field::Step), ("CW", c.frequency_hz, Field::Cw)]
                     {
                         let unit=if field==Field::Step { c.step_unit } else { unit };
-                        if ui.add_sized([150., 52.], egui::Button::new(format!("{label}\n{:.6} {}", value/unit.factor(), unit.label()))).clicked() {
+                        if ui.add_sized([ui.available_width(), 52.], egui::Button::new(format!("{label}\n{:.6} {}", value/unit.factor(), unit.label()))).clicked() {
                             open(panel, window, c, Key::Freq, Some(field));
                         }
                     }
@@ -306,16 +309,16 @@ pub fn side(ui: &mut egui::Ui, panel: &mut Panel, windows: &mut [Window], graph:
                         Key::Sweep => format!("{} points\n{}", c.points, if c.instrument.pna.power_sweep { "Puissance CW" } else { "Fréquence" }),
                         _ => format!("{}\n{}", panel.hotkey.label(), trace.parameter),
                     };
-                    if ui.add_sized([150., 75.], egui::Button::new(description)).clicked() { open(panel, window, c, panel.hotkey, None); }
+                    if ui.add_sized([ui.available_width(), 75.], egui::Button::new(description)).clicked() { open(panel, window, c, panel.hotkey, None); }
                 }
                 ui.add_space(8.);
                 ui.small("Sélectionner une trace dans les graphes. Clic droit : modifier ou superposer.");
                 if ui.button("Masquer les touches").clicked() { panel.keys_visible = false; }
             });
         });
-        ui.allocate_ui_with_layout(egui::vec2(120., ui.available_height()), egui::Layout::top_down(egui::Align::Min), |ui| {
+    crate::bounded_ui::region(ui, hard, "hardkeys-region", |ui| {
             ui.strong("Hotkeys");
-            egui::ScrollArea::vertical().id_salt("vna-hardkeys").show(ui, |ui| {
+            egui::ScrollArea::vertical().auto_shrink([false, false]).min_scrolled_width(0.).min_scrolled_height(0.).id_salt("vna-hardkeys").show(ui, |ui| {
                 for (section, pairs) in [
                     ("Instrument", vec![(Key::Trace, Key::Channel), (Key::Display, Key::Setup)]),
                     ("Response", vec![(Key::Meas, Key::Format), (Key::Scale, Key::AvgBw), (Key::Cal, Key::Marker), (Key::Search, Key::Help)]),
@@ -324,7 +327,8 @@ pub fn side(ui: &mut egui::Ui, panel: &mut Panel, windows: &mut [Window], graph:
                 ] {
                     ui.small(section);
                     for (a,b) in pairs {
-                        ui.horizontal(|ui| {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.spacing_mut().item_spacing.x = 4.;
                             for key in [a,b] {
                                 if ui.add_sized([55., 42.], egui::Button::new(egui::RichText::new(key.label()).size(11.)).selected(panel.hotkey == key)).clicked() {
                                     open(panel, window, c, key, None);
@@ -334,7 +338,6 @@ pub fn side(ui: &mut egui::Ui, panel: &mut Panel, windows: &mut [Window], graph:
                     }
                 }
             });
-        });
     });
 }
 fn frequency_fields(ui: &mut egui::Ui, c: &mut Config, field: Option<Field>) {

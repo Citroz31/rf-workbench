@@ -2,6 +2,7 @@
 mod analysis;
 mod app;
 mod bench_file;
+mod bounded_ui;
 mod canvas;
 mod editor;
 mod file_browser;
@@ -14,6 +15,7 @@ mod plot;
 #[cfg(test)]
 mod plot_tests;
 mod pna_controls;
+mod pna_setup;
 mod project_registry;
 mod results;
 mod shortcuts;
