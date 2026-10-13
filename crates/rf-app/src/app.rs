@@ -537,6 +537,46 @@ impl Workbench {
         if args.iter().any(|a| a == "--help-ui") {
             bench.view = View::Help;
         }
+        if args.iter().any(|a| a == "--library-ui") {
+            bench.view = View::Library;
+            bench.studio.inspector = false;
+            if let Some(index) = args.iter().position(|a| a == "--search") {
+                bench.search = args.get(index + 1).cloned().unwrap_or_default();
+            }
+        }
+        if let Some(index) = args.iter().position(|a| a == "--vna-key") {
+            let key = match args.get(index + 1).map(String::as_str) {
+                Some("Scale") => crate::vna_keys::Key::Scale,
+                Some("AvgBw") => crate::vna_keys::Key::AvgBw,
+                _ => crate::vna_keys::Key::Freq,
+            };
+            if let Some(id) = bench
+                .project
+                .graph
+                .nodes
+                .iter()
+                .find(|n| n.kind.max_rf_ports().is_some())
+                .map(|n| n.id)
+            {
+                bench.apply_pna_layout(id);
+                if let Some(window) = bench
+                    .layout
+                    .result_windows
+                    .iter_mut()
+                    .find(|w| w.node == id)
+                {
+                    window.ensure_traces();
+                    bench.layout.result_panel.selected = window.id;
+                    crate::vna_keys::open(
+                        &mut bench.layout.result_panel,
+                        window,
+                        &bench.project.graph.node(id).unwrap().config,
+                        key,
+                        None,
+                    );
+                }
+            }
+        }
         if args.iter().any(|a| a == "--light") {
             bench.studio.light = true;
         }
@@ -1202,17 +1242,16 @@ impl Workbench {
             .width_range(150. ..=600.)
             .show(ctx, |ui| {
                 caption(ui, "BIBLIOTHÈQUE DE BLOCS");
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.search)
-                        .hint_text(pair("Recherche floue…", "Fuzzy search…"))
-                        .desired_width(f32::INFINITY),
-                );
+                self.palette_search(ui);
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     let hits = crate::editor::search(&self.search);
                     if !self.search.trim().is_empty() {
                         caption(ui, "Résultats");
                         for k in hits {
                             self.palette_item(ui, k);
+                        }
+                        if crate::editor::search(&self.search).is_empty() {
+                            ui.label("Aucun composant trouvé. Essayer PNA, DAC, alimentation…");
                         }
                     } else {
                         for (name, list) in [

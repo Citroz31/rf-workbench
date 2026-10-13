@@ -7,21 +7,21 @@ use rf_core::{Graph, Kind};
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap};
 
+fn normalize(s: &str) -> String {
+    s.to_lowercase()
+        .chars()
+        .map(|c| match c {
+            'é' | 'è' | 'ê' | 'ë' => 'e',
+            'à' | 'â' => 'a',
+            'î' | 'ï' => 'i',
+            'ô' => 'o',
+            'û' | 'ù' => 'u',
+            'ç' => 'c',
+            _ => c,
+        })
+        .collect::<String>()
+}
 pub fn fuzzy_score(query: &str, text: &str) -> Option<usize> {
-    let normalize = |s: &str| {
-        s.to_lowercase()
-            .chars()
-            .map(|c| match c {
-                'é' | 'è' | 'ê' | 'ë' => 'e',
-                'à' | 'â' => 'a',
-                'î' | 'ï' => 'i',
-                'ô' => 'o',
-                'û' | 'ù' => 'u',
-                'ç' => 'c',
-                _ => c,
-            })
-            .collect::<String>()
-    };
     let query = normalize(query);
     let text = normalize(text);
     if query.is_empty() {
@@ -52,15 +52,19 @@ pub fn search(query: &str) -> Vec<Kind> {
                 Kind::Thermometer => "temperature thermometer",
                 Kind::IqModulator => "IQ quadrature mixer modulator",
                 Kind::NoiseFigureMeter => "NFM bruit noise figure",
-                Kind::Dut => "device under test chip",
+                Kind::Dut => "device under test chip LNA PA corechip MAAL CGY MACOM",
                 _ => "",
             };
-            fuzzy_score(query, &format!("{} {} {aliases}", k.label(), k.category()))
-                .map(|score| (score, k))
+            let text = format!("{} {} {aliases}", k.label(), k.category());
+            fuzzy_score(query, &text)
+                .map(|score| (score, k, normalize(&text).contains(&normalize(query))))
         })
         .collect();
-    hits.sort_by_key(|(score, _)| *score);
-    hits.into_iter().map(|(_, k)| k).collect()
+    if hits.iter().any(|(_, _, direct)| *direct) {
+        hits.retain(|(_, _, direct)| *direct);
+    }
+    hits.sort_by_key(|(score, _, _)| *score);
+    hits.into_iter().map(|(_, k, _)| k).collect()
 }
 pub fn selection(g: &Graph, ids: &BTreeSet<u64>) -> Graph {
     Graph {
@@ -513,6 +517,7 @@ mod tests {
     }
     #[test]
     fn fuzzy_matches_aliases_and_accents() {
+        assert_eq!(search("PNA"), vec![Kind::Pna, Kind::PnaX]);
         assert!(search("spectr").contains(&Kind::Analyzer));
         assert!(search("adc").contains(&Kind::Adc));
         assert!(fuzzy_score("resvar", "Résistance variable").is_some());

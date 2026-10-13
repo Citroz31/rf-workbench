@@ -1,5 +1,9 @@
 # RF Workbench
 
+**Version 0.11 :** recherche visible dans les palettes, attraction du pointeur vers les pins compatibles sous Windows, édition et ajout de traces par clic droit. Panneau VNA virtuel avec touches à droite et fenêtres de réglage, marqueurs locaux, recherche de pics et historique du panneau. [Utilisation 0.11](docs/V0.11.md) · [Guide PDF](docs/Guide-utilisateur.pdf), chapitres 38–39.
+
+![Panneau virtuel avec touches et paramètres](docs/PNA-PANEL-V011.png)
+
 **Windows : [Télécharger directement rf-workbench.exe](https://github.com/Citroz31/rf-workbench/releases/latest/download/rf-workbench.exe)** · **[ZIP portable complet](https://github.com/Citroz31/rf-workbench/releases/latest/download/RF-Workbench-Windows-x64-portable.zip)** · [Page des téléchargements](https://github.com/Citroz31/rf-workbench/releases/latest)
 
 Application locale Windows x64, sans installation, sans compte et sans serveur. Double-cliquer sur `rf-workbench.exe` ; Python et VISA sont facultatifs pour les exemples simulés. Le manifeste Windows impose `asInvoker` : aucune élévation demandée par le programme. Données enregistrées dans le profil utilisateur (`%LOCALAPPDATA%/RF Workbench`), indépendamment du dossier de lancement. Aucun compte, télémétrie ou téléchargement automatique. L'exécutable est actuellement non signé : une validation IT peut être nécessaire selon la politique de l'entreprise. Voir [la procédure portable](docs/PORTABLE.md).
