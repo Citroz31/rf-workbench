@@ -818,7 +818,7 @@ impl Canvas {
         }
         let snap_target = ui
             .input(|i| i.pointer.hover_pos())
-            .filter(|p| rect.contains(*p))
+            .filter(|p| rect.contains(*p) && ui.rect_contains_pointer(rect))
             .and_then(|p| self.nearest_target(g, rect.min, p));
         self.attract_pointer(ui.ctx(), snap_target);
         let mut error = None;
@@ -1756,15 +1756,34 @@ mod tests {
     }
     #[test]
     fn cursor_attraction_is_entry_only_and_can_be_escaped_or_cancelled() {
-        let ctx=egui::Context::default();
-        let mut c=Canvas::default();
-        let target=SnapTarget{node:2,index:1,physical:true,position:Pos2::new(260.,180.)};
-        let mut frame=|target| ctx.run(egui::RawInput{focused:true,..Default::default()},|ctx| c.attract_pointer(ctx,target));
-        let moves=|out:egui::FullOutput| out.viewport_output.values().flat_map(|v|v.commands.iter()).filter(|v| matches!(v,egui::ViewportCommand::CursorPosition(_))).count();
-        assert_eq!(moves(frame(Some(target))),1);
-        assert_eq!(moves(frame(Some(target))),0);
-        assert_eq!(moves(frame(None)),0);
-        assert_eq!(moves(frame(Some(target))),1);
+        let ctx = egui::Context::default();
+        let mut c = Canvas::default();
+        let target = SnapTarget {
+            node: 2,
+            index: 1,
+            physical: true,
+            position: Pos2::new(260., 180.),
+        };
+        let mut frame = |target| {
+            ctx.run(
+                egui::RawInput {
+                    focused: true,
+                    ..Default::default()
+                },
+                |ctx| c.attract_pointer(ctx, target),
+            )
+        };
+        let moves = |out: egui::FullOutput| {
+            out.viewport_output
+                .values()
+                .flat_map(|v| v.commands.iter())
+                .filter(|v| matches!(v, egui::ViewportCommand::CursorPosition(_)))
+                .count()
+        };
+        assert_eq!(moves(frame(Some(target))), 1);
+        assert_eq!(moves(frame(Some(target))), 0);
+        assert_eq!(moves(frame(None)), 0);
+        assert_eq!(moves(frame(Some(target))), 1);
         c.cancel_wire();
         assert!(c.magnet_latch.is_none());
     }

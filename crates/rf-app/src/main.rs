@@ -20,8 +20,8 @@ mod shortcuts;
 mod studio;
 mod theme;
 mod visuals;
-mod vna_panel;
 mod vna_keys;
+mod vna_panel;
 
 fn main() -> eframe::Result<()> {
     let args: Vec<String> = std::env::args().collect();

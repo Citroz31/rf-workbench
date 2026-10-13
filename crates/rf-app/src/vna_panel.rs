@@ -125,12 +125,20 @@ pub fn graph(ui: &mut egui::Ui, w: &mut Window, data: &[Curve], height: f32) {
     let choices = ["S11", "S12", "S21", "S22"].map(str::to_owned);
     graph_with_options(ui, w, data, height, &choices);
 }
-fn graph_with_options(ui: &mut egui::Ui, w: &mut Window, data: &[Curve], height: f32, choices: &[String]) {
+fn graph_with_options(
+    ui: &mut egui::Ui,
+    w: &mut Window,
+    data: &[Curve],
+    height: f32,
+    choices: &[String],
+) {
     w.ensure_traces();
-    ui.horizontal_wrapped(|ui| {
+    let header = ui.horizontal_wrapped(|ui| {
         ui.strong(format!("{}", w.id));
         for i in 0..w.traces.len() {
-            if i >= w.traces.len() { break; }
+            if i >= w.traces.len() {
+                break;
+            }
             let t = &w.traces[i];
             let label = format!(
                 "{}{}{}",
@@ -138,11 +146,10 @@ fn graph_with_options(ui: &mut egui::Ui, w: &mut Window, data: &[Curve], height:
                 if t.corrected { "*" } else { "" },
                 if t.visible { "" } else { " (masquée)" }
             );
-            let response = ui
-                .selectable_label(
-                    w.active_trace == i,
-                    egui::RichText::new(label).color(color(t.color)),
-                );
+            let response = ui.selectable_label(
+                w.active_trace == i,
+                egui::RichText::new(label).color(color(t.color)),
+            );
             if response.clicked() || response.secondary_clicked() {
                 w.active_trace = i;
             }
@@ -152,7 +159,7 @@ fn graph_with_options(ui: &mut egui::Ui, w: &mut Window, data: &[Curve], height:
     let active = w.traces[w.active_trace].clone();
     let ac = curve(&active, data);
     let (rect, response) = ui.allocate_exact_size(
-        egui::vec2(ui.available_width(), (height - 35.).max(70.)),
+        egui::vec2(ui.available_width(), (height - header.response.rect.height() - ui.spacing().item_spacing.y).max(70.)),
         Sense::click(),
     );
     let p = ui.painter_at(rect);
@@ -264,7 +271,7 @@ fn graph_with_options(ui: &mut egui::Ui, w: &mut Window, data: &[Curve], height:
     let mut unavailable = 0;
     let mut nearest = None;
     let mut nearest_distance = 9.;
-    for (index, t) in w.traces.iter().enumerate().filter(|(_,t)| t.visible) {
+    for (index, t) in w.traces.iter().enumerate().filter(|(_, t)| t.visible) {
         let Some(c) = curve(t, data) else {
             unavailable += 1;
             continue;
@@ -302,9 +309,13 @@ fn graph_with_options(ui: &mut egui::Ui, w: &mut Window, data: &[Curve], height:
         if let Some(mouse) = response.hover_pos().filter(|mouse| area.contains(*mouse)) {
             for segment in points.windows(2) {
                 let delta = segment[1] - segment[0];
-                let fraction = ((mouse-segment[0]).dot(delta)/delta.length_sq().max(1e-6)).clamp(0.,1.);
-                let distance = mouse.distance(segment[0]+delta*fraction);
-                if distance < nearest_distance { nearest_distance=distance; nearest=Some(index); }
+                let fraction =
+                    ((mouse - segment[0]).dot(delta) / delta.length_sq().max(1e-6)).clamp(0., 1.);
+                let distance = mouse.distance(segment[0] + delta * fraction);
+                if distance < nearest_distance {
+                    nearest_distance = distance;
+                    nearest = Some(index);
+                }
             }
         }
         cp.add(egui::Shape::line(
@@ -315,10 +326,27 @@ fn graph_with_options(ui: &mut egui::Ui, w: &mut Window, data: &[Curve], height:
             ),
         ));
         if let Some(marker) = t.marker {
-            if let Some((i,_)) = c.x.iter().enumerate().min_by(|(_,a),(_,b)| (*a-marker).abs().total_cmp(&(*b-marker).abs())) {
+            if let Some((i, _)) =
+                c.x.iter()
+                    .enumerate()
+                    .min_by(|(_, a), (_, b)| (*a - marker).abs().total_cmp(&(*b - marker).abs()))
+            {
                 if (first..=last).contains(&marker) {
-                    let at=point(i); cp.circle_filled(at,4.,color(t.color));
-                    cp.text(at+egui::vec2(5.,-5.),Align2::LEFT_BOTTOM,format!("M1 {} {:.4} · {:.6} {}",t.parameter,y[i],c.x[i]/x_scale,if x_unit=="Hz"{"GHz"}else{x_unit}),crate::theme::font(10.),color(t.color));
+                    let at = point(i);
+                    cp.circle_filled(at, 4., color(t.color));
+                    cp.text(
+                        at + egui::vec2(5., -5.),
+                        Align2::LEFT_BOTTOM,
+                        format!(
+                            "M1 {} {:.4} · {:.6} {}",
+                            t.parameter,
+                            y[i],
+                            c.x[i] / x_scale,
+                            if x_unit == "Hz" { "GHz" } else { x_unit }
+                        ),
+                        crate::theme::font(10.),
+                        color(t.color),
+                    );
                 }
             }
         }
@@ -368,7 +396,11 @@ fn graph_with_options(ui: &mut egui::Ui, w: &mut Window, data: &[Curve], height:
         }
         response.clone().on_hover_text(hint);
     }
-    if (response.clicked() || response.secondary_clicked()) && let Some(index) = nearest { w.active_trace=index; }
+    if (response.clicked() || response.secondary_clicked())
+        && let Some(index) = nearest
+    {
+        w.active_trace = index;
+    }
     response.context_menu(|ui| crate::vna_keys::trace_menu(ui, w, w.active_trace, choices));
 }
 fn smith(p: &egui::Painter, rect: Rect, w: &Window, data: &[Curve]) {
@@ -457,7 +489,11 @@ pub fn show(
     let mut configure = None;
     let mut closed = Vec::new();
     if windows.is_empty() || !panel.open {
-        return Output { configure, closed, actions: Vec::new() };
+        return Output {
+            configure,
+            closed,
+            actions: Vec::new(),
+        };
     }
     for w in windows.iter_mut() {
         w.ensure_traces();
@@ -476,8 +512,17 @@ pub fn show(
                     if ui.button("Configurer les traces…").clicked() {
                         configure = Some(w.id);
                     }
-                    let choices = graph.node(w.node).map(|n| crate::vna_keys::parameters(&n.config)).unwrap_or_default();
-                    graph_with_options(ui, w, data, (ui.available_height() - 5.).max(150.), &choices);
+                    let choices = graph
+                        .node(w.node)
+                        .map(|n| crate::vna_keys::parameters(&n.config))
+                        .unwrap_or_default();
+                    graph_with_options(
+                        ui,
+                        w,
+                        data,
+                        (ui.available_height() - 5.).max(150.),
+                        &choices,
+                    );
                     ui.min_rect().size()
                 });
             if let Some(shown) = shown {
@@ -493,8 +538,12 @@ pub fn show(
                 closed.push(w.id);
             }
         }
-        let actions=crate::vna_keys::popup(ctx,panel,windows,graph,data,busy);
-        return Output { configure, closed, actions };
+        let actions = crate::vna_keys::popup(ctx, panel, windows, graph, data, busy);
+        return Output {
+            configure,
+            closed,
+            actions,
+        };
     }
     let mut open = panel.open;
     let shown = egui::Window::new("VNA · panneau de résultats")
@@ -556,8 +605,16 @@ pub fn show(
                 .position(|w| w.id == panel.selected)
                 .unwrap_or(0);
             panel.selected = windows[selected].id;
-            let active=&windows[selected].traces[windows[selected].active_trace];
-            ui.small(format!("Graphique {} · trace {} · {} · Ch {}",panel.selected,windows[selected].active_trace+1,active.parameter,graph.node(windows[selected].node).map_or(1,|n|n.config.instrument.channel)));
+            let active = &windows[selected].traces[windows[selected].active_trace];
+            ui.small(format!(
+                "Graphique {} · trace {} · {} · Ch {}",
+                panel.selected,
+                windows[selected].active_trace + 1,
+                active.parameter,
+                graph
+                    .node(windows[selected].node)
+                    .map_or(1, |n| n.config.instrument.channel)
+            ));
             ui.separator();
             let count = panel.columns * panel.rows;
             let (area, _) = ui.allocate_exact_size(
@@ -565,7 +622,7 @@ pub fn show(
                 Sense::hover(),
             );
             let side_width = if panel.keys_visible { 300. } else { 0. };
-            let plot_width = (area.width()-side_width).max(200.);
+            let plot_width = (area.width() - side_width).max(200.);
             let width = (plot_width - 8. * (panel.columns - 1) as f32) / panel.columns as f32;
             let height = (area.height() - 8. * (panel.rows - 1) as f32) / panel.rows as f32;
             for slot in 0..count {
@@ -600,7 +657,10 @@ pub fn show(
                         .id_salt(("vna-graph", w.id)),
                     |ui| {
                         let before = w.active_trace;
-                        let choices = graph.node(w.node).map(|n| crate::vna_keys::parameters(&n.config)).unwrap_or_default();
+                        let choices = graph
+                            .node(w.node)
+                            .map(|n| crate::vna_keys::parameters(&n.config))
+                            .unwrap_or_default();
                         graph_with_options(ui, w, data, height - 10., &choices);
                         clicked = w.active_trace != before
                             || ui.input(|i| {
@@ -614,10 +674,15 @@ pub fn show(
                 }
             }
             if panel.keys_visible {
-                let rect=Rect::from_min_max(area.min+egui::vec2(plot_width+8.,0.),area.max);
-                ui.scope_builder(egui::UiBuilder::new().max_rect(rect).id_salt("vna-controls"),|ui| {
-                    crate::vna_keys::side(ui,panel,windows,graph);
-                });
+                let rect = Rect::from_min_max(area.min + egui::vec2(plot_width + 8., 0.), area.max);
+                ui.scope_builder(
+                    egui::UiBuilder::new()
+                        .max_rect(rect)
+                        .id_salt("vna-controls"),
+                    |ui| {
+                        crate::vna_keys::side(ui, panel, windows, graph);
+                    },
+                );
             }
             ui.min_rect().size()
         });
@@ -629,44 +694,105 @@ pub fn show(
             .unwrap_or(egui::vec2(panel.rect[2], panel.rect[3]));
         panel.rect = [r.min.x, r.min.y, size.x, size.y];
     }
-    let actions=crate::vna_keys::popup(ctx,panel,windows,graph,data,busy);
-    Output { configure, closed, actions }
+    let actions = crate::vna_keys::popup(ctx, panel, windows, graph, data, busy);
+    Output {
+        configure,
+        closed,
+        actions,
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     fn text_at(frame: &egui::FullOutput, text: &str) -> Pos2 {
-        frame.shapes.iter().find_map(|s| match &s.shape {
-            egui::Shape::Text(t) if t.galley.job.text == text => Some(t.pos+t.galley.rect.center().to_vec2()),
-            _ => None,
-        }).unwrap_or_else(|| panic!("Missing rendered text: {text}"))
+        frame
+            .shapes
+            .iter()
+            .find_map(|s| match &s.shape {
+                egui::Shape::Text(t) if t.galley.job.text == text => {
+                    Some(t.pos + t.galley.rect.center().to_vec2())
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("Missing rendered text: {text}"))
     }
     #[test]
     fn real_right_click_opens_trace_menu_and_adding_trace_keeps_its_scale() {
-        let ctx=egui::Context::default();
-        let mut window=Window::new(1,2,"S11".into(),Format::Magnitude,false);
-        let mut render=|events| ctx.run(egui::RawInput{screen_rect:Some(Rect::from_min_size(Pos2::ZERO,egui::vec2(800.,500.))),events,..Default::default()},|ctx| {
-            egui::CentralPanel::default().show(ctx,|ui|graph(ui,&mut window,&[],350.));
-        });
-        let frame=render(vec![]);let pos=text_at(&frame,"S11");
-        for pressed in [true,false] { render(vec![egui::Event::PointerMoved(pos),egui::Event::PointerButton{pos,button:egui::PointerButton::Secondary,pressed,modifiers:egui::Modifiers::NONE}]); }
-        let frame=render(vec![]);
-        text_at(&frame,"Trace 1 · S11");
-        text_at(&frame,"Ajouter une trace dans cette fenêtre");
-        window.traces[0].scale.per_division=2.;
-        window.add_trace(2,"S22".into(),Format::Magnitude,false);
-        assert_eq!(window.traces.len(),2);assert_eq!(window.traces[0].scale.per_division,2.);
+        let ctx = egui::Context::default();
+        let mut window = Window::new(1, 2, "S11".into(), Format::Magnitude, false);
+        let mut render = |events| {
+            ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(800., 500.))),
+                    events,
+                    ..Default::default()
+                },
+                |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| graph(ui, &mut window, &[], 350.));
+                },
+            )
+        };
+        let frame = render(vec![]);
+        let pos = text_at(&frame, "S11");
+        for pressed in [true, false] {
+            render(vec![
+                egui::Event::PointerMoved(pos),
+                egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Secondary,
+                    pressed,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ]);
+        }
+        let frame = render(vec![]);
+        text_at(&frame, "Trace 1 · S11");
+        text_at(&frame, "Ajouter une trace dans cette fenêtre");
+        window.traces[0].scale.per_division = 2.;
+        window.add_trace(2, "S22".into(), Format::Magnitude, false);
+        assert_eq!(window.traces.len(), 2);
+        assert_eq!(window.traces[0].scale.per_division, 2.);
     }
     #[test]
     fn real_hotkey_click_opens_frequency_editor_with_units() {
-        let ctx=egui::Context::default();let mut g=rf_core::Graph::default();let id=g.add(rf_core::Kind::PnaX,[0.,0.]);
-        let mut panel=Panel::default();panel.hotkey=crate::vna_keys::Key::Scale;
-        let mut windows=vec![Window::new(1,id,"S11".into(),Format::Magnitude,false)];
-        let mut render=|events| ctx.run(egui::RawInput{screen_rect:Some(Rect::from_min_size(Pos2::ZERO,egui::vec2(1600.,1000.))),events,..Default::default()},|ctx| { show(ctx,&mut panel,&mut windows,&[],0,&mut g,false); });
-        render(vec![]);render(vec![]);let frame=render(vec![]);let pos=text_at(&frame,"Freq");
-        for pressed in [true,false] {render(vec![egui::Event::PointerMoved(pos),egui::Event::PointerButton{pos,button:egui::PointerButton::Primary,pressed,modifiers:egui::Modifiers::NONE}]);}
-        let frame=render(vec![]);text_at(&frame,"VNA · Freq");text_at(&frame,"Start");text_at(&frame,"GHz");
+        let ctx = egui::Context::default();
+        let mut g = rf_core::Graph::default();
+        let id = g.add(rf_core::Kind::PnaX, [0., 0.]);
+        let mut panel = Panel::default();
+        panel.hotkey = crate::vna_keys::Key::Scale;
+        let mut windows = vec![Window::new(1, id, "S11".into(), Format::Magnitude, false)];
+        let mut render = |events| {
+            ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(1600., 1000.))),
+                    events,
+                    ..Default::default()
+                },
+                |ctx| {
+                    show(ctx, &mut panel, &mut windows, &[], 0, &mut g, false);
+                },
+            )
+        };
+        render(vec![]);
+        render(vec![]);
+        let frame = render(vec![]);
+        let pos = text_at(&frame, "Freq");
+        for pressed in [true, false] {
+            render(vec![
+                egui::Event::PointerMoved(pos),
+                egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ]);
+        }
+        let frame = render(vec![]);
+        text_at(&frame, "VNA · Freq");
+        text_at(&frame, "Start");
+        text_at(&frame, "GHz");
         assert!(panel.editor.is_some());
     }
     fn capture(w: &mut Window, data: &[Curve]) -> Vec<Pos2> {
@@ -743,7 +869,15 @@ mod tests {
                         ..Default::default()
                     },
                     |ctx| {
-                        show(ctx, panel, windows, &[], 0, &mut rf_core::Graph::default(), false);
+                        show(
+                            ctx,
+                            panel,
+                            windows,
+                            &[],
+                            0,
+                            &mut rf_core::Graph::default(),
+                            false,
+                        );
                     },
                 );
             }

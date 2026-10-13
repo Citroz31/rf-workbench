@@ -38,7 +38,7 @@ def para(text,small=False):story.append(p(text,small))
 def sub(text):story.append(Paragraph(text,styles['SubGuide']))
 def page(number,title):
     if story:story.append(PageBreak())
-    story.append(p(f'RF WORKBENCH 0.10  /  {number:02}',True));story.append(Paragraph(title,styles['HGuide']))
+    story.append(p(f'RF WORKBENCH 0.11  /  {number:02}',True));story.append(Paragraph(title,styles['HGuide']))
 def steps(items):
     for i,item in enumerate(items,1):para(f'<b>{i:02}.</b> {item}')
 def table(headers,rows,widths=None):
@@ -100,7 +100,7 @@ csv.write_text('provenance,Pin_dBm,Pout_dBm,gain_dB\n'+''.join(f'simulation_peda
 
 page(1,'Guide utilisateur')
 story.append(Paragraph('RF Workbench',styles['CoverGuide']))
-para('<b>Version 0.10 - Windows</b><br/>Bancs graphiques RF, DSP, scripts Python et instrumentation VISA/SCPI.')
+para('<b>Version 0.11 - Windows</b><br/>Bancs graphiques RF, DSP, scripts Python et instrumentation VISA/SCPI.')
 story.append(Spacer(1,12));picture('PA.png','Application native : exemple petit signal PA 36-38 GHz, données simulées.')
 sub('Du premier schéma à la lecture binaire du PNA-X')
 para('Ce guide accompagne le prototype livré. Il décrit les actions disponibles, les unités, les limites et un protocole de caractérisation de PA : gain 20 dB, objectif 40 dBm, OP1dB voisin de 34 dBm, bande 36-38 GHz.')
@@ -425,6 +425,31 @@ para('<link href="https://cdn.macom.com/datasheets/MAAL-FR1245.pdf">MACOM MAAL-F
 
 picture('PNA-COURBES-V010.png','Simulation du MAAL-FR1245 connecté : S11, S12, S21 et S22 numérisés, phase inconnue.',width=380)
 
+page(38,'Palette, aimantation et édition des traces')
+steps([
+    'Dans la bibliothèque de gauche ou la vue Blocs, saisir un nom dans <b>Rechercher un composant</b>. Ctrl+F place le focus dans la recherche ; le bouton × efface le filtre. Les correspondances directes sont prioritaires ; sinon la recherche floue tolère une saisie approchée.',
+    'Cliquer le composant choisi, déplacer son aperçu dans la grille puis cliquer pour le placer. Echap annule le placement. Ctrl+R tourne le bloc de 90 degrés.',
+    'En mode W, choisir le pin source puis approcher un pin compatible. Le rayon renforcé vaut environ 19 points logiques à zoom 1. Sous Windows, le pointeur rejoint réellement le pin à l’entrée du rayon ; il peut ensuite en sortir librement. Une nouvelle attraction a lieu après sortie puis retour. Les pins occupés ou incompatibles sont exclus.',
+    'Dans le panneau VNA, cliquer une légende de trace ou la courbe pour la rendre active. Faire un clic droit sur sa légende ou près de la courbe : modifier la mesure, le format, la visibilité ou l’échelle. <b>Ajouter une trace dans cette fenêtre</b> superpose un autre Sij ou récepteur Standard, selon ports et source configurés.',
+    'Chaque trace conserve son échelle. Les graduations visibles suivent la trace active. Une trace nouvellement demandée sans données apparaît comme indisponible jusqu’au prochain Run. La phase ou Smith nécessite des données complexes.',
+])
+picture('PALETTE-V011.png','Recherche dans les deux vues de la palette ; le placement reste choisi dans la grille.',width=350)
+
+page(39,'Panneau virtuel : touches et réglages')
+para('A droite des résultats, la colonne <b>Hotkeys</b> regroupe Instrument, Response, Stimulus et Utility. La colonne voisine détaille la touche sélectionnée. Cliquer une touche ouvre une petite fenêtre de réglage ; les valeurs Start / Stop / Center / Span / Step / CW ouvrent un réglage ciblé. <b>Touches VNA</b> masque ou restaure ces colonnes pour donner davantage de place aux courbes.')
+table(['Touches','Fonction'],[
+    ['Trace / Meas / Format','Mesure et visibilité de la trace sélectionnée ; module, phase, Smith ou données brutes.'],
+    ['Scale / Display','Auto ou échelle/div, référence et position ; grille de 1, 2, 4, 6 ou 8 fenêtres.'],
+    ['Freq / Power / Sweep','Fréquences avec unités ; niveau RF ; points et balayage de fréquence ou puissance CW.'],
+    ['Avg / BW / Channel','IF bandwidth, moyennage et numéro de canal commun au bloc.'],
+    ['Marker / Search','M1 local et recherche du maximum/minimum sur les données réellement affichées.'],
+    ['Cal / Setup / System','CalSet, déembedding, fixtures / AFR et dialogue avancé du bloc.'],
+    ['Trigger / Save-Recall / Undo','Run du banc ou Stop ; fichiers .rfbench ; historique du panneau VNA.'],
+    ['Help / Preset','Aide du bloc ; rétablir le plan S par défaut sans modifier les connexions du banc.'],
+])
+para('<b>Appliquer</b> valide et modifie le projet. <b>Appliquer + configurer PNA</b> configure explicitement le bloc actif ; le prochain Run applique les réglages si l’application du plan est activée. Les réglages invalides ou un dialogue devenu obsolète sont refusés. Fermer / annuler laisse les valeurs précédentes. Les marqueurs sont locaux : ils ne sont pas envoyés au PNA physique.',True)
+picture('PNA-PANEL-V011.png','Quatre graphes avec touches et paramètres à droite. Le N5245B physique reste à qualifier sur le banc.',width=340)
+
 class NumberedCanvas(canvas.Canvas):
     def __init__(self,*a,**k):super().__init__(*a,**k);self.pages=[]
     def showPage(self):self.pages.append(dict(self.__dict__));self._startPage()
@@ -432,12 +457,12 @@ class NumberedCanvas(canvas.Canvas):
         total=len(self.pages)
         for state in self.pages:
             self.__dict__.update(state);self.setStrokeColor(TEAL);self.setLineWidth(.7);self.line(52,802,543,802)
-            self.setFont('Guide',7.4);self.setFillColor(GRAY);self.drawString(52,812,'RF WORKBENCH  /  GUIDE UTILISATEUR  /  0.10')
-            self.drawString(52,27,'Prototype RF et métrologie  |  12 octobre 2026');self.drawRightString(543,27,f'{self._pageNumber} / {total}')
+            self.setFont('Guide',7.4);self.setFillColor(GRAY);self.drawString(52,812,'RF WORKBENCH  /  GUIDE UTILISATEUR  /  0.11')
+            self.drawString(52,27,'Prototype RF et métrologie  |  13 octobre 2026');self.drawRightString(543,27,f'{self._pageNumber} / {total}')
             super().showPage()
         super().save()
 
 output=HERE/'Guide-utilisateur.pdf'
-doc=SimpleDocTemplate(str(output),pagesize=A4,leftMargin=52,rightMargin=53,topMargin=55,bottomMargin=48,title='RF Workbench 0.10 - Guide utilisateur',author='RF Workbench',pageCompression=1)
+doc=SimpleDocTemplate(str(output),pagesize=A4,leftMargin=52,rightMargin=53,topMargin=55,bottomMargin=48,title='RF Workbench 0.11 - Guide utilisateur',author='RF Workbench',pageCompression=1)
 doc.build(story,canvasmaker=NumberedCanvas)
-print(json.dumps({'pdf':str(output),'bytes':output.stat().st_size,'chapters':37,'synthetic_Rapp_p':q},ensure_ascii=False))
+print(json.dumps({'pdf':str(output),'bytes':output.stat().st_size,'chapters':39,'synthetic_Rapp_p':q},ensure_ascii=False))

@@ -562,7 +562,11 @@ impl Workbench {
     }
     pub(super) fn pna_result_windows(&mut self, ctx: &egui::Context) {
         use crate::vna_keys::{Action as A, Snapshot};
-        let before=Snapshot::capture(&self.layout.result_panel,&self.layout.result_windows,&self.project.graph);
+        let before = Snapshot::capture(
+            &self.layout.result_panel,
+            &self.layout.result_windows,
+            &self.project.graph,
+        );
         let out = crate::vna_panel::show(
             ctx,
             &mut self.layout.result_panel,
@@ -581,26 +585,63 @@ impl Workbench {
             .result_windows
             .retain(|w| !out.closed.contains(&w.id));
         for action in &out.actions {
-            if let A::Relayout(id)=action { self.apply_pna_layout(*id); }
+            if let A::Relayout(id) = action {
+                self.apply_pna_layout(*id);
+            }
         }
         self.remember_pna_layout();
-        if before != Snapshot::capture(&self.layout.result_panel,&self.layout.result_windows,&self.project.graph) {
+        if before
+            != Snapshot::capture(
+                &self.layout.result_panel,
+                &self.layout.result_windows,
+                &self.project.graph,
+            )
+        {
             self.layout.result_panel.undo.push(before);
         }
         for action in out.actions {
             match action {
-                A::Relayout(_) => {},
+                A::Relayout(_) => {}
                 A::Configure(id) => {
-                    if let Some(n)=self.project.graph.node(id) {
-                        self.submit(Command::PreparePna{kind:n.kind,node:id,config:n.config.clone(),hardware:self.hardware});
+                    if let Some(n) = self.project.graph.node(id) {
+                        self.submit(Command::PreparePna {
+                            kind: n.kind,
+                            node: id,
+                            config: n.config.clone(),
+                            hardware: self.hardware,
+                        });
                     }
                 }
-                A::Run => self.run(), A::Stop => self.worker.stop(),
+                A::Run => self.run(),
+                A::Stop => self.worker.stop(),
                 A::Instrument(id) => self.open_instrument(id),
-                A::Fixture(id) => { self.fixture_job.node=Some(id);self.fixture_job.open=true;self.fixture_job.z=50.;self.fixture_job.reverse_right=true; },
-                A::Save => self.action(Action::Save), A::Open => self.action(Action::Open),
-                A::Undo => { if let Some(previous)=self.layout.result_panel.undo.pop() { previous.restore(&mut self.layout.result_panel,&mut self.layout.result_windows,&mut self.project.graph); } },
-                A::Help => { self.help_kind=self.layout.result_windows.iter().find(|w| w.id == self.layout.result_panel.selected).and_then(|w|self.project.graph.node(w.node)).map(|n|n.kind);self.view=View::Help; },
+                A::Fixture(id) => {
+                    self.fixture_job.node = Some(id);
+                    self.fixture_job.open = true;
+                    self.fixture_job.z = 50.;
+                    self.fixture_job.reverse_right = true;
+                }
+                A::Save => self.action(Action::Save),
+                A::Open => self.action(Action::Open),
+                A::Undo => {
+                    if let Some(previous) = self.layout.result_panel.undo.pop() {
+                        previous.restore(
+                            &mut self.layout.result_panel,
+                            &mut self.layout.result_windows,
+                            &mut self.project.graph,
+                        );
+                    }
+                }
+                A::Help => {
+                    self.help_kind = self
+                        .layout
+                        .result_windows
+                        .iter()
+                        .find(|w| w.id == self.layout.result_panel.selected)
+                        .and_then(|w| self.project.graph.node(w.node))
+                        .map(|n| n.kind);
+                    self.view = View::Help;
+                }
             }
         }
     }

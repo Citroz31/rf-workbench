@@ -537,6 +537,46 @@ impl Workbench {
         if args.iter().any(|a| a == "--help-ui") {
             bench.view = View::Help;
         }
+        if args.iter().any(|a| a == "--library-ui") {
+            bench.view = View::Library;
+            bench.studio.inspector = false;
+            if let Some(index) = args.iter().position(|a| a == "--search") {
+                bench.search = args.get(index + 1).cloned().unwrap_or_default();
+            }
+        }
+        if let Some(index) = args.iter().position(|a| a == "--vna-key") {
+            let key = match args.get(index + 1).map(String::as_str) {
+                Some("Scale") => crate::vna_keys::Key::Scale,
+                Some("AvgBw") => crate::vna_keys::Key::AvgBw,
+                _ => crate::vna_keys::Key::Freq,
+            };
+            if let Some(id) = bench
+                .project
+                .graph
+                .nodes
+                .iter()
+                .find(|n| n.kind.max_rf_ports().is_some())
+                .map(|n| n.id)
+            {
+                bench.apply_pna_layout(id);
+                if let Some(window) = bench
+                    .layout
+                    .result_windows
+                    .iter_mut()
+                    .find(|w| w.node == id)
+                {
+                    window.ensure_traces();
+                    bench.layout.result_panel.selected = window.id;
+                    crate::vna_keys::open(
+                        &mut bench.layout.result_panel,
+                        window,
+                        &bench.project.graph.node(id).unwrap().config,
+                        key,
+                        None,
+                    );
+                }
+            }
+        }
         if args.iter().any(|a| a == "--light") {
             bench.studio.light = true;
         }

@@ -114,15 +114,7 @@ jobs:
             gh api "repos/$env:GITHUB_REPOSITORY/git/refs" --method POST -f "ref=refs/tags/$env:RELEASE_TAG" -f "sha=$sourceCommit"
             if ($LASTEXITCODE -ne 0) { throw 'Tag creation failed; no release will be published.' }
           }
-          $notes = @'
-          Windows x64 portable : téléchargez **RF-Workbench-Windows-x64-portable.zip**, extrayez-le entièrement dans un dossier utilisateur, puis double-cliquez sur **rf-workbench.exe**, directement à sa racine. LISEZ-MOI.txt, le guide PDF et huit projets exemples sont inclus. L'EXE seul est aussi disponible ci-dessous.
-
-          Version 0.9 : catalogue sélectionnable depuis le bloc DUT, profils LNA/PA/corechip/passif, simulation du DUT externe câblé avec ses S11/S22/gain/isolation. Ports P1–P3–P4–P2, rotation Ctrl+R avec historique et conservation des câbles, fréquences et pas en Hz/kHz/MHz/GHz. Le ZIP inclut VNA-DUT-Externe.rfbench et le guide mis à jour. Le panneau VNA et ses traces à échelles indépendantes restent disponibles. NF/OIP3/Psat sont des caractéristiques documentaires ; les S sont un modèle scalaire et la compression OP1dB une approximation douce.
-
-          La simulation fonctionne localement sans installation, sans Python, sans VISA, sans compte ni connexion Internet après téléchargement. L'application ne demande pas d'élévation administrateur. Elle n'est pas signée numériquement : les règles de votre entreprise peuvent nécessiter une validation IT, même pour une application portable.
-
-          Python est optionnel pour les scripts. Les instruments GPIB/USB et LAN VISA INSTR demandent un runtime VISA x64 autorisé. Aucun instrument physique n'est validé ici. SHA256SUMS.txt permet de vérifier l'EXE et le ZIP.
-          '@
+          $notes = Get-Content -LiteralPath 'docs/RELEASE-NOTES.md' -Raw
           $notes | Set-Content -LiteralPath dist/portable/release-notes.md -Encoding utf8
           $existingReleaseJson = gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --json tagName,isDraft 2>$null
           if ($LASTEXITCODE -ne 0) {
