@@ -177,99 +177,6 @@ pub fn measurement(ui: &mut egui::Ui, trace: &mut Trace, choices: &[String]) {
         trace.format = Format::Magnitude;
     }
 }
-#[cfg(test)]
-mod tests {
-    use super::*;
-    fn bench() -> (Graph, Panel, Vec<Window>) {
-        let mut graph = Graph::default();
-        let id = graph.add(rf_core::Kind::PnaX, [0., 0.]);
-        let mut window = Window::new(1, id, "S11".into(), Format::Magnitude, false);
-        window.ensure_traces();
-        window.add_trace(id, "S22".into(), Format::Magnitude, false);
-        window.active_trace = 0;
-        (
-            graph,
-            Panel {
-                selected: 1,
-                ..Default::default()
-            },
-            vec![window],
-        )
-    }
-    #[test]
-    fn edits_preserve_other_scales_reject_bad_ranges_and_detect_stale_dialogs() {
-        let (mut graph, mut panel, mut windows) = bench();
-        let id = windows[0].node;
-        windows[0].traces[1].scale.automatic = false;
-        windows[0].traces[1].scale.per_division = 2.;
-        open(
-            &mut panel,
-            &windows[0],
-            &graph.node(id).unwrap().config,
-            Key::Meas,
-            None,
-        );
-        let mut editor = panel.editor.take().unwrap();
-        editor.display.parameter = "S21".into();
-        apply_editor(&editor, &mut panel, &mut windows, &mut graph).unwrap();
-        assert_eq!(windows[0].traces[0].parameter, "S21");
-        assert_eq!(windows[0].traces[1].scale.per_division, 2.);
-        open(
-            &mut panel,
-            &windows[0],
-            &graph.node(id).unwrap().config,
-            Key::Freq,
-            Some(Field::Start),
-        );
-        let mut editor = panel.editor.take().unwrap();
-        editor.config.start_hz = editor.config.stop_hz;
-        let before = Snapshot::capture(&panel, &windows, &graph);
-        assert!(apply_editor(&editor, &mut panel, &mut windows, &mut graph).is_err());
-        assert_eq!(before, Snapshot::capture(&panel, &windows, &graph));
-        editor.config = editor.original_config.clone();
-        windows[0].traces[0].parameter = "S12".into();
-        assert!(apply_editor(&editor, &mut panel, &mut windows, &mut graph).is_err());
-    }
-    #[test]
-    fn front_panel_undo_and_serialization_keep_markers_but_drop_transient_dialogs() {
-        let (mut graph, mut panel, mut windows) = bench();
-        let id = windows[0].node;
-        let before = Snapshot::capture(&panel, &windows, &graph);
-        open(
-            &mut panel,
-            &windows[0],
-            &graph.node(id).unwrap().config,
-            Key::Scale,
-            None,
-        );
-        let mut editor = panel.editor.take().unwrap();
-        editor.display.marker = Some(2.45e9);
-        editor.display.scale.per_division = 3.;
-        apply_editor(&editor, &mut panel, &mut windows, &mut graph).unwrap();
-        panel.editor = Some(editor);
-        panel.undo.push(before.clone());
-        let loaded: Panel = serde_json::from_str(&serde_json::to_string(&panel).unwrap()).unwrap();
-        assert!(loaded.editor.is_none() && loaded.undo.is_empty());
-        let loaded_windows: Vec<Window> =
-            serde_json::from_str(&serde_json::to_string(&windows).unwrap()).unwrap();
-        assert_eq!(loaded_windows[0].traces[0].marker, Some(2.45e9));
-        before.clone().restore(&mut panel, &mut windows, &mut graph);
-        assert_eq!(before, Snapshot::capture(&panel, &windows, &graph));
-    }
-    #[test]
-    fn receiver_choices_follow_ports_and_source_and_peak_requires_actual_data() {
-        let mut c = Config::default();
-        c.instrument.port_count = 2;
-        c.instrument.pna.power_sweep = true;
-        c.instrument.pna.source_port = 2;
-        let choices = parameters(&c);
-        assert!(choices.contains(&"S12".into()) && choices.contains(&"B_2".into()));
-        assert!(!choices.contains(&"S21".into()) && !choices.contains(&"D_2".into()));
-        let (_, _, windows) = bench();
-        let trace = &windows[0].traces[0];
-        assert!(peak(trace, &[], true).is_none());
-    }
-}
 pub fn trace_menu(ui: &mut egui::Ui, window: &mut Window, index: usize, choices: &[String]) {
     window.active_trace = index.min(window.traces.len() - 1);
     let trace = &mut window.traces[window.active_trace];
@@ -532,14 +439,13 @@ pub fn popup(
             }
             Key::Format => formats(ui, &mut e.display),
             Key::Scale => {
-                if e.display.scale.automatic {
-                    if let Some(curve)=data.iter().rev().find(|d|d.node==e.display.node && d.name==e.display.parameter && d.corrected==e.display.corrected) {
+                if e.display.scale.automatic
+                    && let Some(curve)=data.iter().rev().find(|d|d.node==e.display.node && d.name==e.display.parameter && d.corrected==e.display.corrected) {
                         let values=if e.display.format==Format::Phase { curve.phase_deg.as_deref() } else { Some(curve.y.as_slice()) };
                         let bounds=e.display.scale.bounds(values);
                         e.display.scale.per_division=(bounds.high-bounds.low)/10.;
                         e.display.scale.reference=(bounds.high+bounds.low)/2.;
                         e.display.scale.reference_division=5.;
-                    }
                 }
                 scale(ui, &mut e.display.scale);
             },
@@ -662,4 +568,98 @@ fn apply_editor(
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn bench() -> (Graph, Panel, Vec<Window>) {
+        let mut graph = Graph::default();
+        let id = graph.add(rf_core::Kind::PnaX, [0., 0.]);
+        let mut window = Window::new(1, id, "S11".into(), Format::Magnitude, false);
+        window.ensure_traces();
+        window.add_trace(id, "S22".into(), Format::Magnitude, false);
+        window.active_trace = 0;
+        (
+            graph,
+            Panel {
+                selected: 1,
+                ..Default::default()
+            },
+            vec![window],
+        )
+    }
+    #[test]
+    fn edits_preserve_other_scales_reject_bad_ranges_and_detect_stale_dialogs() {
+        let (mut graph, mut panel, mut windows) = bench();
+        let id = windows[0].node;
+        windows[0].traces[1].scale.automatic = false;
+        windows[0].traces[1].scale.per_division = 2.;
+        open(
+            &mut panel,
+            &windows[0],
+            &graph.node(id).unwrap().config,
+            Key::Meas,
+            None,
+        );
+        let mut editor = panel.editor.take().unwrap();
+        editor.display.parameter = "S21".into();
+        apply_editor(&editor, &mut panel, &mut windows, &mut graph).unwrap();
+        assert_eq!(windows[0].traces[0].parameter, "S21");
+        assert_eq!(windows[0].traces[1].scale.per_division, 2.);
+        open(
+            &mut panel,
+            &windows[0],
+            &graph.node(id).unwrap().config,
+            Key::Freq,
+            Some(Field::Start),
+        );
+        let mut editor = panel.editor.take().unwrap();
+        editor.config.start_hz = editor.config.stop_hz;
+        let before = Snapshot::capture(&panel, &windows, &graph);
+        assert!(apply_editor(&editor, &mut panel, &mut windows, &mut graph).is_err());
+        assert_eq!(before, Snapshot::capture(&panel, &windows, &graph));
+        editor.config = editor.original_config.clone();
+        windows[0].traces[0].parameter = "S12".into();
+        assert!(apply_editor(&editor, &mut panel, &mut windows, &mut graph).is_err());
+    }
+    #[test]
+    fn front_panel_undo_and_serialization_keep_markers_but_drop_transient_dialogs() {
+        let (mut graph, mut panel, mut windows) = bench();
+        let id = windows[0].node;
+        let before = Snapshot::capture(&panel, &windows, &graph);
+        open(
+            &mut panel,
+            &windows[0],
+            &graph.node(id).unwrap().config,
+            Key::Scale,
+            None,
+        );
+        let mut editor = panel.editor.take().unwrap();
+        editor.display.marker = Some(2.45e9);
+        editor.display.scale.per_division = 3.;
+        apply_editor(&editor, &mut panel, &mut windows, &mut graph).unwrap();
+        panel.editor = Some(editor);
+        panel.undo.push(before.clone());
+        let loaded: Panel = serde_json::from_str(&serde_json::to_string(&panel).unwrap()).unwrap();
+        assert!(loaded.editor.is_none() && loaded.undo.is_empty());
+        let loaded_windows: Vec<Window> =
+            serde_json::from_str(&serde_json::to_string(&windows).unwrap()).unwrap();
+        assert_eq!(loaded_windows[0].traces[0].marker, Some(2.45e9));
+        before.clone().restore(&mut panel, &mut windows, &mut graph);
+        assert_eq!(before, Snapshot::capture(&panel, &windows, &graph));
+    }
+    #[test]
+    fn receiver_choices_follow_ports_and_source_and_peak_requires_actual_data() {
+        let mut c = Config::default();
+        c.instrument.port_count = 2;
+        c.instrument.pna.power_sweep = true;
+        c.instrument.pna.source_port = 2;
+        let choices = parameters(&c);
+        assert!(choices.contains(&"S12".into()) && choices.contains(&"B_2".into()));
+        assert!(!choices.contains(&"S21".into()) && !choices.contains(&"D_2".into()));
+        let (_, _, windows) = bench();
+        let trace = &windows[0].traces[0];
+        assert!(peak(trace, &[], true).is_none());
+    }
 }

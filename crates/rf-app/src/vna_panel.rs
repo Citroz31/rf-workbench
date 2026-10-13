@@ -328,30 +328,27 @@ fn graph_with_options(
                 color(t.color),
             ),
         ));
-        if let Some(marker) = t.marker {
-            if let Some((i, _)) =
-                c.x.iter()
-                    .enumerate()
-                    .min_by(|(_, a), (_, b)| (*a - marker).abs().total_cmp(&(*b - marker).abs()))
-            {
-                if (first..=last).contains(&marker) {
-                    let at = point(i);
-                    cp.circle_filled(at, 4., color(t.color));
-                    cp.text(
-                        at + egui::vec2(5., -5.),
-                        Align2::LEFT_BOTTOM,
-                        format!(
-                            "M1 {} {:.4} · {:.6} {}",
-                            t.parameter,
-                            y[i],
-                            c.x[i] / x_scale,
-                            if x_unit == "Hz" { "GHz" } else { x_unit }
-                        ),
-                        crate::theme::font(10.),
-                        color(t.color),
-                    );
-                }
-            }
+        if let Some(marker) = t.marker
+            && (first..=last).contains(&marker)
+            && let Some((i, _)) = c.x.iter().enumerate().min_by(|(_, a), (_, b)| {
+                (*a - marker).abs().total_cmp(&(*b - marker).abs())
+            })
+        {
+            let at = point(i);
+            cp.circle_filled(at, 4., color(t.color));
+            cp.text(
+                at + egui::vec2(5., -5.),
+                Align2::LEFT_BOTTOM,
+                format!(
+                    "M1 {} {:.4} · {:.6} {}",
+                    t.parameter,
+                    y[i],
+                    c.x[i] / x_scale,
+                    if x_unit == "Hz" { "GHz" } else { x_unit }
+                ),
+                crate::theme::font(10.),
+                color(t.color),
+            );
         }
     }
     if unavailable > 0 || ac.is_none() {
@@ -762,8 +759,10 @@ mod tests {
         let ctx = egui::Context::default();
         let mut g = rf_core::Graph::default();
         let id = g.add(rf_core::Kind::PnaX, [0., 0.]);
-        let mut panel = Panel::default();
-        panel.hotkey = crate::vna_keys::Key::Scale;
+        let mut panel = Panel {
+            hotkey: crate::vna_keys::Key::Scale,
+            ..Default::default()
+        };
         let mut windows = vec![Window::new(1, id, "S11".into(), Format::Magnitude, false)];
         let mut render = |events| {
             ctx.run(
