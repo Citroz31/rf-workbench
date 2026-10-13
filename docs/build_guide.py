@@ -38,7 +38,7 @@ def para(text,small=False):story.append(p(text,small))
 def sub(text):story.append(Paragraph(text,styles['SubGuide']))
 def page(number,title):
     if story:story.append(PageBreak())
-    story.append(p(f'RF WORKBENCH 0.11  /  {number:02}',True));story.append(Paragraph(title,styles['HGuide']))
+    story.append(p(f'RF WORKBENCH 0.12  /  {number:02}',True));story.append(Paragraph(title,styles['HGuide']))
 def steps(items):
     for i,item in enumerate(items,1):para(f'<b>{i:02}.</b> {item}')
 def table(headers,rows,widths=None):
@@ -100,7 +100,7 @@ csv.write_text('provenance,Pin_dBm,Pout_dBm,gain_dB\n'+''.join(f'simulation_peda
 
 page(1,'Guide utilisateur')
 story.append(Paragraph('RF Workbench',styles['CoverGuide']))
-para('<b>Version 0.11 - Windows</b><br/>Bancs graphiques RF, DSP, scripts Python et instrumentation VISA/SCPI.')
+para('<b>Version 0.12 - Windows</b><br/>Bancs graphiques RF, DSP, scripts Python et instrumentation VISA/SCPI.')
 story.append(Spacer(1,12));picture('PA.png','Application native : exemple petit signal PA 36-38 GHz, données simulées.')
 sub('Du premier schéma à la lecture binaire du PNA-X')
 para('Ce guide accompagne le prototype livré. Il décrit les actions disponibles, les unités, les limites et un protocole de caractérisation de PA : gain 20 dB, objectif 40 dBm, OP1dB voisin de 34 dBm, bande 36-38 GHz.')
@@ -387,13 +387,13 @@ page(34,'Rotation, ports et unités de fréquence')
 picture('VNA-DUT-V09.png','Exemple VNA-DUT-Externe.rfbench : ports P1-P3-P4-P2 et DUT tourné de 90 degrés. Les connexions gardent leur identité électrique.')
 steps(['Sélectionner un ou plusieurs blocs puis Ctrl+R : chaque bloc tourne de 90° autour de son centre. Les broches et le symbole tournent ; le titre reste lisible. Ctrl+Z annule ; copier/coller et sauvegarder conservent la rotation. Pendant un placement, Ctrl+R tourne aussi le bloc au curseur.',
        'Un PNA à quatre ports affiche P1, P3, P4, P2 de gauche à droite. Les indices Sij restent électriques : S21 signifie réception P2, source P1. Un VNA à deux ports affiche P1 puis P2.',
-       'Dans Fonctions du VNA, choisir Hz, kHz, MHz ou GHz pour début/fin, IFBW et pas fréquentiel. Changer d’unité conserve la même valeur physique. Double-cliquer la valeur numérique permet une saisie fine jusqu’à neuf décimales.',
+       'Dans Stimulus / Freq ou Response / Avg BW du VNA, choisir Hz, kHz, MHz ou GHz pour début/fin, IFBW et pas fréquentiel. Changer d’unité conserve la même valeur physique. Double-cliquer la valeur numérique permet une saisie fine jusqu’à neuf décimales.',
        'Exemple : 36 à 38 GHz avec pas demandé 5 MHz donne 401 points. Les deux extrémités sont conservées ; un pas non divisible ajuste le nombre de points et affiche le pas effectif. La limite est 100001 points ; une demande plus fine est bornée explicitement.',
        'Le routage utilise maintenant Ctrl+Shift+R ; les anciennes préférences Ctrl+R sont migrées. Les raccourcis restent personnalisables et sont suspendus pendant la saisie d’un texte.'])
 para('Ces fonctions sont locales et sans dépendance Python ou VISA en simulation. Le projet conserve les unités choisies et les caractéristiques de chaque DUT. Le panneau multitraces continue de conserver une échelle propre à chaque trace.',True)
 
 page(35,'Un plan commun aux mesures et au panneau PNA')
-steps(['Dans Fonctions du bloc PNA, choisir <b>Paramètres S - 4 fenêtres</b>. Le canal est commun ; S11, S12, S21 et S22 sont cochés, une trace en dB par fenêtre, dans cet ordre. Décocher un paramètre adapte le plan.',
+steps(['Dans Quick Start du bloc PNA, choisir <b>Paramètres S - 4 fenêtres</b>. Le canal est commun ; S11, S12, S21 et S22 sont cochés, une trace en dB par fenêtre, dans cet ordre. Décocher un paramètre adapte le plan.',
        'Choisir <b>Puissance - gain / réflexion / récepteurs</b> pour un sweep à fréquence CW. Avec source P1, réception P2 : S21 et S11 en dB, R1_1 et B_1 en dBm. Changer le port source reconstruit une sélection compatible. Ce mode Standard est distinct de GCA sous licence.',
        'Choisir une trace par fenêtre ou Superposer. Définir format, échelle/div, référence et position pour chaque trace ; cliquer sa légende pour l’activer. Les graduations visibles suivent la trace active. Les autres transformations restent indépendantes.',
        'En Matériel, choisir un canal Standard existant et <b>Configurer canal / écran / chemins (sans sweep)</b>. Le même plan prépare traces, fenêtres, fréquence, points, IFBW, puissance, moyennage et CalSet demandé. Les réglages acceptés sont relus ; un écart bloque le déclenchement.',
@@ -404,7 +404,7 @@ para('Une lecture des dernières données conserve les réglages matériels. Si 
 picture('PNA-PLAN-V010.png','Plan natif : sélection des quatre S et format/échelle par trace.',width=380)
 
 page(36,'Architecture interne et chemins RF / IF')
-steps(['Ouvrir <b>Architecture / chemins</b> dans le bloc PNA-X. Le schéma fonctionnel montre sources, sorties, bypass, combiner, coupleurs/ponts, références R1-R4, récepteurs A-D et IF. Quatre ports : P1, P3, P4, P2.',
+steps(['Ouvrir <b>Utility / Path Configurator</b> dans le bloc PNA-X. Le schéma fonctionnel montre sources, sorties, bypass, combiner, coupleurs/ponts, références R1-R4, récepteurs A-D et IF. Quatre ports : P1, P3, P4, P2.',
        'En simulation, la référence 423/224 sert à préparer et enregistrer un routage. Elle ne reconstitue pas les pertes calibrées de votre instrument. En Matériel, choisir <b>Lire les chemins RF / IF disponibles</b> : éléments, valeurs acceptées et états sont interrogés sur le canal.',
        'Cliquer un élément du schéma ou utiliser Tous les éléments RF / IF. Les composants non détectés restent inactifs. Cocher Modifier pour un override ; décocher le retire. Une configuration déjà enregistrée sur le PNA peut être rappelée.',
        'Cocher Appliquer les chemins avant les réglages de mesure. Lors de la configuration, le rappel précède les réglages fréquence, IFBW, puissance et calibration ; ses overrides sont appliqués et relus.',
@@ -450,6 +450,32 @@ table(['Touches','Fonction'],[
 para('<b>Appliquer</b> valide et modifie le projet. <b>Appliquer + configurer PNA</b> configure explicitement le bloc actif ; le prochain Run applique les réglages si l’application du plan est activée. Les réglages invalides ou un dialogue devenu obsolète sont refusés. Fermer / annuler laisse les valeurs précédentes. Les marqueurs sont locaux : ils ne sont pas envoyés au PNA physique.',True)
 picture('PNA-PANEL-V011.png','Quatre graphes avec touches et paramètres à droite. Le N5245B physique reste à qualifier sur le banc.',width=340)
 
+page(40,'Dimensions manuelles et Quick Start PNA')
+steps([
+    'Glisser le séparateur entre la bibliothèque et le schéma : la largeur choisie reste stable, même avec des noms longs. La recherche tient sur une ligne. Les catégories trop longues sont tronquées visuellement.',
+    'Glisser les bords ou le coin du panneau VNA pour ajuster sa taille. Les graphes et les touches restent dans cette surface ; les touches défilent et leur disposition se compacte. Le projet conserve les dimensions choisies.',
+    'Double-cliquer un PNA, PNA-X ou VNA USB : <b>Quick Start</b> apparaît. Choisir le preset S11/S12/S21/S22, la matrice S complète ou le preset puissance, puis cocher les mesures compatibles avec les ports et la source.',
+    'Choisir de 1 à 8 fenêtres, une trace par fenêtre ou Tout superposer. Chaque fenêtre contient au moins une trace. Ajuster son affectation Window ; l’aperçu montre le résultat. Les formats et échelles existants sont conservés.',
+    '<b>Appliquer au bloc</b> mémorise le plan et ouvre ses résultats. Fermer abandonne le brouillon. Le nombre de ports met les broches à jour immédiatement ; réduire les ports retire leurs câbles.',
+])
+picture('PNA-QUICKSTART-V012.png','Quick Start natif : mesures, nombre de fenêtres, affectation et aperçu.',width=400)
+
+page(41,'Instrument, Response, Stimulus et Utility')
+table(['Menu','Réglages'],[
+    ['Instrument','Trace, Channel, Window, Display, Quick Start et Meas Class.'],
+    ['Response','Mesure, format et échelle des traces ; Avg BW ; calibration et fixtures.'],
+    ['Stimulus','Freq, Power, Sweep et Trigger. Fréquences et IFBW avec unités.'],
+    ['Utility','Connexion VISA/SCPI, Path Configurator du PNA-X, console.'],
+])
+para('Un bloc représente <b>un canal</b> : fréquences, IFBW, puissance et moyennage sont communs à ses traces. Le numéro se choisit manuellement ou depuis les canaux détectés. Les fenêtres ne créent pas de canaux supplémentaires. Les anciens projets conservent leur configuration.')
+steps([
+    'Régler formats et échelles dans Trace ; l’échelle visible suit la trace active. Régler le balayage dans Freq / Power / Sweep, le moyennage dans Avg BW et l’acquisition dans Trigger.',
+    '<b>Appliquer + configurer VNA</b> valide et mémorise le même plan avant de configurer l’appareil, sans sweep. Configurer le canal avant Exécuter et Single Sweep permettent ensuite une configuration suivie de l’acquisition.',
+    'Dans les résultats, les menus ouvrent les mêmes réglages ciblés que les touches. Quick Start ouvre le bloc actif. Le clic droit modifie une trace ou ajoute une superposition.',
+])
+para('Les fenêtres désignées sur l’appareil sont remplacées lors de la configuration ; les autres fenêtres et calibrations sont conservées. TILE peut donc montrer une disposition influencée par les fenêtres étrangères au projet. Le N5245B physique reste à qualifier.',True)
+picture('PNA-PANEL-V012.png','Résultats natifs : menus et touches, dimensions sous le contrôle de l’utilisateur.',width=380)
+
 class NumberedCanvas(canvas.Canvas):
     def __init__(self,*a,**k):super().__init__(*a,**k);self.pages=[]
     def showPage(self):self.pages.append(dict(self.__dict__));self._startPage()
@@ -457,12 +483,12 @@ class NumberedCanvas(canvas.Canvas):
         total=len(self.pages)
         for state in self.pages:
             self.__dict__.update(state);self.setStrokeColor(TEAL);self.setLineWidth(.7);self.line(52,802,543,802)
-            self.setFont('Guide',7.4);self.setFillColor(GRAY);self.drawString(52,812,'RF WORKBENCH  /  GUIDE UTILISATEUR  /  0.11')
+            self.setFont('Guide',7.4);self.setFillColor(GRAY);self.drawString(52,812,'RF WORKBENCH  /  GUIDE UTILISATEUR  /  0.12')
             self.drawString(52,27,'Prototype RF et métrologie  |  13 octobre 2026');self.drawRightString(543,27,f'{self._pageNumber} / {total}')
             super().showPage()
         super().save()
 
 output=HERE/'Guide-utilisateur.pdf'
-doc=SimpleDocTemplate(str(output),pagesize=A4,leftMargin=52,rightMargin=53,topMargin=55,bottomMargin=48,title='RF Workbench 0.11 - Guide utilisateur',author='RF Workbench',pageCompression=1)
+doc=SimpleDocTemplate(str(output),pagesize=A4,leftMargin=52,rightMargin=53,topMargin=55,bottomMargin=48,title='RF Workbench 0.12 - Guide utilisateur',author='RF Workbench',pageCompression=1)
 doc.build(story,canvasmaker=NumberedCanvas)
-print(json.dumps({'pdf':str(output),'bytes':output.stat().st_size,'chapters':39,'synthetic_Rapp_p':q},ensure_ascii=False))
+print(json.dumps({'pdf':str(output),'bytes':output.stat().st_size,'chapters':41,'synthetic_Rapp_p':q},ensure_ascii=False))

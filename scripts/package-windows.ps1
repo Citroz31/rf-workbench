@@ -61,6 +61,7 @@ try {
     Copy-Item -LiteralPath $guidePath -Destination (Join-Path $stagePath 'docs/Guide-utilisateur.pdf')
     Copy-Item -LiteralPath (Join-Path $repositoryRoot 'docs/V0.10.md') -Destination (Join-Path $stagePath 'docs/V0.10.md')
     Copy-Item -LiteralPath (Join-Path $repositoryRoot 'docs/V0.11.md') -Destination (Join-Path $stagePath 'docs/V0.11.md')
+    Copy-Item -LiteralPath (Join-Path $repositoryRoot 'docs/V0.12.md') -Destination (Join-Path $stagePath 'docs/V0.12.md')
     foreach ($example in $exampleFiles) {
         if ($example.Length -le 0) { throw "Exemple vide : $($example.Name)" }
         Copy-Item -LiteralPath $example.FullName -Destination (Join-Path $stagePath "examples/$($example.Name)")

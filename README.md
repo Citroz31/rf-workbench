@@ -1,5 +1,9 @@
 # RF Workbench
 
+**Version 0.12 :** palette compacte et panneaux réellement redimensionnables, sans agrandissement automatique. Configuration PNA organisée en menus Instrument / Response / Stimulus / Utility, Quick Start pour choisir mesures, nombre de fenêtres (1–8) et superpositions, avec aperçu et plan commun à la simulation et au pilote. [Utilisation 0.12](docs/V0.12.md) · [Guide PDF](docs/Guide-utilisateur.pdf), chapitres 40–41.
+
+![Quick Start du PNA](docs/PNA-QUICKSTART-V012.png)
+
 **Version 0.11 :** recherche visible dans les palettes, attraction du pointeur vers les pins compatibles sous Windows, édition et ajout de traces par clic droit. Panneau VNA virtuel avec touches à droite et fenêtres de réglage, marqueurs locaux, recherche de pics et historique du panneau. [Utilisation 0.11](docs/V0.11.md) · [Guide PDF](docs/Guide-utilisateur.pdf), chapitres 38–39.
 
 ![Panneau virtuel avec touches et paramètres](docs/PNA-PANEL-V011.png)

@@ -51,92 +51,7 @@ pub(super) fn extra(
     fixtures: &mut FixtureJob,
 ) {
     let (hardware, busy) = status;
-    ui.separator();
-    ui.heading("Balayage, chemin RF et calibration");
-    let previous_source = c.instrument.pna.source_port;
-    if ui
-        .checkbox(
-            &mut c.instrument.pna.power_sweep,
-            "Sweep de puissance à fréquence CW (gain S, application GCA distincte)",
-        )
-        .changed()
-        && c.instrument.pna.plan.is_some()
-    {
-        c.instrument.pna.all_s_parameters = false;
-        let source = c.instrument.pna.source_port;
-        let receiver = if source == 1 {
-            2.min(c.instrument.port_count)
-        } else {
-            1
-        };
-        c.instrument.pna.plan = Some(if c.instrument.pna.power_sweep {
-            rf_core::pna_plan::Plan::power(source, receiver)
-        } else {
-            rf_core::pna_plan::Plan::s_parameters(c.instrument.port_count)
-        });
-        c.s_parameter = if c.instrument.pna.power_sweep {
-            format!("S{receiver}{source}")
-        } else {
-            if c.instrument.port_count > 1 {
-                "S21"
-            } else {
-                "S11"
-            }
-            .into()
-        };
-        c.instrument.measurement.clear();
-    }
-    if c.instrument.pna.power_sweep {
-        crate::frequency_edit::frequency(
-            ui,
-            "Fréquence CW",
-            &mut c.frequency_hz,
-            &mut c.frequency_unit,
-        );
-        number(
-            ui,
-            "Début puissance",
-            &mut c.instrument.pna.power_start_dbm,
-            0.1,
-            " dBm",
-        );
-        number(
-            ui,
-            "Fin puissance",
-            &mut c.instrument.pna.power_stop_dbm,
-            0.1,
-            " dBm",
-        );
-        ui.add(
-            egui::DragValue::new(&mut c.instrument.pna.source_port)
-                .range(1..=c.instrument.port_count)
-                .prefix("Port source "),
-        );
-        if previous_source != c.instrument.pna.source_port && c.instrument.pna.plan.is_some() {
-            let source = c.instrument.pna.source_port;
-            let receiver = if source == 1 {
-                2.min(c.instrument.port_count)
-            } else {
-                1
-            };
-            c.instrument.pna.plan = Some(rf_core::pna_plan::Plan::power(source, receiver));
-            c.s_parameter = format!("S{receiver}{source}");
-            c.instrument.measurement.clear();
-        }
-    } else {
-        number(
-            ui,
-            "Puissance source du canal",
-            &mut c.power_dbm,
-            0.1,
-            " dBm",
-        );
-        ui.checkbox(
-            &mut c.instrument.pna.all_s_parameters,
-            "Acquérir toutes les traces Sij (matrice 1–4 ports)",
-        );
-    }
-    ui.small("Configuration source/calibration envoyée seulement si « Appliquer le balayage » est coché. Le déclenchement place le canal en HOLD et acquiert une seule fois. Les limites de puissance sont interrogées avant écriture.");
+    ui.heading("Calibration et fixtures");
     number(
         ui,
         "Impédance de référence des S acquis (à vérifier sur l'instrument)",
@@ -368,6 +283,9 @@ impl Workbench {
             ) {
                 (1, 1) => Arrangement::Single,
                 (2, 1) => Arrangement::Two,
+                (1, 2) => Arrangement::TwoVertical,
+                (3, 2) => Arrangement::Six,
+                (4, 2) => Arrangement::Eight,
                 _ => Arrangement::Quad,
             };
             if candidate

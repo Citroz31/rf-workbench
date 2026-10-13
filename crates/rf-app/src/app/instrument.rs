@@ -10,6 +10,7 @@ pub(super) struct Dialog {
     pub config: rf_core::Config,
     pub title: String,
     pub tab: u8,
+    pub pna_page: crate::pna_setup::Page,
     pub capabilities: Option<Capabilities>,
     pub devices: Vec<Device>,
     pub command: String,
@@ -50,7 +51,12 @@ impl Dialog {
             kind: n.kind,
             config: n.config.clone(),
             title: n.title.clone(),
-            tab: if n.kind == Kind::Dut { 1 } else { 0 },
+            tab: if n.kind == Kind::Dut || n.kind.max_rf_ports().is_some() {
+                1
+            } else {
+                0
+            },
+            pna_page: Default::default(),
             capabilities: None,
             devices: Vec::new(),
             command: "*IDN?".into(),
@@ -103,11 +109,21 @@ impl Workbench {
         let mut open = true;
         let mut close = false;
         let mut apply = false;
+        let mut configure_vna = false;
         let mut job = None;
         let previous_port_count = d.config.instrument.port_count;
         egui::Window::new(format!("{} · réglages du bloc",d.title)).id(egui::Id::new(("instrument",d.id))).open(&mut open).resizable(true).min_size([470.,340.]).default_pos([340.,100.]).default_size([820.,620.]).max_height((ctx.content_rect().height()-140.).max(350.)).show(ctx,|ui|{
-            ui.horizontal_wrapped(|ui|{for (i,label) in ["Connexion","Fonctions","Options PNA","Console SCPI","Architecture / chemins"].iter().enumerate(){if (d.kind!=Kind::Dut || i==1) && (i!=2 || matches!(d.kind,Kind::Pna|Kind::PnaX)) && (i!=4 || d.kind==Kind::PnaX) && ui.selectable_label(d.tab==i as u8,*label).clicked(){d.tab=i as u8;}}});ui.separator();
-            egui::ScrollArea::vertical().id_salt("instrument-content").max_height((ui.available_height()-70.).max(200.)).show(ui,|ui|{
+            let (_, ()) = crate::bounded_ui::fill(ui, "instrument-body", |ui| {
+            if d.kind.max_rf_ports().is_some() {
+                crate::pna_setup::navigation(ui, &mut d.pna_page, d.kind);
+                d.tab = d.pna_page.tab();
+            } else {
+                ui.horizontal_wrapped(|ui| { for (i, label) in ["Connexion", "Fonctions", "Options PNA", "Console SCPI"].iter().enumerate() {
+                    if (d.kind != Kind::Dut || i == 1) && i != 2 && ui.selectable_label(d.tab == i as u8, *label).clicked() { d.tab = i as u8; }
+                }});
+                ui.separator();
+            }
+            egui::ScrollArea::both().auto_shrink([false, false]).min_scrolled_height(0.).id_salt("instrument-content").max_height((ui.available_height()-85.).max(30.)).show(ui,|ui|{
                 let c=&mut d.config;
                 match d.tab {
                     0=>{
@@ -123,27 +139,21 @@ impl Workbench {
                         ui.separator();ui.label(if self.hardware{"Mode Matériel activé : les boutons de connexion contactent l'équipement."}else{"Mode Simulation : activer Matériel dans la barre d'outils pour identifier un équipement réel."});
                     }
                     1=>{
-                        ui.heading("Réglages du bloc");
+                        if d.kind.max_rf_ports().is_none() { ui.heading("Réglages du bloc"); }
                         match d.kind {
                             Kind::Pna|Kind::PnaX|Kind::UsbVna=>{
-                                crate::pna_controls::plan_editor(ui,c);
-                                ui.horizontal(|ui|{ui.label("Ports RF du schéma");egui::ComboBox::from_id_salt("vna-ports").selected_text(format!("{} port(s)",c.instrument.port_count)).show_ui(ui,|ui|{for count in 1..=d.kind.max_rf_ports().unwrap(){ui.selectable_value(&mut c.instrument.port_count,count,format!("{count} port(s)"));}});});
-                                ui.small("Mise à jour immédiate des broches. Réduire ce nombre retire les câbles des ports supprimés. Le canal de mesure reste indépendant.");
-                                if d.kind==Kind::UsbVna {ui.label("Pilote binaire Keysight P50xx/P93xx : le connecteur USB ne définit pas un dialecte SCPI universel.");}
-                                if let Some(cap)=&d.capabilities && let Some(count)=cap.port_count {ui.label(format!("Équipement identifié : {count} ports physiques"));}
-                                ui.horizontal_wrapped(|ui|{ui.label("Channel");if let Some(cap)=d.capabilities.as_ref().filter(|cap|cap.resource==c.resource){egui::ComboBox::from_id_salt("pna-channels").selected_text(format!("{}",c.instrument.channel)).show_ui(ui,|ui|{for ch in &cap.channels{ui.selectable_value(&mut c.instrument.channel,*ch,format!("Channel {ch}"));}});}ui.add(egui::DragValue::new(&mut c.instrument.channel).range(1..=1000));ui.label("Transfert SDATA");egui::ComboBox::from_id_salt("pna-precision").selected_text(format!("REAL{}",c.instrument.precision)).show_ui(ui,|ui|{ui.selectable_value(&mut c.instrument.precision,32,"REAL32 · compact");ui.selectable_value(&mut c.instrument.precision,64,"REAL64");});});
-                                ui.label("Nom de mesure instrument (vide : une seule trace correspondant au paramètre S)");ui.text_edit_singleline(&mut c.instrument.measurement);
-                                if let Some(cap)=d.capabilities.as_ref().filter(|cap|cap.resource==c.resource&&cap.channel==c.instrument.channel){egui::ComboBox::from_id_salt("pna-measurement").selected_text("Choisir une trace détectée").show_ui(ui,|ui|{for (name,param) in &cap.measurements{if ui.selectable_label(c.instrument.measurement==*name,format!("{name} · {param}")).clicked(){c.instrument.measurement=name.clone();if rf_core::physical::s_parameter_ports(param).is_some_and(|(i,j)|i<=c.instrument.port_count&&j<=c.instrument.port_count){c.s_parameter=param.clone();}}}});}
-                                egui::ComboBox::from_id_salt("pna-parameter").selected_text(&c.s_parameter).show_ui(ui,|ui|{for i in 1..=c.instrument.port_count {for j in 1..=c.instrument.port_count {let p=format!("S{i}{j}");ui.selectable_value(&mut c.s_parameter,p.clone(),&p);}}});
-                                ui.checkbox(&mut c.instrument.configure_sweep,"Appliquer le balayage avant acquisition");
-                                ui.checkbox(&mut c.instrument.trigger,"Déclencher un nouveau balayage et attendre *OPC?");
-                                ui.label("Cases désactivées : lecture des dernières données du canal existant. Aucun preset ni changement de calibration/RF.");
-                                ui.add_enabled_ui(c.instrument.configure_sweep || !self.hardware,|ui|{
-                                    ui.columns(3,|cols|{crate::frequency_edit::frequency(&mut cols[0],"Début",&mut c.start_hz,&mut c.frequency_unit);crate::frequency_edit::frequency(&mut cols[1],"Fin",&mut c.stop_hz,&mut c.frequency_unit);cols[2].label("Points");cols[2].add(egui::DragValue::new(&mut c.points).range(2..=rf_core::MAX_POINTS));});ui.columns(2,|cols|{crate::frequency_edit::frequency(&mut cols[0],"IF bandwidth",&mut c.instrument.if_bandwidth_hz,&mut c.if_unit);cols[1].checkbox(&mut c.instrument.averaging,"Moyennage");cols[1].add(egui::DragValue::new(&mut c.instrument.averages).range(1..=65536).suffix(" acquisitions"));});
-                                });
-                                if !c.instrument.pna.power_sweep { crate::frequency_edit::sweep_step(ui,c); }
-                                super::pna_workspace::extra(ui,c,d.kind,d.id,(self.hardware,self.worker.is_busy()),&mut job,&mut self.fixture_job);
-                                ui.label("Axe lu en REAL64 sur l'appareil ; données SDATA réelles/imaginaires en REAL32/64, little endian. Format de transfert restauré après lecture.");
+                                crate::pna_setup::settings(ui, d.pna_page, c, d.kind);
+                                if d.pna_page == crate::pna_setup::Page::Calibration {
+                                    super::pna_workspace::extra(ui,c,d.kind,d.id,(self.hardware,self.worker.is_busy()),&mut job,&mut self.fixture_job);
+                                }
+                                if d.pna_page == crate::pna_setup::Page::Channel
+                                    && let Some(cap) = d.capabilities.as_ref().filter(|cap| cap.resource == c.resource) {
+                                        egui::ComboBox::from_id_salt("pna-channels").selected_text("Choisir un canal détecté").show_ui(ui, |ui| {
+                                            for ch in &cap.channels { ui.selectable_value(&mut c.instrument.channel, *ch, format!("Channel {ch}")); }
+                                        });
+                                        if let Some(count) = cap.port_count { ui.label(format!("Équipement identifié : {count} ports physiques")); }
+                                }
+
                             }
                             Kind::Dut=>{dut_settings(ui,c,&self.catalog);dataset_editor(ui,c,&mut d.dataset_path,&mut d.message);}
                             Kind::DcSupplyE3631A|Kind::DcSupplyE36313A=>{
@@ -212,7 +222,13 @@ if ui.button("Consigne du profil").clicked(){d.command=c.instrument.set_command.
                     }
                 }
             });
-            ui.separator();ui.label(&d.message);ui.horizontal_wrapped(|ui|{apply=ui.add_enabled(!self.worker.is_busy(),egui::Button::new("Appliquer au bloc")).clicked();if ui.button("Fermer").clicked(){close=true;}});
+            ui.separator();ui.label(&d.message);ui.horizontal_wrapped(|ui|{apply=ui.add_enabled(!self.worker.is_busy(),egui::Button::new("Appliquer au bloc")).clicked();if ui.button("Fermer").clicked(){close=true;}
+                if d.kind.max_rf_ports().is_some() && ui.add_enabled(self.hardware && !self.worker.is_busy(), egui::Button::new("Appliquer + configurer VNA")).clicked() {
+                    apply = true;
+                    configure_vna = true;
+                }
+            });
+            });
         });
         if previous_port_count != d.config.instrument.port_count {
             let before = self.project.graph.clone();
@@ -256,14 +272,11 @@ if ui.button("Consigne du profil").clicked(){d.command=c.instrument.set_command.
                 }
             }
         }
-        if let Some(job) = job {
-            self.submit(job);
-        }
         if apply {
             let result = d.config.instrument.validate().and_then(|_| {
-                if d.kind == Kind::Dut {
+                if d.kind == Kind::Dut || d.kind.max_rf_ports().is_some() {
                     let mut candidate = rf_core::Graph::default();
-                    candidate.add(Kind::Dut, [0., 0.]);
+                    candidate.add(d.kind, [0., 0.]);
                     candidate.nodes[0].config = d.config.clone();
                     candidate.validate().map_err(|e| e.to_string())?;
                 }
@@ -291,9 +304,20 @@ if ui.button("Consigne du profil").clicked(){d.command=c.instrument.set_command.
                         self.apply_pna_layout(d.id);
                     }
                     d.message = "Réglages mémorisés dans le bloc.".into();
+                    if configure_vna {
+                        job = Some(Command::PreparePna {
+                            kind: d.kind,
+                            node: d.id,
+                            config: d.config.clone(),
+                            hardware: self.hardware,
+                        });
+                    }
                 }
                 Err(e) => d.message = e,
             }
+        }
+        if let Some(job) = job {
+            self.submit(job);
         }
         if open && !close && self.project.graph.node(d.id).is_some() {
             self.instrument_dialog = Some(d);
