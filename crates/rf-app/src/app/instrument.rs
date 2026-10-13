@@ -146,13 +146,12 @@ impl Workbench {
                                 if d.pna_page == crate::pna_setup::Page::Calibration {
                                     super::pna_workspace::extra(ui,c,d.kind,d.id,(self.hardware,self.worker.is_busy()),&mut job,&mut self.fixture_job);
                                 }
-                                if d.pna_page == crate::pna_setup::Page::Channel {
-                                    if let Some(cap) = d.capabilities.as_ref().filter(|cap| cap.resource == c.resource) {
+                                if d.pna_page == crate::pna_setup::Page::Channel
+                                    && let Some(cap) = d.capabilities.as_ref().filter(|cap| cap.resource == c.resource) {
                                         egui::ComboBox::from_id_salt("pna-channels").selected_text("Choisir un canal détecté").show_ui(ui, |ui| {
                                             for ch in &cap.channels { ui.selectable_value(&mut c.instrument.channel, *ch, format!("Channel {ch}")); }
                                         });
                                         if let Some(count) = cap.port_count { ui.label(format!("Équipement identifié : {count} ports physiques")); }
-                                    }
                                 }
 
                             }
