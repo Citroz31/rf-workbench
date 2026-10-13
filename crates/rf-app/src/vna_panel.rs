@@ -159,7 +159,10 @@ fn graph_with_options(
     let active = w.traces[w.active_trace].clone();
     let ac = curve(&active, data);
     let (rect, response) = ui.allocate_exact_size(
-        egui::vec2(ui.available_width(), (height - header.response.rect.height() - ui.spacing().item_spacing.y).max(70.)),
+        egui::vec2(
+            ui.available_width(),
+            (height - header.response.rect.height() - ui.spacing().item_spacing.y).max(70.),
+        ),
         Sense::click(),
     );
     let p = ui.painter_at(rect);

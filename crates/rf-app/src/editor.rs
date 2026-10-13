@@ -8,18 +8,18 @@ use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap};
 
 fn normalize(s: &str) -> String {
-        s.to_lowercase()
-            .chars()
-            .map(|c| match c {
-                'é' | 'è' | 'ê' | 'ë' => 'e',
-                'à' | 'â' => 'a',
-                'î' | 'ï' => 'i',
-                'ô' => 'o',
-                'û' | 'ù' => 'u',
-                'ç' => 'c',
-                _ => c,
-            })
-            .collect::<String>()
+    s.to_lowercase()
+        .chars()
+        .map(|c| match c {
+            'é' | 'è' | 'ê' | 'ë' => 'e',
+            'à' | 'â' => 'a',
+            'î' | 'ï' => 'i',
+            'ô' => 'o',
+            'û' | 'ù' => 'u',
+            'ç' => 'c',
+            _ => c,
+        })
+        .collect::<String>()
 }
 pub fn fuzzy_score(query: &str, text: &str) -> Option<usize> {
     let query = normalize(query);
@@ -56,10 +56,13 @@ pub fn search(query: &str) -> Vec<Kind> {
                 _ => "",
             };
             let text = format!("{} {} {aliases}", k.label(), k.category());
-            fuzzy_score(query, &text).map(|score| (score, k, normalize(&text).contains(&normalize(query))))
+            fuzzy_score(query, &text)
+                .map(|score| (score, k, normalize(&text).contains(&normalize(query))))
         })
         .collect();
-    if hits.iter().any(|(_,_,direct)| *direct) { hits.retain(|(_,_,direct)| *direct); }
+    if hits.iter().any(|(_, _, direct)| *direct) {
+        hits.retain(|(_, _, direct)| *direct);
+    }
     hits.sort_by_key(|(score, _, _)| *score);
     hits.into_iter().map(|(_, k, _)| k).collect()
 }
@@ -514,7 +517,7 @@ mod tests {
     }
     #[test]
     fn fuzzy_matches_aliases_and_accents() {
-        assert_eq!(search("PNA"),vec![Kind::Pna,Kind::PnaX]);
+        assert_eq!(search("PNA"), vec![Kind::Pna, Kind::PnaX]);
         assert!(search("spectr").contains(&Kind::Analyzer));
         assert!(search("adc").contains(&Kind::Adc));
         assert!(fuzzy_score("resvar", "Résistance variable").is_some());

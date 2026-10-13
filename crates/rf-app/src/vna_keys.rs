@@ -341,7 +341,13 @@ fn scale(ui: &mut egui::Ui, scale: &mut crate::results::Scale) {
         );
     });
 }
-pub(crate) fn open(panel: &mut Panel, window: &Window, config: &Config, key: Key, field: Option<Field>) {
+pub(crate) fn open(
+    panel: &mut Panel,
+    window: &Window,
+    config: &Config,
+    key: Key,
+    field: Option<Field>,
+) {
     panel.hotkey = key;
     panel.editor = Some(Editor {
         key,
